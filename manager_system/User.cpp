@@ -1,34 +1,37 @@
 #include "User.h"
 
-User::User(const string &username,
-           const string &passwordHash,
-           const string &role)
-    : username(username),
-      passwordHash(passwordHash),
-      role(role),
-      blocked(false) {}
+#include <iomanip>
+#include <random>
+#include <sstream>
 
-string User::getUsername() const
+User::User(const std::string &username, const std::string &role)
+    : username_(username), role_(role), blocked_(false), failedLogins_(0) {}
+
+void User::setPassword(const std::string &plainPassword)
 {
-    return username;
+    // Random 8-byte salt from the OS entropy pool (hex encoded, 16 chars).
+    static std::mt19937_64 rng(std::random_device{}());
+    static const char *hexDigits = "0123456789abcdef";
+
+    std::ostringstream saltStream;
+    for (int i = 0; i < 8; ++i)
+    {
+        unsigned char byte = static_cast<unsigned char>(rng() & 0xFF);
+        saltStream << hexDigits[byte >> 4] << hexDigits[byte & 0x0F];
+    }
+    salt_ = saltStream.str();
+
+    passwordHash_ = SHA256::hash(salt_ + plainPassword);
 }
 
-string User::getPasswordHash() const
+bool User::verifyPassword(const std::string &plainPassword) const
 {
-    return passwordHash;
+    return SHA256::hash(salt_ + plainPassword) == passwordHash_;
 }
 
-string User::getRole() const
+std::string Customer::serializeExtra() const
 {
-    return role;
-}
-
-bool User::isBlocked() const
-{
-    return blocked;
-}
-
-void User::block()
-{
-    blocked = true;
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(2) << balance_;
+    return oss.str();
 }
