@@ -1,246 +1,661 @@
+/**
+ * ============================================================
+ *  Car Rental Management System — Console Application
+ * ============================================================
+ *  Entry point: runs the interactive CLI on top of RentalManager.
+ *
+ *  Robustness rules enforced here (all missing in the original):
+ *    - every prompt uses getline-based helpers, so input never
+ *      desynchronizes and values with SPACES are accepted;
+ *    - numeric prompts re-ask until the value is a valid number;
+ *    - EOF / broken input terminates the loop cleanly instead
+ *      of spinning forever.
+ *
+ *  Colors are ANSI-based and automatically disabled when the
+ *  output is not a terminal (piping / redirection / CI logs).
+ * ============================================================
+ */
+
+#include <iomanip>
 #include <iostream>
+#include <limits>
+#include <sstream>
 #include <string>
+
+#ifdef _WIN32
+#include <io.h>
+#define IS_TTY _isatty(_fileno(stdout))
+#else
+#include <unistd.h>
+#define IS_TTY isatty(STDOUT_FILENO)
+#endif
+
 #include "manager_system/RentalManager.h"
 
-using namespace std;
+/* ============================================================
+ *  Terminal colors (no-ops when stdout is piped)
+ * ============================================================ */
 
-/* ---------- Menus ---------- */
+static const bool g_colors = IS_TTY;
 
-void showGuestMenu()
+static std::string colorize(const std::string &text, const char *code)
 {
-    cout << "\n=== Welcome ===\n";
-    cout << "1. Register\n";
-    cout << "2. Login\n";
-    cout << "3. Exit\n";
-    cout << "Choice: ";
+    return g_colors ? std::string(code) + text + "\033[0m" : text;
 }
 
-void showCustomerMenu()
+static std::string bold(const std::string &s) { return colorize(s, "\033[1m"); }
+static std::string green(const std::string &s) { return colorize(s, "\033[32m"); }
+static std::string red(const std::string &s) { return colorize(s, "\033[31m"); }
+static std::string yellow(const std::string &s) { return colorize(s, "\033[33m"); }
+static std::string cyan(const std::string &s) { return colorize(s, "\033[36m"); }
+
+/* ============================================================
+ *  Input helpers — the anti-segfault, anti-infinite-loop layer
+ * ============================================================ */
+
+/// Read one line; returns false on EOF (input exhausted).
+static bool readLine(const std::string &prompt, std::string &out)
 {
-    cout << "\n=== Customer Menu ===\n";
-    cout << "1. View cars\n";
-    cout << "2. Make reservation\n";
-    cout << "3. Renew Rental\n";
-    cout << "4. Logout\n";
-    cout << "Choice: ";
+    std::cout << prompt;
+    std::cout.flush();
+    if (!std::getline(std::cin, out))
+        return false; // EOF -> caller exits gracefully
+    while (!out.empty() && (out.back() == '\r' || out.back() == ' '))
+        out.pop_back();
+    return true;
 }
 
-void showStaffMenu()
+/// Read a trimmed non-empty line.
+static bool readToken(const std::string &prompt, std::string &out)
 {
-    cout << "\n=== Staff Menu ===\n";
-    cout << "1. View cars\n";
-    cout << "2. Return car\n";
-    cout << "3. Set car to Maintenance\n";
-    cout << "4. deliver car\n";
-    cout << "5. Logout\n";
-    cout << "Choice: ";
+    std::string line;
+    do
+    {
+        if (!readLine(prompt, line))
+            return false;
+    } while (line.empty());
+    out = line;
+    return true;
 }
 
-void showManagerMenu()
+/// Read an integer, re-asking until the input parses. Returns false on EOF.
+static bool readInt(const std::string &prompt, int &out)
 {
-    cout << "\n=== Manager Menu ===\n";
-    cout << "1. Add car\n";
-    cout << "2. View cars\n";
-    cout << "3. Block user\n";
-    cout << "4. Export data\n";
-    cout << "5. Import data\n";
-    cout << "6. Logout\n";
-    cout << "Choice: ";
+    std::string line;
+    while (readToken(prompt, line))
+    {
+        try
+        {
+            std::size_t consumed = 0;
+            int value = std::stoi(line, &consumed);
+            if (consumed == line.size())
+            {
+                out = value;
+                return true;
+            }
+        }
+        catch (...)
+        {
+        }
+        std::cout << red("  Please enter a whole number.\n");
+    }
+    return false;
 }
 
-/* ---------- Main ---------- */
+/// Read a non-negative double, re-asking until the input parses.
+static bool readDouble(const std::string &prompt, double &out)
+{
+    std::string line;
+    while (readToken(prompt, line))
+    {
+        try
+        {
+            std::size_t consumed = 0;
+            double value = std::stod(line, &consumed);
+            if (consumed == line.size())
+            {
+                out = value;
+                return true;
+            }
+        }
+        catch (...)
+        {
+        }
+        std::cout << red("  Please enter a number.\n");
+    }
+    return false;
+}
+
+static int readMenuChoice(const std::string &prompt, int minChoice, int maxChoice)
+{
+    int choice;
+    while (readInt(prompt, choice))
+    {
+        if (choice >= minChoice && choice <= maxChoice)
+            return choice;
+        std::cout << red("  Choice must be between ")
+                  << minChoice << " and " << maxChoice << ".\n";
+    }
+    return maxChoice; // EOF -> last option (usually "exit/logout")
+}
+
+/* ============================================================
+ *  Printing helpers
+ * ============================================================ */
+
+static void printBanner()
+{
+    const char *logo = R"(
+  ____      _             _     _____                    _
+ / ___|__ _| |_ ___ _ __ | |_  | ____|__  _ __ ___  ___| |_ ___ _ __
+| |   / _` | __/ _ \ '_ \| __| |  _| \ \/ / '__/ _ \/ __| __/ _ \ '__|
+| |__| (_| | ||  __/ | | | |_  | |___ >  <| | | (_) \__ \ ||  __/ |
+ \____\__,_|\__\___|_| |_|\__| |_____/_/\_\_|  \___/|___/\__\___|_|)";
+    std::cout << bold(cyan(logo)) << "\n";
+    std::cout << yellow("        Console edition | C++17 | hand-built data structures\n\n");
+}
+
+static void printCarTableHeader()
+{
+    std::ostringstream oss;
+    oss << "  " << std::left << std::setw(16) << "NAME" << std::setw(12)
+        << "BRAND" << std::right << std::setw(10) << "PRICE/DAY"
+        << "  " << std::left << std::setw(12) << "STATUS"
+        << std::right << std::setw(6) << "QUEUE";
+    std::cout << bold(oss.str()) << "\n";
+    std::cout << "  " << std::string(62, '-') << "\n";
+}
+
+static void printCarRow(const Car *car)
+{
+    std::string status = toString(car->status());
+    if (status == "AVAILABLE")
+        status = green(status);
+    else if (status == "MAINTENANCE")
+        status = red(status);
+    else if (status == "RENTED")
+        status = yellow(status);
+
+    std::ostringstream price;
+    price << std::fixed << std::setprecision(1) << car->pricePerDay();
+
+    std::cout << "  " << std::left << std::setw(16) << car->name()
+              << std::setw(12) << car->brand()
+              << std::right << std::setw(10) << price.str()
+              << "  " << std::left << std::setw(12) << status
+              << std::right << std::setw(4) << car->reservationCount()
+              << std::setw(2) << " booking(s)"
+              << "\n";
+}
+
+static void printFleet(RentalManager &system, bool sorted)
+{
+    std::size_t count = system.fleetSize();
+    if (count == 0)
+    {
+        std::cout << yellow("\n  The fleet is empty. Ask the manager to add cars.\n");
+        return;
+    }
+
+    std::cout << "\n" << bold("  FLEET (" + std::to_string(count) + " cars"
+                               + (sorted ? ", sorted by name" : ", insertion order") + ")\n");
+    printCarTableHeader();
+    auto printRow = [](Car *car)
+    { printCarRow(car); };
+    if (sorted)
+        system.forEachCarSorted(printRow);
+    else
+        system.forEachCar(printRow);
+}
+
+static void printReservations(const std::vector<Reservation *> &list)
+{
+    if (list.empty())
+    {
+        std::cout << yellow("\n  You have no reservations yet.\n");
+        return;
+    }
+    std::cout << bold("\n  YOUR RESERVATIONS\n");
+    std::cout << "  " << std::string(58, '-') << "\n";
+    for (const Reservation *r : list)
+    {
+        std::cout << "  #" << r->id()
+                  << " | " << std::left << std::setw(16) << r->car()->name()
+                  << " | days " << r->startDate() << " -> " << r->endDate()
+                  << " (" << r->durationDays() << " day(s))\n";
+    }
+}
+
+/* ============================================================
+ *  Screens: authentication
+ * ============================================================ */
+
+static void registerScreen(RentalManager &system)
+{
+    std::cout << bold(cyan("\n--- Customer Registration ---\n"));
+    std::string username, password;
+    if (!readToken("  Username: ", username))
+        return;
+    if (!readToken("  Password (min 4 chars): ", password))
+        return;
+
+    if (system.registerCustomer(username, password))
+        std::cout << green("  Account created. You can log in now.\n");
+    else if (system.userExists(username))
+        std::cout << red("  Username already taken.\n");
+    else
+        std::cout << red("  Password must be at least 4 characters.\n");
+}
+
+static void loginScreen(RentalManager &system)
+{
+    std::cout << bold(cyan("\n--- Login ---\n"));
+    std::string username, password;
+    if (!readToken("  Username: ", username))
+        return;
+    if (!readToken("  Password: ", password))
+        return;
+
+    if (system.login(username, password))
+        std::cout << green("  Welcome, " + username + " ("
+                           + system.currentUserRole() + ")!\n");
+    else if (system.userExists(username) && system.isUserBlocked(username))
+        std::cout << red("  This account is blocked. Contact the manager.\n");
+    else if (system.userExists(username))
+        std::cout << red("  Wrong password. 3 failed attempts block the account!\n");
+    else
+        std::cout << red("  No such user.\n");
+}
+
+/* ============================================================
+ *  Screens: customer
+ * ============================================================ */
+
+/// Format money values with exactly 2 decimals.
+static std::string money(double amount)
+{
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(2) << amount;
+    return oss.str();
+}
+
+static void customerMenu(RentalManager &system, bool &running)
+{
+    std::cout << bold(cyan("\n===== CUSTOMER MENU | " + system.currentUsername()
+                           + " | balance due: " + money(system.currentCustomerBalance())
+                           + " =====\n"));
+    std::cout << "  1. View fleet\n"
+                 "  2. Search car by name\n"
+                 "  3. My reservations\n"
+                 "  4. Make a reservation\n"
+                 "  5. Renew a rental\n"
+                 "  6. Pay my bill\n"
+                 "  7. Logout\n";
+
+    switch (readMenuChoice("  Choice: ", 1, 7))
+    {
+    case 1:
+        printFleet(system, false);
+        break;
+    case 2:
+    {
+        std::string name;
+        if (!readToken("  Car name: ", name))
+            return;
+        Car *car = system.searchCar(name);
+        if (car)
+        {
+            std::cout << bold("\n  FOUND:\n");
+            printCarRow(car);
+        }
+        else
+            std::cout << red("  No car named \"" + name + "\".\n");
+        break;
+    }
+    case 3:
+        printReservations(system.myReservations());
+        break;
+    case 4:
+    {
+        std::string name, error;
+        int start, end;
+        if (!readToken("  Car name: ", name))
+            return;
+        if (!readInt("  Start day (number): ", start))
+            return;
+        if (!readInt("  End day   (number): ", end))
+            return;
+        if (system.makeReservation(name, start, end, error))
+            std::cout << green("  Reservation confirmed! Pay on delivery.\n");
+        else
+            std::cout << red("  Reservation failed: " + error + "\n");
+        break;
+    }
+    case 5:
+    {
+        std::string name, error;
+        int days;
+        if (!readToken("  Car name: ", name))
+            return;
+        if (!readInt("  Extra days: ", days))
+            return;
+        if (system.renewRental(name, days, error))
+            std::cout << green("  Rental extended by " + std::to_string(days)
+                               + " day(s). Extra charges apply at return.\n");
+        else
+            std::cout << red("  Renewal failed: " + error + "\n");
+        break;
+    }
+    case 6:
+    {
+        double owed = system.currentCustomerBalance();
+        if (owed <= 0.0)
+        {
+            std::cout << green("  Your balance is clear. Nothing to pay.\n");
+        }
+        else
+        {
+            double paid = system.payBill();
+            std::cout << green("  Receipt: paid " + money(paid) + ". Thank you!\n");
+        }
+        break;
+    }
+    case 7:
+        system.logout();
+        std::cout << yellow("  Logged out.\n");
+        break;
+    default:
+        break;
+    }
+    (void)running;
+}
+
+/* ============================================================
+ *  Screens: staff
+ * ============================================================ */
+
+static void staffMenu(RentalManager &system, bool &running)
+{
+    std::cout << bold(cyan("\n===== STAFF MENU | " + system.currentUsername() + " =====\n"));
+    std::cout << "  1. View fleet\n"
+                 "  2. Search car by name\n"
+                 "  3. Deliver car to customer\n"
+                 "  4. Process car return (with penalty)\n"
+                 "  5. Send car to maintenance\n"
+                 "  6. Finish maintenance\n"
+                 "  7. Show maintenance history\n"
+                 "  8. Logout\n";
+
+    switch (readMenuChoice("  Choice: ", 1, 8))
+    {
+    case 1:
+        printFleet(system, false);
+        break;
+    case 2:
+    {
+        std::string name;
+        if (!readToken("  Car name: ", name))
+            return;
+        Car *car = system.searchCar(name);
+        if (car)
+        {
+            std::cout << bold("\n  FOUND:\n");
+            printCarRow(car);
+        }
+        else
+            std::cout << red("  No car named \"" + name + "\".\n");
+        break;
+    }
+    case 3:
+    {
+        std::string name, error;
+        if (!readToken("  Car name: ", name))
+            return;
+        if (system.deliverCar(name, error))
+            std::cout << green("  Car handed over. Drive safe!\n");
+        else
+            std::cout << red("  Delivery failed: " + error + "\n");
+        break;
+    }
+    case 4:
+    {
+        std::string name, error;
+        int day;
+        if (!readToken("  Car name: ", name))
+            return;
+        if (!readInt("  Actual return day: ", day))
+            return;
+        if (system.returnCar(name, day, error))
+            std::cout << green("  Return processed and invoiced.\n");
+        else
+            std::cout << red("  Return failed: " + error + "\n");
+        break;
+    }
+    case 5:
+    {
+        std::string name, date, desc, error;
+        double cost;
+        if (!readToken("  Car name: ", name))
+            return;
+        if (!readToken("  Date (e.g. 1404-08-12): ", date))
+            return;
+        if (!readLine("  Description: ", desc) || desc.empty())
+            desc = "general service";
+        if (!readDouble("  Cost: ", cost))
+            return;
+        if (system.recordMaintenance(name, date, desc, cost, error))
+            std::cout << yellow("  Car moved to MAINTENANCE. Log saved.\n");
+        else
+            std::cout << red("  Failed: " + error + "\n");
+        break;
+    }
+    case 6:
+    {
+        std::string name;
+        if (!readToken("  Car name: ", name))
+            return;
+        if (system.finishMaintenance(name))
+            std::cout << green("  Maintenance finished; car is back in service.\n");
+        else
+            std::cout << red("  Failed: car not found or not in maintenance.\n");
+        break;
+    }
+    case 7:
+    {
+        std::string name;
+        if (!readToken("  Car name: ", name))
+            return;
+        Car *car = system.searchCar(name);
+        if (!car)
+        {
+            std::cout << red("  No car named \"" + name + "\".\n");
+            break;
+        }
+        const auto &log = car->maintenanceLog();
+        if (log.empty())
+        {
+            std::cout << green("  No maintenance recorded for this car.\n");
+            break;
+        }
+        std::cout << bold("\n  MAINTENANCE LOG | " + car->name() + "\n");
+        for (const auto &rec : log)
+            std::cout << "  " << rec.date << " | " << rec.description
+                      << " | cost " << rec.cost << "\n";
+        break;
+    }
+    case 8:
+        system.logout();
+        std::cout << yellow("  Logged out.\n");
+        break;
+    default:
+        break;
+    }
+    (void)running;
+}
+
+/* ============================================================
+ *  Screens: manager
+ * ============================================================ */
+
+static void managerMenu(RentalManager &system, bool &running)
+{
+    std::cout << bold(cyan("\n===== MANAGER MENU | " + system.currentUsername() + " =====\n"));
+    std::cout << "  1. Add car\n"
+                 "  2. View fleet (insertion order)\n"
+                 "  3. View fleet (sorted by name - AVL index)\n"
+                 "  4. Income report\n"
+                 "  5. Block user\n"
+                 "  6. Unblock user\n"
+                 "  7. Create staff account\n"
+                 "  8. Save data to disk\n"
+                 "  9. Save & logout\n"
+                 " 10. Exit program\n";
+
+    switch (readMenuChoice("  Choice: ", 1, 10))
+    {
+    case 1:
+    {
+        std::string name, brand;
+        double price;
+        if (!readToken("  Car name: ", name))
+            return;
+        if (!readToken("  Brand: ", brand))
+            return;
+        if (!readDouble("  Price per day: ", price))
+            return;
+        if (system.addCar(new Car(name, brand, price)))
+            std::cout << green("  Car added to the fleet.\n");
+        else
+            std::cout << red("  A car with this name already exists.\n");
+        break;
+    }
+    case 2:
+        printFleet(system, false);
+        break;
+    case 3:
+        printFleet(system, true);
+        break;
+    case 4:
+        system.printIncomeReport();
+        break;
+    case 5:
+    {
+        std::string user;
+        if (!readToken("  Username to block: ", user))
+            return;
+        if (system.blockUser(user))
+            std::cout << yellow("  User \"" + user + "\" blocked.\n");
+        else
+            std::cout << red("  No such user.\n");
+        break;
+    }
+    case 6:
+    {
+        std::string user;
+        if (!readToken("  Username to unblock: ", user))
+            return;
+        if (system.unblockUser(user))
+            std::cout << green("  User \"" + user + "\" unblocked.\n");
+        else
+            std::cout << red("  No such user.\n");
+        break;
+    }
+    case 7:
+    {
+        std::string user, pass, role;
+        if (!readToken("  New username: ", user))
+            return;
+        if (!readToken("  Password (min 4 chars): ", pass))
+            return;
+        if (!readToken("  Role (Staff / Manager): ", role))
+            return;
+        if (system.registerStaffAccount(user, pass, role))
+            std::cout << green("  " + role + " account created.\n");
+        else
+            std::cout << red("  Failed: check username is new, password >= 4 chars, "
+                             "role is Staff or Manager.\n");
+        break;
+    }
+    case 8:
+        std::cout << (system.saveData() ? green("  Data saved to ./data\n")
+                                        : red("  Could not write data files.\n"));
+        break;
+    case 9:
+        system.saveData();
+        system.logout();
+        std::cout << yellow("  Data saved. Logged out.\n");
+        break;
+    case 10:
+        system.saveData();
+        std::cout << yellow("  Data saved. Goodbye!\n");
+        running = false;
+        break;
+    default:
+        break;
+    }
+}
+
+/* ============================================================
+ *  main
+ * ============================================================ */
 
 int main()
 {
     RentalManager system;
     bool running = true;
 
+    printBanner();
+
+    // Load persisted state; a fresh clone gets a ready-to-demo fleet.
+    if (system.loadData())
+        std::cout << green("  Loaded saved state from ./data\n");
+    else
+    {
+        system.seedDemoData();
+        std::cout << yellow("  First run: demo fleet + accounts seeded.\n");
+        std::cout << "    manager  -> admin / manager123\n"
+                     "    staff    -> sara / staff123\n"
+                     "    customer -> ali  / customer123\n";
+    }
+
     while (running)
     {
         if (!system.isLoggedIn())
         {
-            showGuestMenu();
-            int choice;
-            cin >> choice;
+            std::cout << bold(cyan("\n===== MAIN MENU =====\n"));
+            std::cout << "  1. Register (customer)\n"
+                         "  2. Login\n"
+                         "  3. Exit\n";
 
-            if (choice == 1)
+            switch (readMenuChoice("  Choice: ", 1, 3))
             {
-                string user, pass, role;
-                cout << "Username: ";
-                cin >> user;
-                cout << "Password: ";
-                cin >> pass;
-                cout << "Role (Customer / Staff / Manager): ";
-                cin >> role;
-
-                if (system.registerUser(user, pass, role))
-                    cout << "Registered successfully.\n";
-                else
-                    cout << "User already exists.\n";
-            }
-            else if (choice == 2)
-            {
-                string user, pass;
-                cout << "Username: ";
-                cin >> user;
-                cout << "Password: ";
-                cin >> pass;
-
-                if (system.login(user, pass))
-                    cout << "Login successful.\n";
-                else
-                    cout << "Login failed.\n";
-            }
-            else if (choice == 3)
-            {
+            case 1:
+                registerScreen(system);
+                break;
+            case 2:
+                loginScreen(system);
+                break;
+            case 3:
                 running = false;
+                std::cout << cyan("  Goodbye!\n");
+                break;
+            default:
+                break;
             }
         }
         else
         {
-            string role = system.getCurrentUserRole();
-
-            /* ---------- CUSTOMER ---------- */
+            const std::string role = system.currentUserRole();
             if (role == "Customer")
-            {
-                showCustomerMenu();
-                int choice;
-                cin >> choice;
-
-                if (choice == 1)
-                {
-                    system.showAllCars();
-                }
-                else if (choice == 2)
-                {
-                    string carName;
-                    int start, end;
-
-                    cout << "Car name: ";
-                    cin >> carName;
-                    cout << "Start date: ";
-                    cin >> start;
-                    cout << "End date: ";
-                    cin >> end;
-
-                    if (system.makeReservation(carName, start, end))
-                        cout << "Reservation successful.\n";
-                    else
-                        cout << "Reservation failed.\n";
-                }
-                else if (choice == 3)
-                {
-                    string name;
-                    int days;
-                    cout << "Car name: ";
-                    cin >> name;
-                    cout << "Extra days: ";
-                    cin >> days;
-                    system.renewRental(name, days);
-                }
-                else if (choice == 4)
-                {
-                    system.logout();
-                }
-            }
-
-            /* ---------- STAFF ---------- */
+                customerMenu(system, running);
             else if (role == "Staff")
-            {
-                showStaffMenu();
-                int choice;
-                cin >> choice;
-
-                if (choice == 1)
-                {
-                    system.showAllCars();
-                }
-                else if (choice == 2)
-                {
-                    // بازگشت خودرو
-                    string name;
-                    int date;
-                    cout << "Car name: ";
-                    cin >> name;
-                    cout << "Current Date (int): ";
-                    cin >> date;
-                    system.staffReturnCar(name, date);
-                }
-                else if (choice == 3)
-                {
-                    // تعمیرات
-                    string name, date, desc;
-                    double cost;
-                    cout << "Car name: ";
-                    cin >> name;
-                    cout << "Date: ";
-                    cin >> date;
-                    cout << "Description: ";
-                    cin >> desc;
-                    cout << "Cost: ";
-                    cin >> cost;
-                    system.recordMaintenance(name, date, desc, cost);
-                }
-                else if (choice == 4)
-                { //  تحویل خودرو
-                    string name;
-                    cout << "Car name to deliver to customer: ";
-                    cin >> name;
-                    system.staffDeliverCar(name);
-                }
-                else if (choice == 5)
-                { // Logout was 4, moved to 5
-                    system.logout();
-                }
-            }
-
-            /* ---------- MANAGER ---------- */
-            else if (role == "Manager")
-            {
-                showManagerMenu();
-                int choice;
-                cin >> choice;
-
-                if (choice == 1)
-                {
-                    string name, brand;
-                    double price;
-                    cout << "Name: ";
-                    cin >> name;
-                    cout << "Brand: ";
-                    cin >> brand;
-                    cout << "Price: ";
-                    cin >> price;
-                    Car *newCar = new Car(name, brand, price);
-                    system.addCar(newCar);
-                    cout << "Car added.\n";
-                }
-                else if (choice == 2)
-                { // View Cars + Income
-                    system.generateIncomeReport();
-                }
-                else if (choice == 3)
-                {
-                    string user;
-                    cout << "Username to block: ";
-                    cin >> user;
-                    system.blockUser(user);
-                    cout << "User blocked.\n";
-                }
-                else if (choice == 4)
-                {
-                    system.exportCarsToCSV("cars_backup.csv");
-                    cout << "Exported.\n";
-                }
-                else if (choice == 5)
-                {
-                    system.importCarsFromCSV("cars_backup.csv");
-                    cout << "Imported.\n";
-                }
-                else if (choice == 6)
-                    system.logout();
-            }
+                staffMenu(system, running);
+            else
+                managerMenu(system, running);
         }
     }
+
+    // Persist everything so the next run continues where we left off.
+    system.saveData();
     return 0;
 }
