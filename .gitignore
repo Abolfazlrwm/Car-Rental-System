@@ -1,0 +1,17 @@
+# Build artifacts
+build/
+cmake-build-*/
+car_rental
+unit_tests
+*.o
+*.out
+
+# Runtime state (seeded automatically on first run)
+data/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
