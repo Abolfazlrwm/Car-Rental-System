@@ -128,3 +128,97 @@ static void testSHA256()
  *  DoublyLinkedList
  * ============================================================ */
 
+static void testDoublyLinkedList()
+{
+    DoublyLinkedList<int> list;
+    CHECK(list.empty());
+    CHECK_EQ(list.size(), std::size_t(0));
+
+    list.pushBack(2);
+    list.pushFront(1);
+    list.pushBack(3);
+    CHECK_EQ(list.toString(), std::string("[1, 2, 3]"));
+    CHECK_EQ(list.size(), std::size_t(3));
+
+    list.insertAt(1, 99);
+    CHECK_EQ(list.toString(), std::string("[1, 99, 2, 3]"));
+    CHECK(list.insertAt(5, 0) == false); // out of range
+
+    CHECK_EQ(list.indexOf(99), 1);
+    CHECK_EQ(list.indexOf(42), -1);
+    CHECK(list.contains(3));
+
+    CHECK(list.removeAt(1));
+    CHECK_EQ(list.toString(), std::string("[1, 2, 3]"));
+    CHECK(list.removeValue(2));
+    CHECK_EQ(list.toString(), std::string("[1, 3]"));
+
+    CHECK_EQ(list.front(), 1);
+    CHECK_EQ(list.back(), 3);
+
+    list.popFront();
+    list.popBack();
+    CHECK(list.empty());
+    CHECK(!list.popFront()); // popping empty is a safe no-op
+
+    // Stress: 1000 elements survive insert/remove in both directions
+    DoublyLinkedList<int> big;
+    for (int i = 0; i < 1000; ++i)
+        big.pushBack(i);
+    for (int i = 0; i < 500; ++i)
+        big.popFront();
+    CHECK_EQ(big.size(), std::size_t(500));
+    CHECK_EQ(big.front(), 500);
+}
+
+/* ============================================================
+ *  PriorityQueue
+ * ============================================================ */
+
+struct Task
+{
+    int priority;
+    int seq;
+};
+
+static void testPriorityQueue()
+{
+    // Min-heap on .priority, FIFO on ties via .seq
+    PriorityQueue<Task> q([](const Task &a, const Task &b)
+                          { return a.priority != b.priority
+                                       ? a.priority < b.priority
+                                       : a.seq < b.seq; });
+
+    q.insert({5, 0});
+    q.insert({1, 1});
+    q.insert({3, 2});
+    q.insert({1, 3});
+    q.insert({4, 4});
+
+    CHECK_EQ(q.size(), std::size_t(5));
+    CHECK_EQ(q.peek().priority, 1);
+    CHECK_EQ(q.peek().seq, 1); // tie -> FIFO
+
+    std::vector<int> drained;
+    while (!q.empty())
+        drained.push_back(q.extractMin().priority);
+    CHECK_EQ(drained.size(), std::size_t(5));
+    for (std::size_t i = 1; i < drained.size(); ++i)
+        CHECK(drained[i - 1] <= drained[i]); // non-decreasing order
+
+    // Growth beyond the initial block (the v1.0 heap silently
+    // dropped element #51 — regression test)
+    PriorityQueue<int> big([](int a, int b)
+                           { return a < b; });
+    for (int i = 200; i >= 1; --i)
+        big.insert(i);
+    CHECK_EQ(big.size(), std::size_t(200));
+    CHECK_EQ(big.peek(), 1);
+    for (int i = 1; i <= 200; ++i)
+        CHECK_EQ(big.extractMin(), i);
+}
+
+/* ============================================================
+ *  AVLTree
+ * ============================================================ */
+
