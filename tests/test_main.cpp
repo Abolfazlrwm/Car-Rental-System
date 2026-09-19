@@ -222,3 +222,108 @@ static void testPriorityQueue()
  *  AVLTree
  * ============================================================ */
 
+static void testAVLTree()
+{
+    AVLTree<int, int> tree;
+    CHECK(tree.empty());
+
+    // WORST CASE for a plain BST: ascending input must not degrade.
+    // The AVL invariant keeps height <= 1.4405*log2(n+2).
+    const int N = 500;
+    for (int i = 1; i <= N; ++i)
+        tree.insert(i, i * 10);
+
+    CHECK_EQ(tree.size(), std::size_t(N));
+    CHECK(tree.height() <= static_cast<int>(AVLTree<int, int>::maxHeightBound(N)));
+    CHECK(tree.height() > 8); // a degenerate tree would have height ~N
+
+    for (int i = 1; i <= N; ++i)
+    {
+        int *v = tree.find(i);
+        CHECK(v != nullptr && *v == i * 10);
+    }
+    CHECK(tree.find(N + 1) == nullptr);
+
+    // Duplicate key insertion must not overwrite or grow the tree.
+    tree.insert(10, 999999);
+    CHECK_EQ(*tree.find(10), 100);
+    CHECK_EQ(tree.size(), std::size_t(N));
+
+    // In-order traversal yields sorted keys.
+    std::vector<int> keys;
+    tree.inOrderForEach([&](const int &k, const int &)
+                        { keys.push_back(k); });
+    CHECK_EQ(keys.size(), std::size_t(N));
+    bool sorted = true;
+    for (std::size_t i = 1; i < keys.size(); ++i)
+        if (keys[i - 1] >= keys[i])
+            sorted = false;
+    CHECK(sorted);
+
+    // Descending input must balance too.
+    AVLTree<int, int> rev;
+    for (int i = N; i >= 1; --i)
+        rev.insert(i, i);
+    CHECK(rev.height() <= static_cast<int>(AVLTree<int, int>::maxHeightBound(N)));
+
+    rev.clear();
+    CHECK(rev.empty());
+}
+
+/* ============================================================
+ *  HashTable
+ * ============================================================ */
+
+static void testHashTable()
+{
+    // std::hash default
+    HashTable<std::string, int> table;
+    CHECK(table.empty());
+    CHECK(table.insert("ali", 1));
+    CHECK(table.insert("sara", 2));
+    CHECK(!table.insert("ali", 9)); // duplicate rejected
+    CHECK_EQ(*table.find("ali"), 1);
+    CHECK_EQ(*table.find("sara"), 2);
+    CHECK(table.find("ghost") == nullptr);
+
+    CHECK(table.remove("ali"));
+    CHECK(!table.remove("ali")); // double remove fails cleanly
+    CHECK(table.find("ali") == nullptr);
+    CHECK_EQ(table.size(), std::size_t(1));
+
+    // Collision + REHASH stress: 500 entries in a 17-bucket table forces
+    // multiple rehashes (v1.0 had a fixed 101-bucket table).
+    HashTable<int, int> stress;
+    for (int i = 0; i < 500; ++i)
+        CHECK(stress.insert(i, i * 3));
+    CHECK_EQ(stress.size(), std::size_t(500));
+    CHECK(stress.bucketCount() > 17); // it really grew
+    CHECK(stress.loadFactor() <= 0.75);
+    for (int i = 0; i < 500; ++i)
+        CHECK(stress.find(i) != nullptr && *stress.find(i) == i * 3);
+    for (int i = 0; i < 250; ++i)
+        CHECK(stress.remove(i));
+    CHECK_EQ(stress.size(), std::size_t(250));
+
+    // Custom hash function injection (polynomial base 31, as the
+    // RentalManager uses) + chained collisions on purpose.
+    auto polyHash = [](const std::string &key)
+    {
+        std::size_t h = 0;
+        for (unsigned char c : key)
+            h = h * 31 + c;
+        return h;
+    };
+    HashTable<std::string, std::string> poly(polyHash);
+    poly.insert("ab", "first");  // 97*31+98
+    poly.insert("a`", "second"); // 97*31+96 -> neighbor key
+    poly.insert("ba", "third");  // 98*31+97 -> anagram, often same bucket
+    CHECK_EQ(*poly.find("ab"), "first");
+    CHECK_EQ(*poly.find("a`"), "second");
+    CHECK_EQ(*poly.find("ba"), "third");
+}
+
+/* ============================================================
+ *  Reservation rules
+ * ============================================================ */
+
