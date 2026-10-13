@@ -16,6 +16,9 @@ jobs:
           - compiler: gcc
             cc: gcc
             cxx: g++
+          - compiler: clang
+            cc: clang
+            cxx: clang++
 
     steps:
       - uses: actions/checkout@v4
@@ -31,3 +34,12 @@ jobs:
 
       - name: Unit tests
         run: ctest --test-dir build --output-on-failure
+
+      # Defensive pass: raw g++ build exactly like a student machine.
+      - name: Raw build (no CMake)
+        env:
+          CXX: ${{ matrix.cxx }}
+        run: |
+          $CXX -std=c++17 -Wall -Wextra -Werror mainApp.cpp \
+               manager_system/*.cpp -o car_rental_raw
+          ./build/unit_tests >/dev/null && echo "tests green"
