@@ -160,3 +160,77 @@ On first start the app seeds the demo fleet and accounts; all state is
 saved to `data/` on exit and reloaded on the next run.
 
 ---
+
+## 📁 Project structure
+
+```
+Car-Rental-System/
+├── mainApp.cpp              # console UI: menus, input guards, colors
+├── manager_system/          # business layer
+│   ├── RentalManager.{h,cpp}# facade: rules, invoicing, persistence
+│   ├── User.{h,cpp}         # User → Customer / Staff / Manager
+│   ├── Car.{h,cpp}          # status, income ledger, maintenance log
+│   ├── Reservation.{h,cpp}  # booking + priority rule
+│   └── SHA256.{h,cpp}       # FIPS 180-4, dependency-free
+├── basic_structures/        # hand-written generic containers (header-only)
+│   ├── AVLTree.h            # self-balancing BST (LL/RR/LR/RL rotations)
+│   ├── HashTable.h          # separate chaining + rehashing
+│   ├── PriorityQueue.h      # binary min-heap, auto-growing
+│   └── DoublyLinkedList.h   # O(1) pushes at both ends
+├── tests/test_main.cpp      # 2,117 checks, dependency-free framework
+├── scripts/demo.sh          # scripted walkthrough
+├── docs/
+│   ├── IMPROVEMENTS.md      # full v1.0 → v2.0 changelog
+│   └── architecture.png     # diagram used above
+├── CMakeLists.txt / Makefile
+└── .github/workflows/ci.yml # GCC + Clang matrix on every push
+```
+
+---
+
+## 🧪 Testing
+
+The suite needs no external framework and runs in milliseconds:
+
+```text
+==== Car Rental System — unit tests ====
+  [ ok ] SHA256 + password hashing
+  [ ok ] DoublyLinkedList
+  [ ok ] PriorityQueue
+  [ ok ] AVLTree (self-balancing)
+  [ ok ] HashTable (chaining + rehash)
+  [ ok ] Reservation rules
+  [ ok ] RentalManager: accounts & lockout
+  [ ok ] RentalManager: reservations & invoices
+  [ ok ] RentalManager: fleet & maintenance
+  [ ok ] RentalManager: CSV persistence
+  [ ok ] Role hierarchy
+
+2117 checks, 0 failure(s)
+ALL TESTS PASSED
+```
+
+Notable regression tests — each one reproduces a bug that existed in
+v1.0: segfault on unknown login, income double-count, fake renewal,
+self-registered managers, silent drops on a full heap.
+
+Memory safety is verified with `g++ -fsanitize=address,undefined`.
+
+---
+
+## 🗺 Roadmap
+
+- [ ] Real calendar dates (`std::chrono`) instead of day numbers
+- [ ] Text-based UI using ncurses (windows, colors, arrow-key navigation)
+- [ ] JSON export in addition to CSV
+- [ ] Fine-grained permissions inside the Staff/Manager roles
+- [ ] Docker devcontainer for one-click contributor setup
+
+## 🤝 Contributing
+
+Issues and PRs are welcome — the test suite keeps refactors safe.
+Run `make test` before pushing.
+
+## 📄 License
+
+[MIT](LICENSE)
