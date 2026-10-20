@@ -1,6 +1,6 @@
 # 🚗 Car Rental Management System — C++17
 
-![CI](https://img.shields.io/badge/CI-passing-brightgreen)
+[![CI](https://github.com/Abolfazlrwm/Car-Rental-System/actions/workflows/ci.yml/badge.svg)](https://github.com/Abolfazlrwm/Car-Rental-System/actions/workflows/ci.yml)
 ![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-2%2C117%20checks-3AAFA9)
 ![Memory](https://img.shields.io/badge/AddressSanitizer-leak--free-4C6EF5)
