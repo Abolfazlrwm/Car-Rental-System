@@ -2,66 +2,138 @@
 #define CAR_H
 
 #include <string>
-#include <iostream>
-#include "../basic_structures/PQ.h"
+#include <vector>
+
+#include "../basic_structures/PriorityQueue.h"
 #include "Reservation.h"
 
-using namespace std;
-
-enum CarStatus
+/**
+ * ============================================================
+ *  Car
+ * ============================================================
+ *  A rentable vehicle plus everything attached to it:
+ *    - a PriorityQueue<Reservation*> booking schedule
+ *    - an income ledger (rent revenue)
+ *    - a maintenance history log
+ *
+ *  Lifecycle of the reservation queue:
+ *    reserve()    -> enqueue booking, status becomes RESERVED
+ *    deliver()    -> front booking is being served, status RENTED
+ *    complete()   -> dequeue front booking (return processed)
+ *
+ *  Ownership: the Car OWNS its Reservation objects (they are
+ *  deleted when dequeued or when the car is destroyed), but it
+ *  does NOT own the Customer objects they point to.
+ * ============================================================
+ */
+enum class CarStatus
 {
-    AVAILABLE,
-    RESERVED,
-    RENTED,
-    MAINTENANCE
+    Available,
+    Reserved,
+    Rented,
+    Maintenance
 };
 
-// استراکچر برای ثبت تاریخچه تعمیرات
+/// Human-readable status names (used in the CLI and in CSV files).
+std::string toString(CarStatus status);
+
+/// One completed or scheduled maintenance intervention.
 struct MaintenanceRecord
 {
-    string date;
-    string description;
+    std::string date;
+    std::string description;
     double cost;
-    MaintenanceRecord *next;
 
-    MaintenanceRecord(string d, string desc, double c)
-        : date(d), description(desc), cost(c), next(nullptr) {}
+    MaintenanceRecord(const std::string &d, const std::string &desc, double c)
+        : date(d), description(desc), cost(c) {}
 };
 
 class Car
 {
-private:
-    string name;
-    string brand;
-    double pricePerDay;
-    CarStatus status;
-    double totalIncome; 
-
-    PriorityQueue reservationQueue;
-    MaintenanceRecord *maintenanceHistory; // لیست تعمیرات
-
 public:
-    Car(const string &name, const string &brand, double pricePerDay);
+    Car(const std::string &name, const std::string &brand, double pricePerDay);
+    ~Car();
 
-    // Getters
-    string getName() const;
-    string getBrand() const;
-    double getPrice() const;
-    CarStatus getStatus() const;
-    double getIncome() const;
+    // Cars are owned by the AVL index; copying is disabled.
+    Car(const Car &) = delete;
+    Car &operator=(const Car &) = delete;
 
-    // Status control
-    void setStatus(CarStatus s);
-    void addIncome(double amount);
-    void addMaintenanceLog(const string &date, const string &desc, double cost);
-    void showMaintenanceHistory() const;
+    /* ---------------- Basic getters ---------------- */
+    const std::string &name() const { return name_; }
+    const std::string &brand() const { return brand_; }
+    double pricePerDay() const { return pricePerDay_; }
+    CarStatus status() const { return status_; }
+    void setStatus(CarStatus s) { status_ = s; }
+    bool isAvailableForBooking() const
+    {
+        return status_ == CarStatus::Available || status_ == CarStatus::Reserved;
+    }
 
-    // Reservation logic
+    /* ---------------- Money ---------------- */
+    double totalIncome() const { return totalIncome_; }
+    double maintenanceCost() const { return maintenanceCost_; }
+    double netRevenue() const { return totalIncome_ - maintenanceCost_; }
+    void addIncome(double amount) { totalIncome_ += amount; }
+    void addMaintenanceCost(double amount) { maintenanceCost_ += amount; }
+
+    /* ---------------- Reservation schedule ---------------- */
+
+    /// Enqueue a booking (assumes overlap has already been rejected).
     void reserve(Reservation *r);
-    Reservation *getCurrentReservation() const;
-    void returnCar();
-    bool hasReservations() const;
-    PriorityQueue &getQueue() { return reservationQueue; }
+
+    /// True when any queued booking clashes with [start..end].
+    bool hasOverlap(int start, int end) const;
+
+    bool hasReservations() const { return !queue_.empty(); }
+    std::size_t reservationCount() const { return queue_.size(); }
+
+    /// The booking that will be served next (earliest pickup). nullptr if none.
+    Reservation *currentReservation() const
+    {
+        return queue_.empty() ? nullptr : queue_.peek();
+    }
+
+    /// Dequeue and RETURN the served booking — the caller (RentalManager)
+    /// reads its data for the invoice, then deletes it.
+    Reservation *completeReservation() { return queue_.extractMin(); }
+
+    /// Destroy a booking that belongs to this car (data cleanup / imports).
+    void dropReservation(Reservation *r);
+
+    /// Bookings whose customer matches `username` (for "my reservations").
+    std::vector<Reservation *> reservationsOf(const std::string &username) const;
+
+    /// Re-insert a booking (used when restoring state from CSV).
+    void reinsertReservation(Reservation *r);
+
+    /// Read-only visit of every queued booking (used by CSV export).
+    void forEachReservation(const std::function<void(const Reservation *)> &fn) const
+    {
+        queue_.forEach([&](const Reservation *r)
+                       { fn(r); });
+    }
+
+    /// Refresh status based on the queue: empty -> Available, else Reserved.
+    void refreshStatus();
+
+    /* ---------------- Maintenance ---------------- */
+    void addMaintenanceLog(const std::string &date,
+                           const std::string &description, double cost);
+    const std::vector<MaintenanceRecord> &maintenanceLog() const
+    {
+        return maintenanceLog_;
+    }
+
+private:
+    std::string name_;
+    std::string brand_;
+    double pricePerDay_;
+    CarStatus status_;
+    double totalIncome_;
+    double maintenanceCost_;
+
+    PriorityQueue<Reservation *> queue_;
+    std::vector<MaintenanceRecord> maintenanceLog_;
 };
 
-#endif
+#endif // CAR_H
