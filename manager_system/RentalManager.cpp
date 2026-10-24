@@ -1,293 +1,707 @@
 #include "RentalManager.h"
+
+#include <algorithm>
+#include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <sstream>
+
+const double RentalManager::PENALTY_RATE = 1.5;
+
+/* ============================================================
+ *  Construction / destruction
+ * ============================================================ */
 
 RentalManager::RentalManager()
+    : userIndex_(&RentalManager::stringHash, /*ownsValues=*/true),
+      carIndex_(/*ownsValues=*/true),
+      currentUser_(nullptr),
+      reservationCounter_(0) {}
+
+RentalManager::~RentalManager()
 {
-    currentUser = nullptr;
-    reservationCounter = 0;
+    clearAll();
 }
 
-// ---------------- Utility ----------------
-string RentalManager::hashPassword(const string &pass) const
+void RentalManager::clearAll()
 {
-    string hashed = pass;
-    for (int i = 0; i < hashed.length(); i++)
-        hashed[i] += 3;
-    return hashed;
+    // HashTable deletes users, AVL deletes cars, and each Car's
+    // destructor deletes its reservations -> every allocation is
+    // freed exactly once.
+    carIndex_.clear();
+    userIndex_.clear();
+    carOrder_.clear();
+    currentUser_ = nullptr;
 }
 
-// ---------------- User Management ----------------
-bool RentalManager::registerUser(const string &username, const string &password, const string &role)
+/* ============================================================
+ *  Helpers
+ * ============================================================ */
+
+std::size_t RentalManager::stringHash(const std::string &key)
 {
-    if (userTable.find(username) != nullptr)
+    // Classic polynomial rolling hash: h = h*31 + c  (as used in Java).
+    std::size_t h = 0;
+    for (unsigned char c : key)
+        h = h * 31 + c;
+    return h;
+}
+
+Customer *RentalManager::asCustomer() const
+{
+    if (!currentUser_ || currentUser_->role() != "Customer")
+        return nullptr;
+    return static_cast<Customer *>(currentUser_);
+}
+
+/* ============================================================
+ *  Account management
+ * ============================================================ */
+
+bool RentalManager::registerCustomer(const std::string &username,
+                                     const std::string &password)
+{
+    if (username.empty() || password.size() < 4)
+        return false;
+    if (userIndex_.contains(username))
         return false;
 
-    string hashedPass = hashPassword(password);
-
-    User *newUser = nullptr;
-    if (role == "Customer")
-        newUser = new Customer(username, hashedPass, role);
-    else if (role == "Staff")
-        newUser = new Staff(username, hashedPass, role);
-    else
-        newUser = new Manager(username, hashedPass, role);
-
-    userTable.insert(username, newUser);
-    userList.pushBack(username);
+    Customer *user = new Customer(username);
+    user->setPassword(password);
+    userIndex_.insert(username, user);
     return true;
 }
 
-bool RentalManager::login(const string &username, const string &password)
+bool RentalManager::registerStaffAccount(const std::string &username,
+                                         const std::string &password,
+                                         const std::string &role)
 {
-    User *u = userTable.find(username);
-    if (u->getUsername() != username)
+    if (username.empty() || password.size() < 4)
         return false;
-    if (u->isBlocked())
+    if (role != "Staff" && role != "Manager")
         return false;
-    if (u->getPasswordHash() != hashPassword(password))
+    if (userIndex_.contains(username))
         return false;
-    currentUser = u;
+
+    User *user = (role == "Staff") ? static_cast<User *>(new Staff(username))
+                                   : static_cast<User *>(new Manager(username));
+    user->setPassword(password);
+    userIndex_.insert(username, user);
     return true;
 }
 
-void RentalManager::blockUser(const string &username)
+bool RentalManager::login(const std::string &username,
+                          const std::string &password)
 {
-    User *u = userTable.find(username);
-    if (u)
-        u->block();
-}
-
-// ---------------- Car Management ----------------
-void RentalManager::addCar(Car *car)
-{
-    carList.pushBack(car->getName());
-    carIndex.insert(car->getName(), car);
-}
-
-Car *RentalManager::searchCar(const string &name)
-{
-    return carIndex.find(name);
-}
-
-// ---------------- Reservation ----------------
-bool RentalManager::makeReservation(const string &carName, int startDate, int endDate)
-{
-    if (!currentUser)
+    User **slot = userIndex_.find(username);
+    if (!slot) // FIX: original dereferenced null here and segfaulted
         return false;
 
-    Car *car = carIndex.find(carName);
-    if (!car || car->getStatus() == MAINTENANCE)
+    User *user = *slot;
+    if (user->isBlocked())
+        return false;
+
+    if (!user->verifyPassword(password))
     {
-        cout << "Car is not available or under maintenance.\n";
+        user->registerFailedLogin(); // 3 strikes -> account blocked
         return false;
     }
 
-    // ۱. چک کردن همپوشانی تاریخ (Double-booking Prevention)
-    if (car->getQueue().hasOverlap(startDate, endDate))
+    user->resetFailedLogins();
+    currentUser_ = user;
+    return true;
+}
+
+void RentalManager::logout() { currentUser_ = nullptr; }
+
+bool RentalManager::isLoggedIn() const { return currentUser_ != nullptr; }
+
+std::string RentalManager::currentUserRole() const
+{
+    return currentUser_ ? currentUser_->role() : "";
+}
+
+std::string RentalManager::currentUsername() const
+{
+    return currentUser_ ? currentUser_->username() : "";
+}
+
+bool RentalManager::blockUser(const std::string &username)
+{
+    User **slot = userIndex_.find(username);
+    if (!slot)
+        return false;
+    (*slot)->block();
+    return true;
+}
+
+bool RentalManager::unblockUser(const std::string &username)
+{
+    User **slot = userIndex_.find(username);
+    if (!slot)
+        return false;
+    (*slot)->unblock();
+    return true;
+}
+
+bool RentalManager::userExists(const std::string &username) const
+{
+    return userIndex_.contains(username);
+}
+
+bool RentalManager::isUserBlocked(const std::string &username) const
+{
+    User *const *slot = userIndex_.find(username);
+    return slot && (*slot)->isBlocked();
+}
+
+/* ============================================================
+ *  Fleet management
+ * ============================================================ */
+
+bool RentalManager::addCar(Car *car)
+{
+    if (!car || carIndex_.contains(car->name()))
     {
-        cout << "Error: This car is already reserved for the selected dates!\n";
+        delete car; // reject duplicates without leaking
+        return false;
+    }
+    carIndex_.insert(car->name(), car);
+    carOrder_.pushBack(car->name());
+    return true;
+}
+
+Car *RentalManager::searchCar(const std::string &name)
+{
+    Car **slot = carIndex_.find(name);
+    return slot ? *slot : nullptr;
+}
+
+std::vector<Car *> RentalManager::findCarsByBrand(const std::string &brand) const
+{
+    std::vector<Car *> matches;
+    carIndex_.inOrderForEach([&](const std::string &, Car *car)
+                             {
+                                 if (car->brand() == brand)
+                                     matches.push_back(car);
+                             });
+    return matches;
+}
+
+void RentalManager::forEachCar(const std::function<void(Car *)> &fn) const
+{
+    carOrder_.forEach([&](const std::string &name)
+                      {
+                          const Car *const *slot = carIndex_.find(name);
+                          if (slot)
+                              fn(const_cast<Car *>(*slot));
+                      });
+}
+
+void RentalManager::forEachCarSorted(const std::function<void(Car *)> &fn) const
+{
+    carIndex_.inOrderForEach([&](const std::string &, Car *car)
+                             { fn(car); });
+}
+
+bool RentalManager::sendToMaintenance(const std::string &carName)
+{
+    Car *car = searchCar(carName);
+    if (!car)
+        return false;
+    if (car->status() == CarStatus::Rented)
+        return false; // cannot service a car that is out with a customer
+
+    car->setStatus(CarStatus::Maintenance);
+    return true;
+}
+
+bool RentalManager::finishMaintenance(const std::string &carName)
+{
+    Car *car = searchCar(carName);
+    if (!car || car->status() != CarStatus::Maintenance)
+        return false;
+
+    car->setStatus(CarStatus::Available);
+    car->refreshStatus(); // back to Reserved if bookings are queued
+    return true;
+}
+
+/* ============================================================
+ *  Customer operations
+ * ============================================================ */
+
+bool RentalManager::makeReservation(const std::string &carName, int startDate,
+                                    int endDate, std::string &errorOut)
+{
+    Customer *customer = asCustomer();
+    if (!customer)
+    {
+        errorOut = "Only logged-in customers can reserve.";
         return false;
     }
 
-    Customer *cust = (Customer *)currentUser;
-    Reservation *r = new Reservation(cust, car, reservationCounter++, startDate, endDate);
+    Car *car = searchCar(carName);
+    if (!car)
+    {
+        errorOut = "Car not found.";
+        return false;
+    }
+    if (car->status() == CarStatus::Maintenance)
+    {
+        errorOut = "Car is under maintenance.";
+        return false;
+    }
+    if (startDate < 1 || startDate > endDate)
+    {
+        errorOut = "Invalid date range (need 1 <= start <= end).";
+        return false;
+    }
+    if (car->hasOverlap(startDate, endDate)) // double-booking guard
+    {
+        errorOut = "Dates overlap an existing reservation.";
+        return false;
+    }
 
+    const int newId = ++reservationCounter_; // unique id == arrival order
+    Reservation *r = new Reservation(customer, car, newId, newId,
+                                     startDate, endDate);
     car->reserve(r);
-    cout << "Reservation confirmed for " << carName << ".\n";
-    car->addIncome(car->getPrice());
     return true;
 }
 
-void RentalManager::returnCar(const string &carName)
+std::vector<Reservation *> RentalManager::myReservations() const
 {
-    Car *car = carIndex.find(carName);
-    if (!car)
-        return;
-    car->returnCar();
+    std::vector<Reservation *> result;
+    if (!currentUser_)
+        return result;
+
+    // The AVL in-order walk gives a stable, name-sorted listing.
+    carIndex_.inOrderForEach([&](const std::string &, Car *car)
+                             {
+                                 for (Reservation *r : car->reservationsOf(currentUser_->username()))
+                                     result.push_back(r);
+                             });
+
+    std::sort(result.begin(), result.end(),
+              [](const Reservation *a, const Reservation *b)
+              { return a->startDate() < b->startDate(); });
+    return result;
 }
 
-// ---------------- Display & Reports ----------------
-void RentalManager::showAllCars()
+bool RentalManager::renewRental(const std::string &carName, int extraDays,
+                                std::string &errorOut)
 {
-    if (carList.Size() == 0)
+    Customer *customer = asCustomer();
+    if (!customer || extraDays < 1)
     {
-        cout << "--- No cars found in the system! ---\n";
-        return;
-    }
-    cout << "\n--- List of All Cars ---\n";
-    for (int i = 0; i < carList.Size(); i++)
-    {
-        string name = carList.getAt(i);
-        Car *car = carIndex.find(name);
-        if (car)
-        {
-            cout << "Name: " << car->getName()
-                 << " | Brand: " << car->getBrand()
-                 << " | Price: " << car->getPrice()
-                 << " | Status: " << car->getStatus()
-                 << endl;
-        }
-    }
-}
-
-void RentalManager::exportCarsToCSV(const string &filename)
-{
-    ofstream file(filename);
-    if (!file.is_open())
-        return;
-    file << "Name,Brand,Price,Status\n";
-    for (int i = 0; i < carList.Size(); i++)
-    {
-        string name = carList.getAt(i);
-        Car *car = carIndex.find(name);
-        if (!car)
-            continue;
-        file << car->getName() << "," << car->getBrand() << ","
-             << car->getPrice() << "," << car->getStatus() << "\n";
-    }
-    file.close();
-}
-
-void RentalManager::importCarsFromCSV(const string &filename)
-{
-    ifstream file(filename);
-    if (!file.is_open())
-        return;
-    string line;
-    getline(file, line);
-    while (getline(file, line))
-    {
-        string name, brand, priceStr, statusStr;
-        stringstream ss(line);
-        getline(ss, name, ',');
-        getline(ss, brand, ',');
-        getline(ss, priceStr, ',');
-        getline(ss, statusStr, ',');
-        double price = stod(priceStr);
-        int status = stoi(statusStr);
-        Car *car = new Car(name, brand, price);
-        car->setStatus((CarStatus)status);
-        carList.pushBack(name);
-        carIndex.insert(name, car);
-    }
-    file.close();
-}
-
-// ---------------- Other Features ----------------
-bool RentalManager::isLoggedIn() const { return currentUser != nullptr; }
-string RentalManager::getCurrentUserRole() const { return currentUser ? currentUser->getRole() : ""; }
-string RentalManager::getCurrentUsername() const { return currentUser ? currentUser->getUsername() : ""; }
-void RentalManager::logout() { currentUser = nullptr; }
-
-void RentalManager::setCarMaintenance(const string &carName)
-{
-    Car *car = searchCar(carName);
-    if (car)
-    {
-        if (car->getStatus() != RENTED)
-        {
-            car->setStatus(MAINTENANCE);
-            cout << "Car " << carName << " is now under maintenance.\n";
-        }
-        else
-            cout << "Cannot maintain a rented car!\n";
-    }
-    else
-        cout << "Car not found.\n";
-}
-
-bool RentalManager::renewRental(const string &carName, int extraDays)
-{
-    Car *car = searchCar(carName);
-    if (!car || car->getStatus() != RENTED)
-    {
-        cout << "Car is not currently rented.\n";
+        errorOut = "Invalid renewal request.";
         return false;
     }
-    if (car->hasReservations())
+
+    Car *car = searchCar(carName);
+    if (!car || car->status() != CarStatus::Rented)
     {
-        cout << "Cannot renew: Other reservations are waiting.\n";
+        errorOut = "Car is not currently rented.";
         return false;
     }
-    cout << "Rental extended for " << extraDays << " days.\n";
+
+    Reservation *current = car->currentReservation();
+    if (!current || current->customer() != customer)
+    {
+        errorOut = "This rental does not belong to you.";
+        return false;
+    }
+    if (car->reservationCount() > 1)
+    {
+        errorOut = "Cannot renew: other bookings are waiting for this car.";
+        return false;
+    }
+
+    // FIX: the original printed "extended" but never touched the dates.
+    current->extendEndDate(extraDays);
     return true;
 }
 
-// ---------------- Staff & Manager Logic ----------------
-void RentalManager::staffDeliverCar(const string &carName)
+double RentalManager::payBill()
 {
-    Car *car = carIndex.find(carName);
+    Customer *customer = asCustomer();
+    if (!customer)
+        return -1.0;
+    double amount = customer->balance();
+    customer->payBalance();
+    return amount;
+}
+
+double RentalManager::currentCustomerBalance() const
+{
+    Customer *customer = asCustomer();
+    return customer ? customer->balance() : 0.0;
+}
+
+/* ============================================================
+ *  Staff operations
+ * ============================================================ */
+
+bool RentalManager::deliverCar(const std::string &carName, std::string &errorOut)
+{
+    Car *car = searchCar(carName);
     if (!car)
     {
-        cout << "Car not found.\n";
-        return;
+        errorOut = "Car not found.";
+        return false;
+    }
+    if (car->status() == CarStatus::Rented)
+    {
+        errorOut = "Car is already rented.";
+        return false;
+    }
+    if (car->status() == CarStatus::Maintenance)
+    {
+        errorOut = "Finish maintenance before delivering.";
+        return false;
     }
 
-    if (car->getStatus() == RESERVED && car->hasReservations())
+    Reservation *r = car->currentReservation();
+    if (!r)
     {
-        car->setStatus(RENTED);
-        cout << "Car delivered to customer: " << car->getCurrentReservation()->getCustomer()->getUsername() << endl;
+        errorOut = "No reservation waiting for this car.";
+        return false;
     }
-    else
-        cout << "Car is not reserved or queue is empty.\n";
+
+    car->setStatus(CarStatus::Rented);
+    return true;
 }
 
-void RentalManager::staffReturnCar(const string &carName, int actualReturnDate)
+bool RentalManager::returnCar(const std::string &carName, int actualReturnDay,
+                              std::string &errorOut)
 {
-    Car *car = carIndex.find(carName);
-    if (!car || car->getStatus() != RENTED)
+    Car *car = searchCar(carName);
+    if (!car || car->status() != CarStatus::Rented)
     {
-        cout << "Car is not currently rented.\n";
-        return;
+        errorOut = "Car is not currently rented.";
+        return false;
     }
 
-    Reservation *res = car->getCurrentReservation();
-    int scheduledEndDate = res->getEndDate();
-    double dailyPrice = car->getPrice();
-    double totalCost = 0;
-
-    // ۱. محاسبه هزینه پایه (مدت زمان رزرو شده)
-    int duration = scheduledEndDate - res->getStartDate() + 1;
-    totalCost = duration * dailyPrice;
-
-    // ۲. محاسبه جریمه دیرکرد (Penalty)
-    if (actualReturnDate > scheduledEndDate)
+    Reservation *res = car->currentReservation();
+    if (!res)
     {
-        int delayDays = actualReturnDate - scheduledEndDate;
-        double penaltyRate = 1.5; // نرخ جریمه (قابل تغییر)
-        double penalty = delayDays * (dailyPrice * penaltyRate);
-        totalCost += penalty;
-        cout << "Delay detected: " << delayDays << " days. Penalty: " << penalty << endl;
+        errorOut = "No active reservation found (data inconsistency).";
+        return false;
     }
 
-    car->addIncome(totalCost);
-    car->returnCar(); // وضعیت خودرو را AVAILABLE یا RESERVED می‌کند
+    // ---- invoice -----------------------------------------------------
+    // Base charge: full booked duration at the daily price.
+    double baseCharge = res->durationDays() * car->pricePerDay();
+    double penalty = 0.0;
 
-    cout << "Car returned successfully. Total amount charged: " << totalCost << endl;
+    int scheduledEnd = res->endDate();
+    if (actualReturnDay > scheduledEnd)
+    {
+        int delayDays = actualReturnDay - scheduledEnd;
+        // Late days cost 1.5x the daily rate.
+        penalty = delayDays * car->pricePerDay() * PENALTY_RATE;
+    }
+
+    double total = baseCharge + penalty;
+
+    // Ledger: income is recorded EXACTLY ONCE (at return time).
+    car->addIncome(total);
+
+    // The customer owes the money until they pay their bill.
+    Customer *cust = res->customer();
+    if (cust)
+        cust->charge(total);
+
+    // Close the booking and free it (Car does not delete it here —
+    // ownership of a served booking moves to this function).
+    (void)car->completeReservation();
+    delete res;
+
+    car->refreshStatus();
+    return true;
 }
 
-void RentalManager::recordMaintenance(const string &carName, string date, string desc, double cost)
+bool RentalManager::recordMaintenance(const std::string &carName,
+                                      const std::string &date,
+                                      const std::string &description,
+                                      double cost, std::string &errorOut)
 {
-    Car *car = carIndex.find(carName);
-    if (car)
+    Car *car = searchCar(carName);
+    if (!car)
     {
-        car->addMaintenanceLog(date, desc, cost);
-        setCarMaintenance(carName);
+        errorOut = "Car not found.";
+        return false;
     }
+    if (car->status() == CarStatus::Rented)
+    {
+        errorOut = "Car is rented; it cannot be serviced now.";
+        return false;
+    }
+    if (cost < 0)
+    {
+        errorOut = "Cost cannot be negative.";
+        return false;
+    }
+
+    car->addMaintenanceLog(date, description, cost);
+    car->setStatus(CarStatus::Maintenance);
+    return true;
 }
 
-void RentalManager::generateIncomeReport()
+void RentalManager::printIncomeReport() const
 {
-    double total = 0;
-    cout << "\n--- Income Report ---\n";
-    for (int i = 0; i < carList.Size(); i++)
+    double totalIncome = 0.0, totalCosts = 0.0;
+    std::cout << "\n  ----------------- INCOME REPORT -----------------\n";
+    std::cout << "  " << std::left << std::setw(16) << "CAR"
+              << std::right << std::setw(12) << "INCOME"
+              << std::setw(14) << "MAINTENANCE"
+              << std::setw(12) << "NET"
+              << "\n";
+    std::cout << "  " << std::string(54, '-') << "\n";
+
+    forEachCar([&](Car *car)
+               {
+                   totalIncome += car->totalIncome();
+                   totalCosts += car->maintenanceCost();
+                   std::cout << "  " << std::left << std::setw(16) << car->name()
+                             << std::right << std::fixed << std::setprecision(2)
+                             << std::setw(12) << car->totalIncome()
+                             << std::setw(14) << car->maintenanceCost()
+                             << std::setw(12) << car->netRevenue()
+                             << "\n";
+               });
+
+    std::cout << "  " << std::string(54, '-') << "\n";
+    std::cout << "  " << std::left << std::setw(28) << "  Gross income"
+              << std::right << std::fixed << std::setprecision(2) << totalIncome << "\n";
+    std::cout << "  " << std::left << std::setw(28) << "  Maintenance costs"
+              << std::right << std::fixed << std::setprecision(2) << totalCosts << "\n";
+    std::cout << "  " << std::left << std::setw(28) << "  NET revenue"
+              << std::right << std::fixed << std::setprecision(2)
+              << (totalIncome - totalCosts) << "\n";
+}
+
+/* ============================================================
+ *  Persistence (CSV round-trip)
+ * ============================================================ */
+
+bool RentalManager::hasDataOnDisk(const std::string &dataDir) const
+{
+    std::ifstream users(dataDir + "/users.csv");
+    return users.good();
+}
+
+bool RentalManager::saveData(const std::string &dataDir) const
+{
+    std::filesystem::create_directories(dataDir); // portable mkdir -p
+
+    /* ---- users.csv ---- */
     {
-        Car *car = carIndex.find(carList.getAt(i));
-        if (car)
+        std::ofstream file(dataDir + "/users.csv");
+        if (!file)
+            return false;
+        file << "username,salt,hash,role,blocked,failedLogins,balance\n";
+        userIndex_.forEach([&](const std::string &, User *u)
+                           {
+                               double balance = (u->role() == "Customer")
+                                                    ? static_cast<Customer *>(u)->balance()
+                                                    : 0.0;
+                               file << u->username() << ',' << u->salt() << ','
+                                    << u->passwordHash() << ',' << u->role() << ','
+                                    << (u->isBlocked() ? 1 : 0) << ','
+                                    << u->failedLogins() << ',' << balance << '\n';
+                           });
+    }
+
+    /* ---- cars.csv ---- */
+    {
+        std::ofstream file(dataDir + "/cars.csv");
+        if (!file)
+            return false;
+        file << "name,brand,pricePerDay,status,income,maintenanceCost\n";
+        carOrder_.forEach([&](const std::string &name)
+                          {
+                              Car *const *slot = carIndex_.find(name);
+                              if (!slot)
+                                  return;
+                              Car *c = *slot;
+                              file << c->name() << ',' << c->brand() << ','
+                                   << c->pricePerDay() << ','
+                                   << static_cast<int>(c->status()) << ','
+                                   << c->totalIncome() << ','
+                                   << c->maintenanceCost() << '\n';
+                          });
+    }
+
+    /* ---- reservations.csv ---- */
+    {
+        std::ofstream file(dataDir + "/reservations.csv");
+        if (!file)
+            return false;
+        file << "id,carName,customer,requestTime,startDate,endDate\n";
+        carOrder_.forEach([&](const std::string &name)
+                          {
+                              const Car *const *slot = carIndex_.find(name);
+                              if (!slot)
+                                  return;
+                              (*slot)->forEachReservation([&](const Reservation *r)
+                                                          {
+                                                              file << r->id() << ',' << name << ','
+                                                                   << r->customer()->username() << ','
+                                                                   << r->requestTime() << ','
+                                                                   << r->startDate() << ','
+                                                                   << r->endDate() << '\n';
+                                                          });
+                          });
+    }
+    return true;
+}
+
+bool RentalManager::loadData(const std::string &dataDir)
+{
+    clearAll();
+
+    /* ---- users first (reservations reference them) ---- */
+    {
+        std::ifstream file(dataDir + "/users.csv");
+        if (!file)
+            return false;
+
+        std::string line;
+        std::getline(file, line); // header
+        while (std::getline(file, line))
         {
-            cout << car->getName() << ": " << car->getIncome() << endl;
-            total += car->getIncome();
+            if (line.empty())
+                continue;
+            std::stringstream ss(line);
+            std::string username, salt, hash, role, blockedStr, failedStr, balanceStr;
+            std::getline(ss, username, ',');
+            std::getline(ss, salt, ',');
+            std::getline(ss, hash, ',');
+            std::getline(ss, role, ',');
+            std::getline(ss, blockedStr, ',');
+            std::getline(ss, failedStr, ',');
+            std::getline(ss, balanceStr, ',');
+
+            User *user = nullptr;
+            if (role == "Customer")
+            {
+                Customer *c = new Customer(username);
+                c->setBalance(std::stod(balanceStr));
+                user = c;
+            }
+            else if (role == "Staff")
+                user = new Staff(username);
+            else if (role == "Manager")
+                user = new Manager(username);
+            else
+                continue;
+
+            user->restoreCredentials(salt, hash,
+                                     blockedStr == "1",
+                                     std::stoi(failedStr));
+            userIndex_.insert(username, user);
         }
     }
-    cout << "Total Revenue: " << total << endl;
+
+    /* ---- cars ---- */
+    {
+        std::ifstream file(dataDir + "/cars.csv");
+        if (!file)
+            return true; // users-only state is still a valid load
+
+        std::string line;
+        std::getline(file, line);
+        while (std::getline(file, line))
+        {
+            if (line.empty())
+                continue;
+            std::stringstream ss(line);
+            std::string name, brand, priceStr, statusStr, incomeStr, maintStr;
+            std::getline(ss, name, ',');
+            std::getline(ss, brand, ',');
+            std::getline(ss, priceStr, ',');
+            std::getline(ss, statusStr, ',');
+            std::getline(ss, incomeStr, ',');
+            std::getline(ss, maintStr, ',');
+
+            Car *car = new Car(name, brand, std::stod(priceStr));
+            car->setStatus(static_cast<CarStatus>(std::stoi(statusStr)));
+            car->addIncome(std::stod(incomeStr));
+            car->addMaintenanceCost(std::stod(maintStr));
+            carIndex_.insert(name, car);
+            carOrder_.pushBack(name);
+        }
+    }
+
+    /* ---- reservations last (need users + cars) ---- */
+    {
+        std::ifstream file(dataDir + "/reservations.csv");
+        if (!file)
+            return true;
+
+        std::string line;
+        std::getline(file, line);
+        while (std::getline(file, line))
+        {
+            if (line.empty())
+                continue;
+            std::stringstream ss(line);
+            std::string idStr, carName, customerName, reqStr, startStr, endStr;
+            std::getline(ss, idStr, ',');
+            std::getline(ss, carName, ',');
+            std::getline(ss, customerName, ',');
+            std::getline(ss, reqStr, ',');
+            std::getline(ss, startStr, ',');
+            std::getline(ss, endStr, ',');
+
+            Car **carSlot = carIndex_.find(carName);
+            User **userSlot = userIndex_.find(customerName);
+            if (!carSlot || !userSlot)
+                continue; // dangling booking -> drop it, don't crash
+
+            int id = std::stoi(idStr);
+            reservationCounter_ = std::max(reservationCounter_, id);
+
+            Reservation *r = new Reservation(static_cast<Customer *>(*userSlot),
+                                             *carSlot, id, std::stoi(reqStr),
+                                             std::stoi(startStr), std::stoi(endStr));
+            (*carSlot)->reinsertReservation(r);
+        }
+    }
+    return true;
+}
+
+void RentalManager::seedDemoData()
+{
+    // Demo accounts (documented in the README) -------------------
+    auto addDemoUser = [&](User *u, const char *pass)
+    {
+        u->setPassword(pass);
+        userIndex_.insert(u->username(), u);
+    };
+    addDemoUser(new Manager("admin"), "manager123");
+    addDemoUser(new Staff("sara"), "staff123");
+    addDemoUser(new Customer("ali"), "customer123");
+
+    // Demo fleet ---------------------------------------------------
+    struct SeedCar
+    {
+        const char *name, *brand;
+        double price;
+    };
+    const SeedCar fleet[] = {
+        {"Pride 131", "Saipa", 30.0},
+        {"Quick R", "Saipa", 35.0},
+        {"Peugeot 206", "Peugeot", 45.0},
+        {"Peugeot Pars", "Peugeot", 60.0},
+        {"Samand LX", "IKCO", 50.0},
+        {"Dena Plus", "IKCO", 55.0},
+        {"Benz C200", "Mercedes", 180.0},
+        {"Tucson 2023", "Hyundai", 120.0}};
+
+    for (const SeedCar &s : fleet)
+        addCar(new Car(s.name, s.brand, s.price));
 }
