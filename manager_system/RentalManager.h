@@ -81,6 +81,17 @@ public:
 
     Car *searchCar(const std::string &name);
     std::vector<Car *> findCarsByBrand(const std::string &brand) const;
+
+    /// Cars that can be booked right now (status Available or
+    /// Reserved), in the manager's insertion order.
+    std::vector<Car *> findBookableCars() const;
+
+    /// Cars renting for minPrice..maxPrice per day (both inclusive),
+    /// sorted by daily rate ascending — the customer's "what fits my
+    /// budget" query.
+    std::vector<Car *> findCarsInPriceRange(double minPrice,
+                                            double maxPrice) const;
+
     std::size_t fleetSize() const { return carOrder_.size(); }
 
     /// Cars in insertion order (manager's perspective).
@@ -88,6 +99,10 @@ public:
 
     /// Cars sorted by name via the AVL in-order traversal.
     void forEachCarSorted(const std::function<void(Car *)> &fn) const;
+
+    /// Whole fleet ordered by daily rate ascending (name breaks ties),
+    /// without disturbing the insertion-order view.
+    void forEachCarByPrice(const std::function<void(Car *)> &fn) const;
 
     bool sendToMaintenance(const std::string &carName);
     bool finishMaintenance(const std::string &carName);

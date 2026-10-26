@@ -205,6 +205,53 @@ void RentalManager::forEachCarSorted(const std::function<void(Car *)> &fn) const
                              { fn(car); });
 }
 
+std::vector<Car *> RentalManager::findBookableCars() const
+{
+    std::vector<Car *> out;
+    forEachCar([&](Car *car)
+               {
+                   if (car->isAvailableForBooking())
+                       out.push_back(car);
+               });
+    return out;
+}
+
+std::vector<Car *> RentalManager::findCarsInPriceRange(double minPrice,
+                                                       double maxPrice) const
+{
+    std::vector<Car *> out;
+    carIndex_.inOrderForEach([&](const std::string &, Car *car)
+                             {
+                                 double rate = car->pricePerDay();
+                                 if (rate >= minPrice && rate <= maxPrice)
+                                     out.push_back(car);
+                             });
+    std::sort(out.begin(), out.end(),
+              [](const Car *a, const Car *b)
+              {
+                  if (a->pricePerDay() != b->pricePerDay())
+                      return a->pricePerDay() < b->pricePerDay();
+                  return a->name() < b->name();
+              });
+    return out;
+}
+
+void RentalManager::forEachCarByPrice(const std::function<void(Car *)> &fn) const
+{
+    std::vector<Car *> fleet;
+    carIndex_.inOrderForEach([&](const std::string &, Car *car)
+                             { fleet.push_back(car); });
+    std::sort(fleet.begin(), fleet.end(),
+              [](const Car *a, const Car *b)
+              {
+                  if (a->pricePerDay() != b->pricePerDay())
+                      return a->pricePerDay() < b->pricePerDay();
+                  return a->name() < b->name();
+              });
+    for (Car *car : fleet)
+        fn(car);
+}
+
 bool RentalManager::sendToMaintenance(const std::string &carName)
 {
     Car *car = searchCar(carName);
