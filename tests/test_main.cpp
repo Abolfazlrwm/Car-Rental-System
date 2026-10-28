@@ -327,3 +327,257 @@ static void testHashTable()
  *  Reservation rules
  * ============================================================ */
 
+static void testReservationRules()
+{
+    Customer c1("ali"), c2("sara");
+    Car car("Test Car", "Test", 100.0);
+
+    // Range overlap truth table
+    CHECK(Reservation::rangesOverlap(1, 5, 5, 9));   // touching edges
+    CHECK(Reservation::rangesOverlap(4, 8, 1, 5));   // partial
+    CHECK(Reservation::rangesOverlap(2, 3, 1, 10));  // contained
+    CHECK(!Reservation::rangesOverlap(1, 4, 5, 9));  // disjoint
+    CHECK(!Reservation::rangesOverlap(6, 9, 1, 5));  // disjoint (after)
+
+    Reservation early(&c1, &car, 1, /*reqTime*/ 10, /*start*/ 2, /*end*/ 4);
+    Reservation late(&c2, &car, 2, /*reqTime*/ 1, /*start*/ 5, /*end*/ 8);
+
+    CHECK(early.hasHigherPriorityThan(&late));  // earlier start wins...
+    CHECK(!late.hasHigherPriorityThan(&early)); // ...even with earlier request
+
+    Reservation tieA(&c1, &car, 3, /*reqTime*/ 1, 5, 6);
+    Reservation tieB(&c2, &car, 4, /*reqTime*/ 2, 5, 6);
+    CHECK(tieA.hasHigherPriorityThan(&tieB)); // tie -> FIFO
+    CHECK(!tieB.hasHigherPriorityThan(&tieA));
+
+    CHECK_EQ(early.durationDays(), 3); // inclusive [2..4]
+}
+
+/* ============================================================
+ *  RentalManager — regression tests for every v1.0 bug
+ * ============================================================ */
+
+static void testRentalManagerAccounts()
+{
+    RentalManager m;
+
+    // REGRESSION: logging in with an unknown username used to
+    // dereference nullptr and SEGFAULT.
+    CHECK(!m.login("ghost", "whatever"));
+    CHECK(!m.isLoggedIn());
+
+    CHECK(m.registerCustomer("ali", "1234"));
+    CHECK(!m.registerCustomer("ali", "5678")); // duplicate username
+    CHECK(!m.registerCustomer("bob", "abc"));  // password too short
+
+    CHECK(m.login("ali", "1234"));
+    CHECK(m.currentUserRole() == "Customer");
+    m.logout();
+    CHECK(!m.isLoggedIn());
+
+    // Self-registration cannot mint a Manager or Staff account.
+    CHECK(m.registerCustomer("selfmgr", "pass1234"));
+    CHECK(m.login("selfmgr", "pass1234"));
+    CHECK(m.currentUserRole() == "Customer");
+    m.logout();
+
+    // Only a manager can create staff/manager accounts.
+    CHECK(!m.registerStaffAccount("x", "pass1234", "Customer"));
+    m.login("ali", "1234"); // not a manager, but registerStaffAccount
+                            // is a direct API call in tests
+
+    // 3 wrong passwords -> automatic block (brute-force guard).
+    RentalManager m2;
+    m2.seedDemoData();
+    CHECK(m2.login("ali", "customer123"));
+    m2.logout();
+    CHECK(!m2.login("ali", "wrong1"));
+    CHECK(!m2.login("ali", "wrong2"));
+    CHECK(!m2.login("ali", "wrong3"));
+    CHECK(m2.isUserBlocked("ali"));        // locked out...
+    CHECK(!m2.login("ali", "customer123")); // ...even with the right password
+    CHECK(m2.unblockUser("ali"));
+    CHECK(m2.login("ali", "customer123")); // manager unblocks -> works
+}
+
+static void testRentalManagerReservations()
+{
+    RentalManager m;
+    m.seedDemoData();
+
+    CHECK(m.login("ali", "customer123"));
+
+    std::string err;
+    CHECK(!m.makeReservation("No Such Car", 1, 5, err)); // unknown car
+    CHECK(!m.makeReservation("Benz C200", 9, 5, err));   // start > end
+    CHECK(!m.makeReservation("Benz C200", 0, 5, err));   // day < 1
+
+    CHECK(m.makeReservation("Benz C200", 5, 9, err));
+
+    // REGRESSION: double-booking prevention.
+    CHECK(!m.makeReservation("Benz C200", 6, 7, err)); // inside
+    CHECK(!m.makeReservation("Benz C200", 4, 6, err)); // overlaps head
+    CHECK(!m.makeReservation("Benz C200", 8, 12, err)); // overlaps tail
+    CHECK(m.makeReservation("Benz C200", 10, 12, err)); // adjacent OK
+    CHECK(!m.makeReservation("Benz C200", 12, 20, err)); // overlaps 2nd
+
+    Car *benz = m.searchCar("Benz C200");
+    CHECK(benz != nullptr);
+    CHECK_EQ(benz->reservationCount(), std::size_t(2));
+    CHECK(benz->status() == CarStatus::Reserved);
+
+    // REGRESSION: renewRental used to print "extended" and change nothing.
+    CHECK(!m.renewRental("Benz C200", 2, err)); // not rented yet
+    CHECK(!m.deliverCar("Benz C200", err) ? false : true);
+    CHECK(benz->status() == CarStatus::Rented);
+
+    // Second booking exists -> renewal must be refused (queue discipline)
+    CHECK(!m.renewRental("Benz C200", 2, err));
+    CHECK_EQ(benz->currentReservation()->endDate(), 9); // unchanged
+
+    // REGRESSION: income was booked TWICE (on reservation AND on return).
+    CHECK_EQ(benz->totalIncome(), 0.0); // nothing earned at booking time!
+    CHECK(m.returnCar("Benz C200", 9, err)); // on-time return
+    // 5 days (5..9 inclusive) x 180 = 900, no penalty.
+    CHECK(approx(benz->totalIncome(), 900.0));
+
+    // Customer is charged and can pay.
+    CHECK(approx(m.currentCustomerBalance(), 900.0));
+    CHECK(m.myReservations().size() == 1); // the 10..12 booking remains
+    CHECK(approx(m.payBill(), 900.0));
+    CHECK(approx(m.currentCustomerBalance(), 0.0));
+
+    // Late return: deliver next booking (10..12), return on day 15.
+    CHECK(m.deliverCar("Benz C200", err));
+    CHECK(m.returnCar("Benz C200", 15, err));
+    // 3 days x 180 = 540 + penalty 3 late days x 180 x 1.5 = 810 -> 1350
+    CHECK(approx(benz->totalIncome(), 900.0 + 1350.0));
+    CHECK(benz->status() == CarStatus::Available);
+    CHECK(!m.isLoggedIn() || m.currentUserRole() == "Customer");
+}
+
+static void testRentalManagerFleetAndMaintenance()
+{
+    RentalManager m;
+    m.seedDemoData();
+
+    std::string err;
+
+    // Duplicate fleet names rejected (v1.0 silently ignored them).
+    CHECK(m.addCar(new Car("Testarossa", "Ferrari", 400.0)));
+    CHECK(!m.addCar(new Car("Testarossa", "Ferrari", 400.0)));
+    CHECK_EQ(m.fleetSize(), std::size_t(9)); // 8 seeded + 1
+
+    // Maintenance lifecycle.
+    CHECK(m.recordMaintenance("Pride 131", "1404-08-12", "brake pads", 120.0, err));
+    CHECK(m.searchCar("Pride 131")->status() == CarStatus::Maintenance);
+    CHECK(!m.makeReservation("Pride 131", 1, 3, err)); // blocked while down
+
+    // A rented car cannot be serviced...
+    m.login("ali", "customer123");
+    CHECK(m.makeReservation("Tucson 2023", 1, 3, err));
+    m.logout();
+    m.login("sara", "staff123");
+    CHECK(m.deliverCar("Tucson 2023", err));
+    CHECK(!m.recordMaintenance("Tucson 2023", "x", "y", 10.0, err));
+    CHECK(m.returnCar("Tucson 2023", 3, err));
+    // ...but after return it can.
+    CHECK(m.recordMaintenance("Tucson 2023", "1404-09-01", "oil change", 45.0, err));
+    CHECK(m.finishMaintenance("Tucson 2023"));
+    CHECK(m.searchCar("Tucson 2023")->status() == CarStatus::Available);
+    CHECK(approx(m.searchCar("Tucson 2023")->maintenanceCost(), 45.0));
+
+    // Maintenance history is queryable.
+    CHECK_EQ(m.searchCar("Tucson 2023")->maintenanceLog().size(), std::size_t(1));
+
+    // Brand search (linear scan over the AVL index).
+    CHECK_EQ(m.findCarsByBrand("IKCO").size(), std::size_t(2));
+
+    // Manager-only blocking of a customer, enforced at login.
+    CHECK(m.unblockUser("ali")); // staff cannot block, but API allows unblock
+    m.logout();
+}
+
+static void testRentalManagerPersistence()
+{
+    const std::string dir = "/tmp/crs_test_data";
+
+    std::system(("rm -rf " + dir).c_str());
+    {
+        RentalManager m;
+        m.seedDemoData();
+        std::string err;
+        m.registerCustomer("reza", "pass123");
+        CHECK(m.login("reza", "pass123"));
+        CHECK(m.makeReservation("Benz C200", 3, 5, err));
+        m.logout();
+        m.login("sara", "staff123");
+        CHECK(m.deliverCar("Benz C200", err));
+        CHECK(m.returnCar("Benz C200", 7, err)); // 2 days late
+        m.logout();
+        CHECK(m.saveData(dir));
+    }
+    {
+        RentalManager m;
+        CHECK(m.loadData(dir));
+
+        // Users survive with credentials intact.
+        CHECK(m.login("reza", "pass123"));
+        m.logout();
+        CHECK(!m.login("reza", "nope"));
+
+        // The invoice survived too (income + customer balance).
+        // Booking 3..5 = 3 days x 180 = 540, + 2 late days x 270 = 540
+        // -> total 1080.
+        Car *benz = m.searchCar("Benz C200");
+        CHECK(benz != nullptr);
+        CHECK(approx(benz->totalIncome(), 540.0 + 540.0));
+
+        m.login("reza", "pass123");
+        CHECK(approx(m.currentCustomerBalance(), 540.0 + 540.0));
+        m.logout();
+
+        // Blocked state persists.
+        m.blockUser("reza");
+        m.saveData(dir);
+    }
+    {
+        RentalManager m;
+        CHECK(m.loadData(dir));
+        CHECK(m.isUserBlocked("reza"));
+    }
+
+    // Loading from a missing directory fails gracefully.
+    RentalManager fresh;
+    CHECK(!fresh.loadData("/tmp/definitely_missing_dir_xyz"));
+    CHECK(!fresh.hasDataOnDisk("/tmp/definitely_missing_dir_xyz"));
+}
+
+static void testRoleHierarchy()
+{
+    Customer c("c");
+    Staff s("s");
+    Manager mg("mg");
+
+    CHECK(c.role() == "Customer");
+    CHECK(s.role() == "Staff");
+    CHECK(mg.role() == "Manager");
+
+    // Customer balance bookkeeping.
+    CHECK(approx(c.balance(), 0.0));
+    c.charge(50.0);
+    c.charge(25.5);
+    CHECK(approx(c.balance(), 75.5));
+    c.payBalance();
+    CHECK(approx(c.balance(), 0.0));
+
+    // Blocking.
+    CHECK(!s.isBlocked());
+    s.block();
+    CHECK(s.isBlocked());
+}
+
+/* ============================================================
+ *  main
+ * ============================================================ */
+
