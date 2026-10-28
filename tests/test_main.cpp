@@ -498,6 +498,82 @@ static void testRentalManagerFleetAndMaintenance()
     m.logout();
 }
 
+static void testRentalManagerFleetFilters()
+{
+    RentalManager m;
+    m.seedDemoData();
+
+    // All 8 seeded cars start Available -> all bookable.
+    CHECK_EQ(m.findBookableCars().size(), std::size_t(8));
+    for (Car *car : m.findBookableCars())
+        CHECK(car->isAvailableForBooking());
+
+    // A car under maintenance drops out of the bookable set.
+    CHECK(m.sendToMaintenance("Benz C200"));
+    CHECK_EQ(m.findBookableCars().size(), std::size_t(7));
+    CHECK(m.searchCar("Benz C200")->status() == CarStatus::Maintenance);
+    CHECK(m.finishMaintenance("Benz C200"));
+    CHECK_EQ(m.findBookableCars().size(), std::size_t(8));
+
+    // Rented cars are not bookable; Reserved ones still are.
+    Car *tucson = m.searchCar("Tucson 2023");
+    tucson->setStatus(CarStatus::Rented);
+    CHECK(!tucson->isAvailableForBooking());
+    CHECK_EQ(m.findBookableCars().size(), std::size_t(7));
+    tucson->setStatus(CarStatus::Reserved);
+    CHECK(tucson->isAvailableForBooking());
+    CHECK_EQ(m.findBookableCars().size(), std::size_t(8));
+    tucson->setStatus(CarStatus::Available);
+
+    // Price range is inclusive on both ends.
+    CHECK_EQ(m.findCarsInPriceRange(30.0, 30.0).size(), std::size_t(1));
+    CHECK(m.findCarsInPriceRange(30.0, 30.0)[0]->name() == "Pride 131");
+    CHECK_EQ(m.findCarsInPriceRange(180.0, 180.0).size(), std::size_t(1));
+    CHECK(m.findCarsInPriceRange(180.0, 180.0)[0]->name() == "Benz C200");
+
+    // Empty and inverted ranges return nothing (and never crash).
+    CHECK(m.findCarsInPriceRange(500.0, 900.0).empty());
+    CHECK(m.findCarsInPriceRange(70.0, 20.0).empty());
+
+    // 30..60 covers Pride, Quick R, 206, Samand, Dena and Pars.
+    CHECK_EQ(m.findCarsInPriceRange(30.0, 60.0).size(), std::size_t(6));
+
+    // The full band comes back sorted by daily rate.
+    std::vector<Car *> band = m.findCarsInPriceRange(0.0, 1000.0);
+    CHECK_EQ(band.size(), std::size_t(8));
+    for (std::size_t i = 1; i < band.size(); ++i)
+        CHECK(band[i - 1]->pricePerDay() <= band[i]->pricePerDay());
+    CHECK(band.front()->name() == "Pride 131");  // cheapest
+    CHECK(band.back()->name() == "Benz C200");   // most expensive
+
+    // Equal rates tie-break alphabetically by car name.
+    CHECK(m.addCar(new Car("ATest 1", "Zig", 45.0)));
+    CHECK(m.addCar(new Car("ZTest 2", "Aab", 45.0)));
+    std::vector<Car *> ties = m.findCarsInPriceRange(45.0, 45.0);
+    CHECK_EQ(ties.size(), std::size_t(3)); // Peugeot 206 + the two new cars
+    CHECK(ties[0]->name() == "ATest 1");
+    CHECK(ties[1]->name() == "Peugeot 206");
+    CHECK(ties[2]->name() == "ZTest 2");
+
+    // forEachCarByPrice visits the whole fleet, cheapest first ...
+    std::vector<std::string> byPrice;
+    m.forEachCarByPrice([&](Car *car)
+                        { byPrice.push_back(car->name()); });
+    CHECK_EQ(byPrice.size(), std::size_t(10));
+    CHECK(byPrice.front() == "Pride 131");
+    CHECK(byPrice.back() == "Benz C200");
+
+    // ... and leaves the manager's insertion-order view untouched.
+    std::vector<std::string> insertion;
+    m.forEachCar([&](Car *car)
+                 { insertion.push_back(car->name()); });
+    CHECK_EQ(insertion.size(), std::size_t(10));
+    CHECK(insertion.front() == "Pride 131");
+
+    // Brand lookups keep working next to the new queries.
+    CHECK_EQ(m.findCarsByBrand("Saipa").size(), std::size_t(2));
+}
+
 static void testRentalManagerPersistence()
 {
     const std::string dir = "/tmp/crs_test_data";
@@ -594,6 +670,7 @@ int main()
     runSuite("RentalManager: accounts & lockout", testRentalManagerAccounts);
     runSuite("RentalManager: reservations & invoices", testRentalManagerReservations);
     runSuite("RentalManager: fleet & maintenance", testRentalManagerFleetAndMaintenance);
+    runSuite("RentalManager: fleet filters", testRentalManagerFleetFilters);
     runSuite("RentalManager: CSV persistence", testRentalManagerPersistence);
     runSuite("Role hierarchy", testRoleHierarchy);
 

@@ -179,7 +179,7 @@ Car-Rental-System/
 │   ├── HashTable.h          # separate chaining + rehashing
 │   ├── PriorityQueue.h      # binary min-heap, auto-growing
 │   └── DoublyLinkedList.h   # O(1) pushes at both ends
-├── tests/test_main.cpp      # 2,117 checks, dependency-free framework
+├── tests/test_main.cpp      # 2,164 checks, dependency-free framework
 ├── scripts/demo.sh          # scripted walkthrough
 ├── docs/
 │   ├── IMPROVEMENTS.md      # full v1.0 → v2.0 changelog
@@ -208,7 +208,7 @@ The suite needs no external framework and runs in milliseconds:
   [ ok ] RentalManager: CSV persistence
   [ ok ] Role hierarchy
 
-2117 checks, 0 failure(s)
+2164 checks, 0 failure(s)
 ALL TESTS PASSED
 ```
 
