@@ -581,3 +581,26 @@ static void testRoleHierarchy()
  *  main
  * ============================================================ */
 
+int main()
+{
+    std::cout << "==== Car Rental System — unit tests ====\n";
+
+    runSuite("SHA256 + password hashing", testSHA256);
+    runSuite("DoublyLinkedList", testDoublyLinkedList);
+    runSuite("PriorityQueue", testPriorityQueue);
+    runSuite("AVLTree (self-balancing)", testAVLTree);
+    runSuite("HashTable (chaining + rehash)", testHashTable);
+    runSuite("Reservation rules", testReservationRules);
+    runSuite("RentalManager: accounts & lockout", testRentalManagerAccounts);
+    runSuite("RentalManager: reservations & invoices", testRentalManagerReservations);
+    runSuite("RentalManager: fleet & maintenance", testRentalManagerFleetAndMaintenance);
+    runSuite("RentalManager: CSV persistence", testRentalManagerPersistence);
+    runSuite("Role hierarchy", testRoleHierarchy);
+
+    std::cout << "\n" << g_checks << " checks, " << g_failures << " failure(s)\n";
+    if (g_failures == 0)
+        std::cout << "ALL TESTS PASSED\n";
+    else
+        std::cout << "TESTS FAILED\n";
+    return g_failures == 0 ? 0 : 1;
+}
