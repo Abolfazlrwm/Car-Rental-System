@@ -1,0 +1,27 @@
+---
+# House style for Car Rental System — clang-format-14 or newer.
+# Run `make format` after editing; CI does not enforce it (yet).
+
+BasedOnStyle: LLVM
+Language: Cpp
+Standard: c++17
+
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 100
+
+BreakBeforeBraces: Allman
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+IndentCaseLabels: false
+
+PointerAlignment: Right
+DerivePointerAlignment: false
+AlignAfterOpenBracket: Align
+AlwaysBreakTemplateDeclarations: Yes
+
+SortIncludes: CaseSensitive
+IncludeBlocks: Preserve
+SpacesBeforeTrailingComments: 1
