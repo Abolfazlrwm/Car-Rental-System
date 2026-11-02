@@ -3,6 +3,7 @@ build/
 cmake-build-*/
 car_rental
 unit_tests
+unit_tests_asan
 *.o
 *.out
 
