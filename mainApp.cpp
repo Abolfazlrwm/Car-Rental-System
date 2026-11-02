@@ -32,6 +32,9 @@
 
 #include "manager_system/RentalManager.h"
 
+/* Program version, reported by --version / --help. */
+static const char *APP_VERSION = "2.0.0";
+
 /* ============================================================
  *  Terminal colors (no-ops when stdout is piped)
  * ============================================================ */
@@ -599,8 +602,38 @@ static void managerMenu(RentalManager &system, bool &running)
  *  main
  * ============================================================ */
 
-int main()
+int main(int argc, char *argv[])
 {
+    // Non-interactive queries exit before touching data/.
+    for (int i = 1; i < argc; ++i)
+    {
+        const std::string arg = argv[i];
+        if (arg == "--version" || arg == "-v")
+        {
+            std::cout << "Car Rental Management System v" << APP_VERSION
+                      << " — C++17, zero dependencies\n";
+            return 0;
+        }
+        if (arg == "--help" || arg == "-h")
+        {
+            std::cout << "Car Rental Management System v" << APP_VERSION << "\n"
+                         "\n"
+                         "Usage: car_rental [option]\n"
+                         "\n"
+                         "  (no option)    start the interactive console app\n"
+                         "  -v, --version  print version and exit\n"
+                         "  -h, --help     show this help and exit\n"
+                         "\n"
+                         "Demo accounts (auto-seeded on first run):\n"
+                         "  manager  admin / manager123\n"
+                         "  staff    sara  / staff123\n"
+                         "  customer ali   / customer123\n";
+            return 0;
+        }
+        std::cerr << "car_rental: unknown option '" << arg << "' — try --help\n";
+        return 1;
+    }
+
     RentalManager system;
     bool running = true;
 
