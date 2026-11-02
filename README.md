@@ -84,6 +84,8 @@ tree and asserting the height stays within the theoretical bound.
 
 ## 🎬 Demo
 
+![Car Rental System — manager console: fleet status & income report](docs/manager_dashboard.png)
+
 Reserve the Benz → staff delivers it → customer returns it 2 days late →
 the manager sees the penalty on the books:
 
