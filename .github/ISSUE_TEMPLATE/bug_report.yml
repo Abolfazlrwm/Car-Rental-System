@@ -1,0 +1,48 @@
+name: Bug report
+description: Something broke — tell us what happened
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Thanks for taking the time to file a bug! Please fill in the
+        details below — reproduction steps are the difference between a
+        same-day fix and a long debate.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Also tell us what you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. make
+        2. ./car_rental
+        3. login as admin / manager123
+        4. ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console output
+      description: Paste the relevant terminal output (and any sanitizer output) here.
+      render: text
+  - type: input
+    id: environment
+    attributes:
+      label: OS & compiler
+      placeholder: e.g. Windows 11, g++ 13.2 (MSYS2) / Ubuntu 24.04, clang 18
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: "`make test` passes on my machine"
+        - label: "I removed the `data/` folder and can still reproduce the issue"

@@ -1,0 +1,35 @@
+name: Feature request
+description: Suggest an idea for the Car Rental System
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Ideas are welcome! The [roadmap](../README.md#-roadmap) tracks
+        what is already planned — if your idea is on it, say which part
+        and why it matters to you.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or motivation
+      description: What are you trying to achieve? What is missing or annoying today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should happen instead? Keep it concrete.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Project constraints
+      description: The project is intentionally dependency-free C++17.
+      options:
+        - label: The idea can be implemented in C++17 without external libraries
