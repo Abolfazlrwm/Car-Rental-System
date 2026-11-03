@@ -104,6 +104,12 @@ public:
     /// without disturbing the insertion-order view.
     void forEachCarByPrice(const std::function<void(Car *)> &fn) const;
 
+    /// Case-insensitive keyword search across car names AND brands
+    /// ("peugeot" finds every Peugeot, "206" finds the Peugeot 206).
+    /// Matches come back in the manager's insertion order; an empty
+    /// keyword matches nothing, so a blank prompt never dumps the fleet.
+    std::vector<Car *> searchFleet(const std::string &keyword) const;
+
     bool sendToMaintenance(const std::string &carName);
     bool finishMaintenance(const std::string &carName);
 

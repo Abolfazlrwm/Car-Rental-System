@@ -1,6 +1,7 @@
 #include "RentalManager.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -53,6 +54,17 @@ Customer *RentalManager::asCustomer() const
     if (!currentUser_ || currentUser_->role() != "Customer")
         return nullptr;
     return static_cast<Customer *>(currentUser_);
+}
+
+/// Lowercased copy used by the keyword search (ASCII only — car names
+/// and brands are Latin by contract, see docs/DATA_FORMATS.md).
+static std::string toLowerCopy(const std::string &text)
+{
+    std::string out = text;
+    std::transform(out.begin(), out.end(), out.begin(),
+                   [](unsigned char c)
+                   { return static_cast<char>(std::tolower(c)); });
+    return out;
 }
 
 /* ============================================================
@@ -250,6 +262,22 @@ void RentalManager::forEachCarByPrice(const std::function<void(Car *)> &fn) cons
               });
     for (Car *car : fleet)
         fn(car);
+}
+
+std::vector<Car *> RentalManager::searchFleet(const std::string &keyword) const
+{
+    std::vector<Car *> matches;
+    const std::string needle = toLowerCopy(keyword);
+    if (needle.empty())
+        return matches;
+
+    forEachCar([&](Car *car)
+               {
+                   if (toLowerCopy(car->name()).find(needle) != std::string::npos ||
+                       toLowerCopy(car->brand()).find(needle) != std::string::npos)
+                       matches.push_back(car);
+               });
+    return matches;
 }
 
 bool RentalManager::sendToMaintenance(const std::string &carName)
