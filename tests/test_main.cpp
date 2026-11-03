@@ -697,6 +697,79 @@ static void testRentalManagerSearch()
 }
 
 /* ============================================================
+ *  RentalManager: statistics
+ * ============================================================ */
+
+static void testRentalManagerStats()
+{
+    // Empty system: no divisions by zero, no garbage values.
+    {
+        RentalManager m;
+        FleetStats s = m.computeStats();
+        CHECK_EQ(s.totalCars, std::size_t(0));
+        CHECK_EQ(s.activeBookings, std::size_t(0));
+        CHECK(approx(s.grossIncome, 0.0));
+        CHECK(approx(s.utilization, 0.0));
+        CHECK(s.topEarner.empty());
+    }
+
+    RentalManager m;
+    m.seedDemoData();
+
+    // Fresh seed: 8 cars, all available, no money has moved yet.
+    FleetStats s = m.computeStats();
+    CHECK_EQ(s.totalCars, std::size_t(8));
+    CHECK_EQ(s.availableCars, std::size_t(8));
+    CHECK_EQ(s.reservedCars, std::size_t(0));
+    CHECK_EQ(s.rentedCars, std::size_t(0));
+    CHECK_EQ(s.maintenanceCars, std::size_t(0));
+    CHECK_EQ(s.activeBookings, std::size_t(0));
+    CHECK(approx(s.utilization, 0.0));
+    CHECK(s.topEarner.empty());
+
+    // One booking moves utilization to 12.5%.
+    std::string err;
+    CHECK(m.login("ali", "customer123"));
+    CHECK(m.makeReservation("Benz C200", 5, 9, err));
+    s = m.computeStats();
+    CHECK_EQ(s.reservedCars, std::size_t(1));
+    CHECK_EQ(s.activeBookings, std::size_t(1));
+    CHECK(approx(s.utilization, 12.5));
+    m.logout();
+
+    // Delivering flips Reserved -> Rented; utilization is unchanged.
+    CHECK(m.login("sara", "staff123"));
+    CHECK(m.deliverCar("Benz C200", err));
+    s = m.computeStats();
+    CHECK_EQ(s.rentedCars, std::size_t(1));
+    CHECK_EQ(s.reservedCars, std::size_t(0));
+    CHECK(approx(s.utilization, 12.5));
+
+    // A maintenance stop idles a second car; maintenance counts as
+    // spend, not as utilization (nothing is earning while parked).
+    CHECK(m.recordMaintenance("Pride 131", "1404-08-10", "brake pads", 100.0, err));
+    s = m.computeStats();
+    CHECK_EQ(s.maintenanceCars, std::size_t(1));
+    CHECK_EQ(s.availableCars, std::size_t(6));
+    CHECK(approx(s.maintenanceSpend, 100.0));
+
+    // Returning 2 days late bills 5x180 + 2x180x1.5 = 1440.
+    CHECK(m.returnCar("Benz C200", 11, err));
+    s = m.computeStats();
+    CHECK_EQ(s.activeBookings, std::size_t(0));
+    CHECK(approx(s.grossIncome, 1440.0));
+    CHECK(approx(s.netRevenue, 1340.0));
+    CHECK(approx(s.utilization, 0.0));
+    CHECK(s.topEarner == "Benz C200");
+
+    // A lower-earning car does not dethrone the top earner.
+    m.searchCar("Pride 131")->addIncome(500.0);
+    s = m.computeStats();
+    CHECK(s.topEarner == "Benz C200");
+    CHECK(approx(s.grossIncome, 1940.0));
+}
+
+/* ============================================================
  *  main
  * ============================================================ */
 
@@ -715,6 +788,7 @@ int main()
     runSuite("RentalManager: fleet & maintenance", testRentalManagerFleetAndMaintenance);
     runSuite("RentalManager: fleet filters", testRentalManagerFleetFilters);
     runSuite("RentalManager: keyword search", testRentalManagerSearch);
+    runSuite("RentalManager: statistics", testRentalManagerStats);
     runSuite("RentalManager: CSV persistence", testRentalManagerPersistence);
     runSuite("Role hierarchy", testRoleHierarchy);
 
