@@ -21,7 +21,7 @@ jobs:
             cxx: clang++
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Configure (CMake)
         env:
@@ -49,7 +49,7 @@ jobs:
     name: AddressSanitizer + UBSan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build with sanitizers
         run: |
