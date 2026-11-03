@@ -43,3 +43,18 @@ jobs:
           $CXX -std=c++17 -Wall -Wextra -Werror mainApp.cpp \
                manager_system/*.cpp -o car_rental_raw
           ./build/unit_tests >/dev/null && echo "tests green"
+
+  # The README promises leak-free code — prove it on every push.
+  sanitizers:
+    name: AddressSanitizer + UBSan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build with sanitizers
+        run: |
+          g++ -std=c++17 -g -Wall -Wextra -fsanitize=address,undefined \
+              tests/test_main.cpp manager_system/*.cpp -o unit_tests_asan
+
+      - name: Run suite under sanitizers
+        run: ./unit_tests_asan
