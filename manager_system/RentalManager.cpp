@@ -559,6 +559,50 @@ void RentalManager::printIncomeReport() const
 }
 
 /* ============================================================
+ *  Reporting
+ * ============================================================ */
+
+FleetStats RentalManager::computeStats() const
+{
+    FleetStats stats;
+    const Car *best = nullptr;
+
+    forEachCar([&](Car *car)
+               {
+                   ++stats.totalCars;
+                   switch (car->status())
+                   {
+                   case CarStatus::Available:
+                       ++stats.availableCars;
+                       break;
+                   case CarStatus::Reserved:
+                       ++stats.reservedCars;
+                       break;
+                   case CarStatus::Rented:
+                       ++stats.rentedCars;
+                       break;
+                   case CarStatus::Maintenance:
+                       ++stats.maintenanceCars;
+                       break;
+                   }
+                   stats.activeBookings += car->reservationCount();
+                   stats.grossIncome += car->totalIncome();
+                   stats.maintenanceSpend += car->maintenanceCost();
+
+                   if (!best || car->totalIncome() > best->totalIncome())
+                       best = car;
+               });
+
+    stats.netRevenue = stats.grossIncome - stats.maintenanceSpend;
+    if (stats.totalCars > 0)
+        stats.utilization = 100.0 * static_cast<double>(stats.rentedCars + stats.reservedCars)
+                            / static_cast<double>(stats.totalCars);
+    if (best && best->totalIncome() > 0.0)
+        stats.topEarner = best->name();
+    return stats;
+}
+
+/* ============================================================
  *  Persistence (CSV round-trip)
  * ============================================================ */
 

@@ -12,6 +12,39 @@
 
 /**
  * ============================================================
+ *  FleetStats
+ * ============================================================
+ *  Aggregate snapshot of the whole system, computed on demand by
+ *  RentalManager::computeStats(). Printed by the manager's
+ *  "Fleet statistics" screen and reused by the CSV report exporter,
+ *  so the on-screen numbers and the exported file can never drift
+ *  apart.
+ * ============================================================
+ */
+struct FleetStats
+{
+    std::size_t totalCars = 0;
+    std::size_t availableCars = 0;
+    std::size_t reservedCars = 0;
+    std::size_t rentedCars = 0;
+    std::size_t maintenanceCars = 0;
+    std::size_t activeBookings = 0; // queued reservations fleet-wide
+
+    double grossIncome = 0.0;      // sum of the per-car income ledgers
+    double maintenanceSpend = 0.0; // sum of maintenance costs
+    double netRevenue = 0.0;       // grossIncome - maintenanceSpend
+
+    /// Percentage of the fleet currently earning or promised
+    /// (rented + reserved), 0..100; 0 when the fleet is empty.
+    double utilization = 0.0;
+
+    /// Name of the highest-earning car, "" when the fleet is empty
+    /// or nothing has earned yet.
+    std::string topEarner;
+};
+
+/**
+ * ============================================================
  *  RentalManager
  * ============================================================
  *  Facade that owns every entity of the system and exposes the
@@ -152,6 +185,12 @@ public:
 
     /// Per-car revenue + maintenance costs + grand totals.
     void printIncomeReport() const;
+
+    /* ---------------- Reporting ---------------- */
+
+    /// One-pass snapshot of fleet composition, bookings and money.
+    /// Never throws, never depends on login state.
+    FleetStats computeStats() const;
 
     /* ---------------- Persistence ---------------- */
 
