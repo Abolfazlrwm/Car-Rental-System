@@ -1,0 +1,20 @@
+# Normalize line endings: LF in the repository, Git decides on checkout.
+* text=auto
+
+# Sources and build scripts always use LF.
+*.cpp text
+*.h text
+*.md text
+*.yml text
+*.csv text
+*.sh text eol=lf
+Makefile text eol=lf
+
+# Windows-only files keep CRLF.
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary assets.
+*.png binary
+*.jpg binary
+*.ico binary
