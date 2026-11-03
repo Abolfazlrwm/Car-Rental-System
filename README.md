@@ -228,10 +228,17 @@ Memory safety is verified with `g++ -fsanitize=address,undefined`.
 - [ ] Fine-grained permissions inside the Staff/Manager roles
 - [ ] Docker devcontainer for one-click contributor setup
 
+## 📚 Documentation
+
+- [Usage guide](docs/USAGE.md) — every role's menu, step by step
+- [CSV data formats](docs/DATA_FORMATS.md) — the exact layout of `data/*.csv`
+- [Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md)
+
 ## 🤝 Contributing
 
-Issues and PRs are welcome — the test suite keeps refactors safe.
-Run `make test` before pushing.
+Issues and PRs are welcome — see the [contributing guide](CONTRIBUTING.md).
+The test suite keeps refactors safe: run `make test` before pushing,
+and `make asan` if you touch memory management.
 
 ## 📄 License
 
