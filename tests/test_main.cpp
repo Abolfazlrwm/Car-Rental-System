@@ -654,6 +654,49 @@ static void testRoleHierarchy()
 }
 
 /* ============================================================
+ *  RentalManager: keyword search
+ * ============================================================ */
+
+static void testRentalManagerSearch()
+{
+    RentalManager m;
+    m.seedDemoData();
+
+    // Brand matches, case-insensitive.
+    CHECK_EQ(m.searchFleet("peugeot").size(), std::size_t(2));
+    CHECK_EQ(m.searchFleet("PEUGEOT").size(), std::size_t(2));
+    CHECK_EQ(m.searchFleet("saipa").size(), std::size_t(2));
+    CHECK_EQ(m.searchFleet("Saipa").size(), std::size_t(2));
+
+    // Name matches, including partial words and digits.
+    CHECK_EQ(m.searchFleet("benz").size(), std::size_t(1));
+    CHECK(m.searchFleet("benz")[0]->name() == "Benz C200");
+    CHECK_EQ(m.searchFleet("206").size(), std::size_t(1));
+    CHECK(m.searchFleet("206")[0]->name() == "Peugeot 206");
+    CHECK_EQ(m.searchFleet("TUCSON").size(), std::size_t(1));
+
+    // "samand" hits the name, "lx" only the model suffix.
+    CHECK_EQ(m.searchFleet("samand").size(), std::size_t(1));
+    CHECK_EQ(m.searchFleet("LX").size(), std::size_t(1));
+
+    // Equal-kind matches keep the manager's insertion order.
+    std::vector<Car *> saipas = m.searchFleet("saipa");
+    CHECK(saipas[0]->name() == "Pride 131");
+    CHECK(saipas[1]->name() == "Quick R");
+
+    // Search covers the WHOLE fleet: maintenance cars are still findable.
+    CHECK(m.sendToMaintenance("Benz C200"));
+    CHECK_EQ(m.searchFleet("benz").size(), std::size_t(1));
+    CHECK(m.searchFleet("benz")[0]->status() == CarStatus::Maintenance);
+    CHECK(m.finishMaintenance("Benz C200"));
+
+    // No false positives, no crashes on junk or empty input.
+    CHECK(m.searchFleet("").empty());
+    CHECK(m.searchFleet("zzzz").empty());
+    CHECK(m.searchFleet("  ").empty());
+}
+
+/* ============================================================
  *  main
  * ============================================================ */
 
@@ -671,6 +714,7 @@ int main()
     runSuite("RentalManager: reservations & invoices", testRentalManagerReservations);
     runSuite("RentalManager: fleet & maintenance", testRentalManagerFleetAndMaintenance);
     runSuite("RentalManager: fleet filters", testRentalManagerFleetFilters);
+    runSuite("RentalManager: keyword search", testRentalManagerSearch);
     runSuite("RentalManager: CSV persistence", testRentalManagerPersistence);
     runSuite("Role hierarchy", testRoleHierarchy);
 
