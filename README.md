@@ -1,6 +1,7 @@
 # 🚗 Car Rental Management System — C++17
 
 [![CI](https://github.com/Abolfazlrwm/Car-Rental-System/actions/workflows/ci.yml/badge.svg)](https://github.com/Abolfazlrwm/Car-Rental-System/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Abolfazlrwm/Car-Rental-System)](https://github.com/Abolfazlrwm/Car-Rental-System/releases)
 ![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-2%2C236%20checks-3AAFA9)
 ![Memory](https://img.shields.io/badge/AddressSanitizer-leak--free-4C6EF5)
@@ -16,9 +17,10 @@ hashing, double-booking prevention, late-return penalties and full CSV
 persistence.
 
 > Originally written as a data-structures course project, then rebuilt
-> into a portfolio-grade repository — see [`docs/IMPROVEMENTS.md`](docs/IMPROVEMENTS.md)
-> for the full changelog (fixed segfaults, memory leaks, an
-> income double-count and more).
+> into a portfolio-grade repository. Release-by-release history lives in
+> the [changelog](CHANGELOG.md); the full v1.0 → v2.0 rebuild story —
+> fixed segfaults, memory leaks, an income double-count and more — is
+> told in [`docs/IMPROVEMENTS.md`](docs/IMPROVEMENTS.md).
 
 ---
 
@@ -166,6 +168,9 @@ g++ -std=c++17 -O2 mainApp.cpp manager_system/*.cpp -o car_rental && ./car_renta
 On first start the app seeds the demo fleet and accounts; all state is
 saved to `data/` on exit and reloaded on the next run.
 
+Non-interactive queries never touch `data/`: `./car_rental --version`
+prints the version banner and `--help` lists the flags.
+
 ---
 
 ## 📁 Project structure
@@ -185,12 +190,17 @@ Car-Rental-System/
 │   ├── PriorityQueue.h      # binary min-heap, auto-growing
 │   └── DoublyLinkedList.h   # O(1) pushes at both ends
 ├── tests/test_main.cpp      # 2,236 checks, dependency-free framework
-├── scripts/demo.sh          # scripted walkthrough
+├── scripts/demo.sh          # scripted end-to-end walkthrough
 ├── docs/
-│   ├── IMPROVEMENTS.md      # full v1.0 → v2.0 changelog
-│   └── architecture.png     # diagram used above
-├── CMakeLists.txt / Makefile
-└── .github/workflows/ci.yml # GCC + Clang matrix on every push
+│   ├── USAGE.md             # every role's menu, step by step
+│   ├── DATA_FORMATS.md      # layout of data/*.csv and reports/*.csv
+│   ├── IMPROVEMENTS.md      # the v1.0 → v2.0 rebuild story
+│   ├── architecture.png     # diagram used above
+│   └── manager_dashboard.png# screenshot used above
+├── CHANGELOG.md             # version-by-version history
+├── CONTRIBUTING.md / SECURITY.md / CODE_OF_CONDUCT.md
+├── CMakeLists.txt / Makefile / .clang-format
+└── .github/                 # CI workflow, templates, dependabot
 ```
 
 ---
@@ -239,8 +249,9 @@ Memory safety is verified with `g++ -fsanitize=address,undefined`.
 
 ## 📚 Documentation
 
+- [Changelog](CHANGELOG.md) — what every release added, fixed and changed
 - [Usage guide](docs/USAGE.md) — every role's menu, step by step
-- [CSV data formats](docs/DATA_FORMATS.md) — the exact layout of `data/*.csv`
+- [CSV data formats](docs/DATA_FORMATS.md) — the exact layout of `data/*.csv` and `reports/*.csv`
 - [Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md)
 
 ## 🤝 Contributing
