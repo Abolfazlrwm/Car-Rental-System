@@ -4,6 +4,36 @@ All notable changes to the Car Rental System are documented in this file.
 The detailed v1.0 → v2.0 story lives in
 [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md).
 
+## [2.2.0] — 2026-11-04
+
+### Added
+
+- **Keyword fleet search** — `RentalManager::searchFleet()` matches
+  car names **and** brands case-insensitively (insertion order kept,
+  empty keyword matches nothing); wired into the manager menu
+- **Fleet statistics snapshot** — `FleetStats` + `computeStats()`:
+  fleet composition by status, active bookings, gross/NET revenue,
+  utilization % and the top-earning car, in one pass; rendered by the
+  new *Fleet statistics* screen
+- **CSV report export** — `exportFleetReport()` (name-sorted fleet
+  sheet) and `exportBookingReport()` (live bookings by start date)
+  write `reports/*.csv`; the layout is documented in
+  [docs/DATA_FORMATS.md](docs/DATA_FORMATS.md)
+- 72 new regression tests covering the keyword search, the statistics
+  lifecycle (booking → delivery → late return → maintenance) and the
+  report round-trips — suite now at **2,236 checks**
+
+### Fixed
+
+- `scripts/demo.sh` attached its input heredoc to `sed` instead of the
+  app, so the advertised walkthrough never reached `car_rental` and
+  died with SIGPIPE (exit 141) before printing anything
+
+### Changed
+
+- Manager menu renumbered to 13 entries — search (4), statistics (5),
+  income report (6), export reports (7), account tools shifted down
+
 ## [2.1.0] — 2026-11-03
 
 ### Added

@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/Abolfazlrwm/Car-Rental-System/actions/workflows/ci.yml/badge.svg)](https://github.com/Abolfazlrwm/Car-Rental-System/actions/workflows/ci.yml)
 ![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-2%2C117%20checks-3AAFA9)
+![Tests](https://img.shields.io/badge/tests-2%2C236%20checks-3AAFA9)
 ![Memory](https://img.shields.io/badge/AddressSanitizer-leak--free-4C6EF5)
 ![License](https://img.shields.io/badge/license-MIT-64748B)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)
@@ -45,7 +45,7 @@ basic_structures/ (Templates) AVLTree<K,V> · HashTable<K,V> ·
 | `DoublyLinkedList<T>` | insertion-order fleet list | push front/back, remove, traversal | O(1) push |
 
 All four are **header-only templates** with injectable comparators and an
-explicit ownership model (`ownsValues`), covered by 2,100+ assertions —
+explicit ownership model (`ownsValues`), covered by 2,200+ assertions —
 including the worst-case test: inserting 500 ascending keys into the AVL
 tree and asserting the height stays within the theoretical bound.
 
@@ -64,12 +64,17 @@ tree and asserting the height stays within the theoretical bound.
 - Double-booking prevention (date-range overlap rejection)
 - Earliest-pickup-first scheduling (priority queue + FIFO tie-break)
 - Rental renewal with queue discipline (blocked when others wait)
+- Case-insensitive **keyword search** across car names and brands
 
 **Money & reporting**
 - Automatic invoicing: duration × daily price
 - **Late-return penalty**: 1.5 × daily rate per late day
 - Customer balances with one-tap bill payment
 - Income report per car + net revenue (income − maintenance costs)
+- **Fleet statistics snapshot**: composition, utilization %, net
+  revenue and the top-earning car in one screen
+- **One-click CSV reports**: name-sorted fleet sheet + live bookings
+  by start date, written to `reports/*.csv` for spreadsheets
 
 **Maintenance**
 - Send to / return from maintenance, blocked while rented
@@ -179,7 +184,7 @@ Car-Rental-System/
 │   ├── HashTable.h          # separate chaining + rehashing
 │   ├── PriorityQueue.h      # binary min-heap, auto-growing
 │   └── DoublyLinkedList.h   # O(1) pushes at both ends
-├── tests/test_main.cpp      # 2,164 checks, dependency-free framework
+├── tests/test_main.cpp      # 2,236 checks, dependency-free framework
 ├── scripts/demo.sh          # scripted walkthrough
 ├── docs/
 │   ├── IMPROVEMENTS.md      # full v1.0 → v2.0 changelog
@@ -205,10 +210,14 @@ The suite needs no external framework and runs in milliseconds:
   [ ok ] RentalManager: accounts & lockout
   [ ok ] RentalManager: reservations & invoices
   [ ok ] RentalManager: fleet & maintenance
+  [ ok ] RentalManager: fleet filters
+  [ ok ] RentalManager: keyword search
+  [ ok ] RentalManager: statistics
+  [ ok ] RentalManager: CSV reports
   [ ok ] RentalManager: CSV persistence
   [ ok ] Role hierarchy
 
-2164 checks, 0 failure(s)
+2236 checks, 0 failure(s)
 ALL TESTS PASSED
 ```
 
