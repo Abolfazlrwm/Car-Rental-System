@@ -602,6 +602,67 @@ FleetStats RentalManager::computeStats() const
     return stats;
 }
 
+bool RentalManager::exportFleetReport(const std::string &path) const
+{
+    const std::filesystem::path parent =
+        std::filesystem::path(path).parent_path();
+    if (!parent.empty())
+        std::filesystem::create_directories(parent);
+
+    std::ofstream file(path);
+    if (!file)
+        return false;
+
+    // Name-sorted via the AVL in-order walk, so two exports of the
+    // same state are byte-identical (diff-friendly).
+    file << "name,brand,pricePerDay,status,income,maintenanceCost,netRevenue\n";
+    forEachCarSorted([&](Car *car)
+                     {
+                         file << car->name() << ',' << car->brand() << ','
+                              << car->pricePerDay() << ',' << toString(car->status())
+                              << ',' << car->totalIncome() << ','
+                              << car->maintenanceCost() << ',' << car->netRevenue()
+                              << '\n';
+                     });
+    return true;
+}
+
+bool RentalManager::exportBookingReport(const std::string &path) const
+{
+    const std::filesystem::path parent =
+        std::filesystem::path(path).parent_path();
+    if (!parent.empty())
+        std::filesystem::create_directories(parent);
+
+    // The per-car heaps expose bookings in bucket order, not service
+    // order — flatten, then sort for a stable, diff-friendly report.
+    std::vector<const Reservation *> bookings;
+    forEachCarSorted([&](Car *car)
+                     {
+                         car->forEachReservation(
+                             [&](const Reservation *r)
+                             { bookings.push_back(r); });
+                     });
+    std::sort(bookings.begin(), bookings.end(),
+              [](const Reservation *a, const Reservation *b)
+              {
+                  if (a->startDate() != b->startDate())
+                      return a->startDate() < b->startDate();
+                  return a->id() < b->id();
+              });
+
+    std::ofstream file(path);
+    if (!file)
+        return false;
+
+    file << "id,carName,customer,startDate,endDate,durationDays\n";
+    for (const Reservation *r : bookings)
+        file << r->id() << ',' << r->car()->name() << ','
+             << r->customer()->username() << ',' << r->startDate() << ','
+             << r->endDate() << ',' << r->durationDays() << '\n';
+    return true;
+}
+
 /* ============================================================
  *  Persistence (CSV round-trip)
  * ============================================================ */

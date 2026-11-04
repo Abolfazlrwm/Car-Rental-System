@@ -10,6 +10,9 @@ unit_tests_asan
 # Runtime state (seeded automatically on first run)
 data/
 
+# Manager-generated CSV exports
+reports/
+
 # OS / editor noise
 .DS_Store
 Thumbs.db

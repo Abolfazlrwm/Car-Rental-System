@@ -192,6 +192,16 @@ public:
     /// Never throws, never depends on login state.
     FleetStats computeStats() const;
 
+    /// Write the whole fleet to `path` as CSV (header + one row per
+    /// car, sorted by name). Missing parent directories are created;
+    /// returns false when the file cannot be opened for writing.
+    bool exportFleetReport(const std::string &path) const;
+
+    /// Write every live reservation to `path` as CSV, ordered by start
+    /// date (reservation id breaks ties — the per-car heaps are not
+    /// ordered views). Missing parent directories are created.
+    bool exportBookingReport(const std::string &path) const;
+
     /* ---------------- Persistence ---------------- */
 
     /// Write users.csv / cars.csv / reservations.csv under `dataDir`.
