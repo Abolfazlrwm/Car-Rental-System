@@ -17,7 +17,10 @@ if [ ! -x ./car_rental ]; then
 fi
 
 # Strip ANSI colors for a clean transcript.
-./car_rental | sed 's/\x1b\[[0-9;]*m//g' <<'INPUT'
+# NOTE: the heredoc must feed car_rental (the left side of the pipe);
+# attaching it to sed instead would bypass the app entirely and make
+# the pipeline die with SIGPIPE once sed finishes with the input.
+./car_rental <<'INPUT' | sed 's/\x1b\[[0-9;]*m//g'
 2
 ali
 customer123
@@ -39,6 +42,6 @@ Benz C200
 2
 admin
 manager123
-4
+6
 3
 INPUT
