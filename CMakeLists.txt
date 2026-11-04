@@ -39,3 +39,8 @@ add_executable(unit_tests
 target_include_directories(unit_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME unit_tests COMMAND unit_tests)
 
+# ---------------------------------------------------------------- benchmarks
+# Built by `cmake --build` but never run automatically — benchmarks are
+# for humans (`make bench`), not for CI gating.
+add_executable(bench_containers benchmarks/bench_containers.cpp)
+target_include_directories(bench_containers PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

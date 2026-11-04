@@ -18,6 +18,7 @@ SRC       = mainApp.cpp manager_system/SHA256.cpp manager_system/User.cpp \
 TEST_SRC  = tests/test_main.cpp manager_system/SHA256.cpp manager_system/User.cpp \
             manager_system/Car.cpp manager_system/Reservation.cpp \
             manager_system/Date.cpp manager_system/RentalManager.cpp
+BENCH_SRC = benchmarks/bench_containers.cpp
 
 all: car_rental unit_tests
 
@@ -33,6 +34,11 @@ test: unit_tests
 run: car_rental
 	./car_rental
 
+# Container benchmarks (hand-written vs the standard library).
+bench: $(BENCH_SRC)
+	$(CXX) -std=c++17 -Wall -Wextra -O2 $(BENCH_SRC) -o bench_containers
+	./bench_containers
+
 # Full suite under AddressSanitizer + UBSan -- same job CI runs on every push.
 asan:
 	$(CXX) -std=c++17 -g -Wall -Wextra -fsanitize=address,undefined \
@@ -46,6 +52,6 @@ format:
 	clang-format -i mainApp.cpp manager_system/*.cpp tests/*.cpp basic_structures/*.h
 
 clean:
-	rm -f car_rental unit_tests unit_tests_asan
+	rm -f car_rental unit_tests unit_tests_asan bench_containers
 
-.PHONY: all test run asan format clean
+.PHONY: all test run bench asan format clean

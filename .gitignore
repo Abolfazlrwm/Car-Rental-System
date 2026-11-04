@@ -4,6 +4,7 @@ cmake-build-*/
 car_rental
 unit_tests
 unit_tests_asan
+bench_containers
 *.o
 *.out
 
