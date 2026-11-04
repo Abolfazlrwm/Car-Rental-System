@@ -69,6 +69,52 @@ Within a car, the booking queue serves the earliest `startDate` first
 reservations survive restarts because the queues are rebuilt from this
 file on load.
 
+## Exported reports (reports/)
+
+Separate from `data/`, the manager can export two snapshot reports
+from the *Export CSV reports* menu entry. They are written on demand
+into `reports/` (created automatically, git-ignored) and are **not**
+reloaded on startup — the app state always lives in `data/`.
+
+### fleet_report.csv
+
+One row per car, **sorted by name** (the AVL in-order walk), so two
+exports of the same state are byte-identical:
+
+```
+name,brand,pricePerDay,status,income,maintenanceCost,netRevenue
+Benz C200,Mercedes,180,RESERVED,0,0,0
+```
+
+| Column | Meaning |
+|---|---|
+| `name` / `brand` | as in `cars.csv` |
+| `pricePerDay` | daily rate |
+| `status` | `AVAILABLE` / `RESERVED` / `RENTED` / `MAINTENANCE` |
+| `income` | cumulative gross income (the ledger) |
+| `maintenanceCost` | cumulative maintenance spend |
+| `netRevenue` | `income - maintenanceCost` |
+
+### bookings_report.csv
+
+One row per **live** reservation across the fleet, ordered by start
+date (reservation id breaks ties):
+
+```
+id,carName,customer,startDate,endDate,durationDays
+2,Samand LX,ali,2,4,3
+```
+
+| Column | Meaning |
+|---|---|
+| `id` | reservation id (equals creation order) |
+| `carName` / `customer` | references into `cars.csv` / `users.csv` |
+| `startDate` / `endDate` | rental window as day numbers (inclusive) |
+| `durationDays` | `endDate - startDate + 1` |
+
+Completed (returned) bookings are not listed — the fleet report's
+`income` column is where their revenue lives.
+
 ## Notes
 
 - Files are rewritten in full on every save; do not edit them while the

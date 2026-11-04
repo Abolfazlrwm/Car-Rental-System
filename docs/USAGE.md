@@ -99,17 +99,58 @@ customer's balance.
 | 1. Add car | register a new car (name, brand, price/day) |
 | 2. View fleet (insertion order) | walks the doubly linked list |
 | 3. View fleet (sorted by name) | walks the AVL tree index |
-| 4. Income report | per-car gross / maintenance / net + totals |
-| 5. Block user | lock an account immediately |
-| 6. Unblock user | release a blocked account |
-| 7. Create staff account | add a Staff login |
-| 8. Save data to disk | flush state without leaving |
-| 9. Save & logout | save and return to the main menu |
-| 10. Exit program | save everything and quit |
+| 4. Search fleet by keyword | case-insensitive match on names **and** brands |
+| 5. Fleet statistics | composition, utilization, revenue, top earner |
+| 6. Income report | per-car gross / maintenance / net + totals |
+| 7. Export CSV reports | write `reports/fleet_report.csv` + `reports/bookings_report.csv` |
+| 8. Block user | lock an account immediately |
+| 9. Unblock user | release a blocked account |
+| 10. Create staff account | add a Staff login |
+| 11. Save data to disk | flush state without leaving |
+| 12. Save & logout | save and return to the main menu |
+| 13. Exit program | save everything and quit |
 
 Options 2 and 3 show the **same data through two different structures**
 — insertion order via the doubly linked list, alphabetical via the AVL
 index. The app also saves automatically on exit.
+
+### Search, statistics and reports
+
+**Keyword search (4)** answers "what Peugeots do we have?" without
+remembering exact names — it lowercases both the keyword and every
+car's name/brand and reports substring hits in insertion order.
+`206`, `lx` and `benz` are all valid keywords; an empty keyword is
+rejected by design so a blank Enter never dumps the whole fleet.
+
+**Fleet statistics (5)** prints the snapshot the manager actually
+needs before a business decision:
+
+```text
+  FLEET STATISTICS
+  ------------------------------------------------
+  Fleet size                     8 car(s)
+  Available                            7
+  ...
+  Fleet utilization                12.5%
+  Gross income                 1440.00
+  NET revenue                  1440.00
+  Top earner                   Benz C200
+```
+
+Utilization is the share of the fleet currently **rented or reserved**
+(cars under maintenance count as idle — nothing is earning while
+parked).
+
+**Export CSV reports (7)** writes the same numbers to spreadsheets:
+
+- `reports/fleet_report.csv` — one row per car, name-sorted
+- `reports/bookings_report.csv` — one row per live booking, ordered by
+  start date
+
+Both files are plain CSV with a header line; see
+[DATA_FORMATS.md](DATA_FORMATS.md) for the exact columns. The
+`reports/` folder is created on demand and git-ignored, since it is
+output, not state.
 
 ## Maintenance
 
