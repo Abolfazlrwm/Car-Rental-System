@@ -22,6 +22,8 @@
 
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <sstream>
@@ -770,6 +772,65 @@ static void testRentalManagerStats()
 }
 
 /* ============================================================
+ *  RentalManager: CSV reports
+ * ============================================================ */
+
+static void testRentalManagerReports()
+{
+    const std::string dir = "/tmp/crs_test_reports";
+    std::system(("rm -rf " + dir).c_str());
+
+    RentalManager m;
+    m.seedDemoData();
+    std::string err;
+    CHECK(m.login("ali", "customer123"));
+    CHECK(m.makeReservation("Benz C200", 5, 9, err)); // id 1, starts day 5
+    CHECK(m.makeReservation("Samand LX", 2, 4, err)); // id 2, starts day 2
+    m.logout();
+
+    /* ---- fleet report: header + one sorted row per car ---- */
+    const std::string fleetPath = dir + "/nested/fleet_report.csv";
+    CHECK(m.exportFleetReport(fleetPath)); // creates missing parents itself
+    {
+        std::ifstream in(fleetPath);
+        CHECK(in.good());
+        std::vector<std::string> lines;
+        std::string line;
+        while (std::getline(in, line))
+            if (!line.empty())
+                lines.push_back(line);
+        CHECK_EQ(lines.size(), std::size_t(9)); // header + 8 seeded cars
+        CHECK(lines[0] == "name,brand,pricePerDay,status,income,"
+                          "maintenanceCost,netRevenue");
+        // Name-sorted: Benz C200 is the first row, Tucson the last.
+        CHECK(lines[1].rfind("Benz C200,Mercedes,180,RESERVED,0,0,0", 0) == 0);
+        CHECK(lines[8].rfind("Tucson 2023,Hyundai,120,AVAILABLE,0,0,0", 0) == 0);
+    }
+
+    /* ---- booking report: ordered by start date, not car name ---- */
+    const std::string bookingsPath = dir + "/bookings_report.csv";
+    CHECK(m.exportBookingReport(bookingsPath));
+    {
+        std::ifstream in(bookingsPath);
+        CHECK(in.good());
+        std::vector<std::string> lines;
+        std::string line;
+        while (std::getline(in, line))
+            if (!line.empty())
+                lines.push_back(line);
+        CHECK_EQ(lines.size(), std::size_t(3)); // header + 2 live bookings
+        CHECK(lines[0] == "id,carName,customer,startDate,endDate,durationDays");
+        CHECK(lines[1].rfind("2,Samand LX,ali,2,4,3", 0) == 0);
+        CHECK(lines[2].rfind("1,Benz C200,ali,5,9,5", 0) == 0);
+    }
+
+    /* ---- failure path: a directory is not a writable report file ---- */
+    std::filesystem::create_directories(dir + "/blocker");
+    CHECK(!m.exportFleetReport(dir + "/blocker"));
+    CHECK(!m.exportBookingReport(dir + "/blocker"));
+}
+
+/* ============================================================
  *  main
  * ============================================================ */
 
@@ -789,6 +850,7 @@ int main()
     runSuite("RentalManager: fleet filters", testRentalManagerFleetFilters);
     runSuite("RentalManager: keyword search", testRentalManagerSearch);
     runSuite("RentalManager: statistics", testRentalManagerStats);
+    runSuite("RentalManager: CSV reports", testRentalManagerReports);
     runSuite("RentalManager: CSV persistence", testRentalManagerPersistence);
     runSuite("Role hierarchy", testRoleHierarchy);
 
