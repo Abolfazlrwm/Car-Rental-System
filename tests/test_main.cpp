@@ -35,6 +35,7 @@
 #include "../basic_structures/HashTable.h"
 #include "../basic_structures/PriorityQueue.h"
 #include "../manager_system/Car.h"
+#include "../manager_system/Date.h"
 #include "../manager_system/Reservation.h"
 #include "../manager_system/RentalManager.h"
 #include "../manager_system/SHA256.h"
@@ -353,6 +354,138 @@ static void testReservationRules()
     CHECK(!tieB.hasHigherPriorityThan(&tieA));
 
     CHECK_EQ(early.durationDays(), 3); // inclusive [2..4]
+}
+
+/* ============================================================
+ *  Date — the 2.3.0 calendar layer (ISO <-> serial days)
+ * ============================================================ */
+
+static void testDates()
+{
+    int s = -99;
+
+    // ---- epoch anchors ------------------------------------------------
+    CHECK(Date::parseISO("1970-01-01", s));
+    CHECK_EQ(s, 0);
+    CHECK_EQ(Date::toISO(0), std::string("1970-01-01"));
+    CHECK_EQ(Date::toISO(1), std::string("1970-01-02"));
+    CHECK(Date::parseISO("2026-11-05", s));
+    CHECK_EQ(Date::toISO(s), std::string("2026-11-05"));
+
+    // ---- leap years, century rules ------------------------------------
+    CHECK(Date::parseISO("2024-02-29", s)); // leap year
+    CHECK_EQ(Date::toISO(s), std::string("2024-02-29"));
+    CHECK(Date::parseISO("2000-02-29", s)); // divisible by 400 -> leap
+    CHECK(!Date::parseISO("1900-02-29", s)); // divisible by 100 only
+    CHECK(!Date::parseISO("2100-02-29", s));
+    CHECK(!Date::parseISO("2026-02-30", s)); // Feb has 28 days here
+
+    // ---- strict shape: garbage must never parse ------------------------
+    const char *bad[] = {"2026-13-01", "2026-00-10", "2026-04-31",
+                         "2026/11/05", "2026-1-05",  "2026-11-5",
+                         "26-11-05",   "abcdefghij", "",
+                         "2026-11-05 ", " 2026-11-05", "2026-11-0x",
+                         "9999-99-99", "2026-11",    "2026-11-05extra"};
+    for (const char *t : bad)
+        CHECK(!Date::parseISO(t, s));
+    CHECK(!Date::isISODate("2026-04-31"));
+    CHECK(Date::isISODate("2099-12-31"));
+
+    // ---- round-trip: every day of the first two years ------------------
+    CHECK(Date::parseISO("1972-01-01", s));
+    const int denseEnd = s; // serial 730
+    for (int serial = 0; serial <= denseEnd; ++serial)
+    {
+        int back = -1;
+        CHECK(Date::parseISO(Date::toISO(serial), back) && back == serial);
+    }
+
+    // ---- round-trip sweep to the year 2100 -----------------------------
+    CHECK(Date::parseISO("2100-01-01", s));
+    const int horizon = s;
+    for (int serial = denseEnd; serial <= horizon; serial += 37)
+    {
+        int back = -1;
+        CHECK(Date::parseISO(Date::toISO(serial), back) && back == serial);
+    }
+
+    // ---- ISO strings sort chronologically ------------------------------
+    for (int serial = 0; serial < horizon; serial += 977)
+        CHECK(Date::toISO(serial) < Date::toISO(serial + 1));
+
+    // ---- flexible parsing (legacy day numbers still load) ---------------
+    CHECK(Date::parseFlexible("2030-05-20", s));
+    CHECK(Date::parseFlexible("42", s) && s == 42);
+    CHECK(!Date::parseFlexible("42 cars", s));
+    CHECK(!Date::parseFlexible("", s));
+    CHECK(!Date::parseFlexible("-5", s));
+    CHECK(!Date::parseFlexible("car", s));
+
+    // ---- legacy CSV round-trip: a pre-2.3.0 reservations.csv ------------
+    const std::string dir = "/tmp/crs_test_legacy_dates";
+    std::system(("rm -rf " + dir).c_str());
+    {
+        RentalManager m;
+        m.seedDemoData();
+        std::string err;
+        CHECK(m.registerCustomer("legacy", "pass123"));
+        CHECK(m.login("legacy", "pass123"));
+        CHECK(m.makeReservation("Dena Plus", 4, 8, err));
+        m.logout();
+        CHECK(m.saveData(dir)); // writes ISO dates
+    }
+    {
+        RentalManager m;
+        CHECK(m.loadData(dir));
+        Car *dena = m.searchCar("Dena Plus");
+        CHECK(dena != nullptr);
+        CHECK_EQ(dena->reservationCount(), std::size_t(1));
+        const Reservation *r = dena->currentReservation();
+        CHECK(r != nullptr);
+        const int startSerial = r->startDate();
+        const int endSerial = r->endDate();
+        CHECK(Date::toISO(startSerial) < Date::toISO(endSerial));
+
+        // Rewrite the file exactly like a 2.2.x build stored it:
+        // bare day numbers instead of ISO dates.
+        {
+            std::ofstream legacy(dir + "/reservations.csv", std::ios::trunc);
+            CHECK(legacy.good());
+            legacy << "id,carName,customer,requestTime,startDate,endDate\n";
+            legacy << "1,Dena Plus,legacy,1," << startSerial << ","
+                   << endSerial << "\n";
+        }
+
+        RentalManager m2;
+        CHECK(m2.loadData(dir)); // legacy file must still load
+        Car *dena2 = m2.searchCar("Dena Plus");
+        CHECK(dena2 != nullptr);
+        CHECK_EQ(dena2->reservationCount(), std::size_t(1));
+        const Reservation *r2 = dena2->currentReservation();
+        CHECK(r2 != nullptr);
+        CHECK_EQ(r2->startDate(), startSerial);
+        CHECK_EQ(r2->endDate(), endSerial);
+    }
+
+    // ---- corrupt rows are dropped, not fatal ----------------------------
+    {
+        std::ofstream bad(dir + "/reservations.csv", std::ios::trunc);
+        bad << "id,carName,customer,requestTime,startDate,endDate\n";
+        bad << "2,Dena Plus,legacy,1,not-a-date,2050-01-01\n";   // junk start
+        bad << "3,Dena Plus,legacy,1,2050-01-05,2050-01-02\n";   // start > end
+        bad << "4,Dena Plus,legacy,1,2050-01-05,2050-01-09\n";   // the good row
+        bad.close();
+
+        RentalManager m3;
+        CHECK(m3.loadData(dir));
+        Car *dena3 = m3.searchCar("Dena Plus");
+        CHECK(dena3 != nullptr);
+        CHECK_EQ(dena3->reservationCount(), std::size_t(1)); // only the good row
+        const Reservation *r3 = dena3->currentReservation();
+        CHECK(r3 != nullptr);
+        CHECK_EQ(Date::toISO(r3->startDate()), std::string("2050-01-05"));
+    }
+    std::system(("rm -rf " + dir).c_str());
 }
 
 /* ============================================================
@@ -844,6 +977,7 @@ int main()
     runSuite("AVLTree (self-balancing)", testAVLTree);
     runSuite("HashTable (chaining + rehash)", testHashTable);
     runSuite("Reservation rules", testReservationRules);
+    runSuite("Date utilities (ISO + serial days)", testDates);
     runSuite("RentalManager: accounts & lockout", testRentalManagerAccounts);
     runSuite("RentalManager: reservations & invoices", testRentalManagerReservations);
     runSuite("RentalManager: fleet & maintenance", testRentalManagerFleetAndMaintenance);
