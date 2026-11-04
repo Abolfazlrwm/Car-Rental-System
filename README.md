@@ -3,7 +3,7 @@
 [![CI](https://github.com/Abolfazlrwm/Car-Rental-System/actions/workflows/ci.yml/badge.svg)](https://github.com/Abolfazlrwm/Car-Rental-System/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Abolfazlrwm/Car-Rental-System)](https://github.com/Abolfazlrwm/Car-Rental-System/releases)
 ![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-2%2C236%20checks-3AAFA9)
+![Tests](https://img.shields.io/badge/tests-4%2C338%20checks-3AAFA9)
 ![Memory](https://img.shields.io/badge/AddressSanitizer-leak--free-4C6EF5)
 ![License](https://img.shields.io/badge/license-MIT-64748B)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)
@@ -13,8 +13,8 @@ A complete car-rental workflow (customers, staff, manager) built on
 with rehashing, a binary heap and a doubly linked list. Every container is
 implemented from scratch, unit-tested, and documented; the application on
 top is a layered, leak-free C++17 console system with real password
-hashing, double-booking prevention, late-return penalties and full CSV
-persistence.
+hashing, ISO calendar dates, double-booking prevention, late-return
+penalties and full CSV persistence.
 
 > Originally written as a data-structures course project, then rebuilt
 > into a portfolio-grade repository. Release-by-release history lives in
@@ -63,6 +63,9 @@ tree and asserting the height stays within the theoretical bound.
 
 **Fleet & reservations**
 - Car lifecycle: `AVAILABLE → RESERVED → RENTED → MAINTENANCE`
+- **Real calendar dates** (`YYYY-MM-DD`) across bookings, returns and
+  maintenance logs — strict validation with leap years; pre-2.3.0
+  day-number data files still load
 - Double-booking prevention (date-range overlap rejection)
 - Earliest-pickup-first scheduling (priority queue + FIFO tie-break)
 - Rental renewal with queue discipline (blocked when others wait)
@@ -100,15 +103,15 @@ the manager sees the penalty on the books:
 $ ./scripts/demo.sh
 
 ===== CUSTOMER MENU | ali | balance due: 0.00 =====
-  Choice:   Car name:   Start day (number):   End day   (number):
+  Choice:   Car name:   Start date (YYYY-MM-DD):   End date   (YYYY-MM-DD):
   Reservation confirmed! Pay on delivery.
 
   YOUR RESERVATIONS
-  #1 | Benz C200        | days 5 -> 9 (5 day(s))
+  #1 | Benz C200        | 2026-11-05 -> 2026-11-09 (5 day(s))
 
 ===== STAFF MENU | sara =====
   Choice:   Car name:   Car handed over. Drive safe!
-  Choice:   Car name:   Actual return day:   Return processed and invoiced.
+  Choice:   Car name:   Actual return date (YYYY-MM-DD):   Return processed and invoiced.
 
 ===== MANAGER MENU | admin =====
   ----------------- INCOME REPORT -----------------
@@ -183,20 +186,25 @@ Car-Rental-System/
 │   ├── User.{h,cpp}         # User → Customer / Staff / Manager
 │   ├── Car.{h,cpp}          # status, income ledger, maintenance log
 │   ├── Reservation.{h,cpp}  # booking + priority rule
+│   ├── Date.{h,cpp}         # ISO calendar layer (leap years included)
 │   └── SHA256.{h,cpp}       # FIPS 180-4, dependency-free
 ├── basic_structures/        # hand-written generic containers (header-only)
 │   ├── AVLTree.h            # self-balancing BST (LL/RR/LR/RL rotations)
 │   ├── HashTable.h          # separate chaining + rehashing
 │   ├── PriorityQueue.h      # binary min-heap, auto-growing
 │   └── DoublyLinkedList.h   # O(1) pushes at both ends
-├── tests/test_main.cpp      # 2,236 checks, dependency-free framework
+├── tests/test_main.cpp      # 4,338 checks, dependency-free framework
 ├── scripts/demo.sh          # scripted end-to-end walkthrough
+├── benchmarks/
+│   └── bench_containers.cpp # `make bench` — ours vs std, measured
 ├── docs/
 │   ├── USAGE.md             # every role's menu, step by step
 │   ├── DATA_FORMATS.md      # layout of data/*.csv and reports/*.csv
+│   ├── BENCHMARKS.md        # measured numbers + honest analysis
 │   ├── IMPROVEMENTS.md      # the v1.0 → v2.0 rebuild story
 │   ├── architecture.png     # diagram used above
 │   └── manager_dashboard.png# screenshot used above
+├── docs-site/               # GitHub Pages landing page (auto-deployed)
 ├── CHANGELOG.md             # version-by-version history
 ├── CONTRIBUTING.md / SECURITY.md / CODE_OF_CONDUCT.md
 ├── CMakeLists.txt / Makefile / .clang-format
@@ -217,6 +225,7 @@ The suite needs no external framework and runs in milliseconds:
   [ ok ] AVLTree (self-balancing)
   [ ok ] HashTable (chaining + rehash)
   [ ok ] Reservation rules
+  [ ok ] Date utilities (ISO + serial days)
   [ ok ] RentalManager: accounts & lockout
   [ ok ] RentalManager: reservations & invoices
   [ ok ] RentalManager: fleet & maintenance
@@ -227,7 +236,7 @@ The suite needs no external framework and runs in milliseconds:
   [ ok ] RentalManager: CSV persistence
   [ ok ] Role hierarchy
 
-2236 checks, 0 failure(s)
+4338 checks, 0 failure(s)
 ALL TESTS PASSED
 ```
 
@@ -241,7 +250,7 @@ Memory safety is verified with `g++ -fsanitize=address,undefined`.
 
 ## 🗺 Roadmap
 
-- [ ] Real calendar dates (`std::chrono`) instead of day numbers
+- [x] Real calendar dates — strict `YYYY-MM-DD` across the app (v2.3.0)
 - [ ] Text-based UI using ncurses (windows, colors, arrow-key navigation)
 - [ ] JSON export in addition to CSV
 - [ ] Fine-grained permissions inside the Staff/Manager roles
@@ -252,6 +261,8 @@ Memory safety is verified with `g++ -fsanitize=address,undefined`.
 - [Changelog](CHANGELOG.md) — what every release added, fixed and changed
 - [Usage guide](docs/USAGE.md) — every role's menu, step by step
 - [CSV data formats](docs/DATA_FORMATS.md) — the exact layout of `data/*.csv` and `reports/*.csv`
+- [Benchmarks](docs/BENCHMARKS.md) — the hand-written containers vs `std`, measured
+- [Docs site](https://abolfazlrwm.github.io/Car-Rental-System/) — the landing page rendered
 - [Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md)
 
 ## 🤝 Contributing

@@ -61,8 +61,8 @@ id,carName,customer,requestTime,startDate,endDate
 | `id` | unique reservation id |
 | `carName` | car name, matches `cars.csv` |
 | `customer` | username, matches `users.csv` |
-| `requestTime` | day number on which the booking was made |
-| `startDate` / `endDate` | rental window as day numbers (inclusive) |
+| `requestTime` | booking creation order (monotonic counter, not a date) |
+| `startDate` / `endDate` | rental window as ISO dates, `YYYY-MM-DD` (inclusive). Files written before v2.3.0 used bare day numbers — both load. |
 
 Within a car, the booking queue serves the earliest `startDate` first
 (binary min-heap); ties are broken by `requestTime` (FIFO). Live
@@ -102,14 +102,14 @@ date (reservation id breaks ties):
 
 ```
 id,carName,customer,startDate,endDate,durationDays
-2,Samand LX,ali,2,4,3
+2,Samand LX,ali,2026-11-03,2026-11-05,3
 ```
 
 | Column | Meaning |
 |---|---|
 | `id` | reservation id (equals creation order) |
 | `carName` / `customer` | references into `cars.csv` / `users.csv` |
-| `startDate` / `endDate` | rental window as day numbers (inclusive) |
+| `startDate` / `endDate` | rental window as ISO dates, `YYYY-MM-DD` (inclusive) |
 | `durationDays` | `endDate - startDate + 1` |
 
 Completed (returned) bookings are not listed — the fleet report's

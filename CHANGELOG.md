@@ -4,6 +4,41 @@ All notable changes to the Car Rental System are documented in this file.
 The detailed v1.0 → v2.0 story lives in
 [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md).
 
+## [2.3.0] — 2026-11-05
+
+### Added
+
+- **Real calendar dates** — the whole rental flow now speaks
+  `YYYY-MM-DD`: reservations, returns, maintenance logs and every CSV
+  file. Strict parsing on the proleptic Gregorian calendar with full
+  leap-year handling (`2024-02-29` parses, `1900-02-29` and
+  `2026-02-30` are rejected) via the new zero-dependency
+  `manager_system/Date.{h,cpp}`. The scheduler keeps exact serial-day
+  arithmetic internally, and pre-2.3.0 data files (bare day numbers)
+  still load — documented in [docs/DATA_FORMATS.md](docs/DATA_FORMATS.md)
+- **Container benchmark suite** (`make bench` / `benchmarks/`) — the
+  hand-written AVL tree, hash table, binary heap and linked list race
+  `std::map`, `std::unordered_map`, `std::priority_queue` and
+  `std::list` under the same access patterns the app produces;
+  measured numbers and an honest read of them live in
+  [docs/BENCHMARKS.md](docs/BENCHMARKS.md)
+- **GitHub Pages landing site** — `docs-site/` plus a
+  `docs.yml` deploy workflow;
+  https://abolfazlrwm.github.io/Car-Rental-System/
+- 2,102 new checks: strict/invalid ISO parsing, century leap-year
+  rules, ISO↔serial round-trips (every single day of 1970–1971 plus a
+  sweep to 2100), chronological ordering of ISO strings, and
+  legacy-CSV / corrupt-row loading — suite now at **4,338 checks**,
+  still leak-free under AddressSanitizer + UBSan
+
+### Changed
+
+- `reservations.csv` and the booking report store `startDate` /
+  `endDate` as ISO dates; old day-number files remain loadable
+- Maintenance log dates are validated `YYYY-MM-DD` in the UI
+- `make bench` target and a `bench_containers` CMake target (built,
+  never run by CI)
+
 ## [2.2.0] — 2026-11-04
 
 ### Added

@@ -42,10 +42,15 @@ account until a manager unblocks it.
 Self-registration always creates a **Customer** account. Staff and
 Manager accounts can only be created by a logged-in Manager.
 
-## Dates are day numbers
+## Dates are real calendar dates
 
-The scheduler works on integer day numbers (`start day 5`, `end day 9`
-= a 5-day rental). Real calendar dates are on the roadmap.
+Since v2.3.0 the app speaks **ISO calendar dates** (`YYYY-MM-DD`):
+reservation windows, maintenance logs and the CSV exports are all
+date-based, with strict validation (leap years included — `2024-02-29`
+works, `2026-02-30` is re-asked). Internally the scheduler still uses
+serial day numbers (days since 1970-01-01), so all the arithmetic —
+duration, overlap, late penalties — stays exact. Data files saved by
+older versions (bare day numbers) still load.
 
 ## Customer menu
 
@@ -54,7 +59,7 @@ The scheduler works on integer day numbers (`start day 5`, `end day 9`
 | 1. View fleet | table of all cars: name, brand, price/day, status |
 | 2. Search car by name | O(log n) lookup in the AVL index |
 | 3. My reservations | your bookings and their status |
-| 4. Make a reservation | pick a car + start/end day; overlap checks apply |
+| 4. Make a reservation | pick a car + start/end date; overlap checks apply |
 | 5. Renew a rental | extend your current rental if nobody is waiting |
 | 6. Pay my bill | settle what you owe (rental + late penalties) |
 | 7. Logout | back to the main menu |
@@ -65,8 +70,8 @@ A typical session:
 ===== CUSTOMER MENU | ali | balance due: 0.00 =====
   Choice: 4
   Car name: Benz C200
-  Start day (number): 5
-  End day   (number): 9
+  Start date (YYYY-MM-DD): 2026-11-05
+  End date   (YYYY-MM-DD): 2026-11-09
   Reservation confirmed! Pay on delivery.
 ```
 
@@ -85,10 +90,10 @@ served.
 | 4. Process car return (with penalty) | invoice + late fees, car returns to the fleet |
 | 5. Send car to maintenance | take an idle car out of service |
 | 6. Finish maintenance | put the car back into `AVAILABLE` |
-| 7. Show maintenance history | full log: day, description, cost |
+| 7. Show maintenance history | full log: date, description, cost |
 | 8. Logout | back to the main menu |
 
-The return flow asks for the **actual return day**; every day past the
+The return flow asks for the **actual return date**; every day past the
 agreed end date is charged at **1.5 × the daily rate** and added to the
 customer's balance.
 
