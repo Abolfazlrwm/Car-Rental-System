@@ -34,7 +34,7 @@
 #include "manager_system/Date.h"
 
 /* Program version, reported by --version / --help. */
-static const char *APP_VERSION = "2.2.0";
+static const char *APP_VERSION = "2.3.0";
 
 /* ============================================================
  *  Terminal colors (no-ops when stdout is piped)
