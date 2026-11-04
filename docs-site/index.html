@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Car Rental Management System — C++17</title>
+<meta name="description" content="A dependency-free car rental console system in C++17, built on four hand-written data structures: AVL tree, hash table, priority queue, doubly linked list.">
+<style>
+  :root {
+    --bg: #0b1020;
+    --panel: #121a30;
+    --panel2: #0f1628;
+    --line: #1f2b4a;
+    --text: #dbe4ff;
+    --muted: #8ea0c4;
+    --accent: #4cc9f0;
+    --accent2: #f0a44c;
+    --green: #3ddc97;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background:
+      radial-gradient(1200px 500px at 80% -10%, rgba(76,201,240,.14), transparent 60%),
+      radial-gradient(900px 420px at 10% 110%, rgba(240,164,76,.10), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 1020px; margin: 0 auto; padding: 0 24px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, pre { font-family: "JetBrains Mono", "Fira Code", Consolas, monospace; }
+
+  header { padding: 64px 0 40px; }
+  .logo { font-size: 15px; letter-spacing: .18em; color: var(--muted); text-transform: uppercase; }
+  h1 { font-size: clamp(30px, 5vw, 46px); line-height: 1.15; margin: 12px 0 14px; }
+  h1 .accent { color: var(--accent); }
+  .tagline { color: var(--muted); font-size: 17px; max-width: 720px; }
+  .badges { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .badge {
+    display: inline-block; padding: 4px 12px; border-radius: 999px;
+    font-size: 12.5px; font-weight: 600; border: 1px solid var(--line);
+    background: var(--panel2); color: var(--text);
+  }
+  .badge b { color: var(--accent); font-weight: 700; }
+  .cta { margin-top: 26px; display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn {
+    display: inline-block; padding: 10px 18px; border-radius: 10px;
+    font-weight: 700; font-size: 14.5px; border: 1px solid var(--line);
+  }
+  .btn.primary { background: var(--accent); color: #062033; border-color: transparent; }
+  .btn.ghost { background: transparent; color: var(--text); }
+  .btn:hover { text-decoration: none; filter: brightness(1.1); }
+
+  section { padding: 34px 0; }
+  h2 { font-size: 22px; margin-bottom: 18px; }
+  h2 .k { color: var(--accent2); margin-right: 8px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 18px 20px;
+  }
+  .card h3 { font-size: 16px; margin-bottom: 8px; color: var(--accent); }
+  .card p { color: var(--muted); font-size: 14.5px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px;
+          background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-size: 12.5px; text-transform: uppercase; letter-spacing: .08em; }
+  tr:last-child td { border-bottom: none; }
+  td.mono { font-family: Consolas, monospace; color: var(--accent2); }
+
+  pre {
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 18px; overflow-x: auto; font-size: 13.5px; color: var(--text);
+  }
+  pre .c { color: var(--muted); }
+  pre .g { color: var(--green); }
+
+  .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; text-align: center; }
+  .stat .num { font-size: 26px; font-weight: 800; color: var(--accent); }
+  .stat .lbl { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+
+  footer { border-top: 1px solid var(--line); margin-top: 30px; padding: 26px 0 40px; color: var(--muted); font-size: 14px; }
+  footer .wrap { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="logo">car rental management system</div>
+    <h1>Four hand-written data structures.<br><span class="accent">Zero dependencies.</span> Real engineering.</h1>
+    <p class="tagline">
+      A complete car-rental workflow — customers, staff and a manager — on top of an AVL tree,
+      a rehashing hash table, a binary min-heap and a doubly linked list, all implemented from
+      scratch in C++17. Salted SHA-256 auth, ISO calendar dates, double-booking prevention,
+      late-return penalties and full CSV persistence. Leak-free under AddressSanitizer.
+    </p>
+    <div class="badges">
+      <span class="badge">C++17</span>
+      <span class="badge"><b>4,338</b> checks</span>
+      <span class="badge">ASan leak-free</span>
+      <span class="badge">GCC · Clang · MSVC</span>
+      <span class="badge">MIT</span>
+    </div>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/Abolfazlrwm/Car-Rental-System">View on GitHub</a>
+      <a class="btn ghost" href="https://github.com/Abolfazlrwm/Car-Rental-System/blob/main/README.md">README</a>
+      <a class="btn ghost" href="https://github.com/Abolfazlrwm/Car-Rental-System/blob/main/docs/BENCHMARKS.md">Benchmarks</a>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <div class="stat-row">
+      <div class="stat"><div class="num">4</div><div class="lbl">hand-written containers</div></div>
+      <div class="stat"><div class="num">4,338</div><div class="lbl">unit-test checks</div></div>
+      <div class="stat"><div class="num">0</div><div class="lbl">third-party dependencies</div></div>
+      <div class="stat"><div class="num">22</div><div class="lbl">AVL height at 400k keys (bound ~25)</div></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="k">▸</span>The data structures — and where they earn their keep</h2>
+    <table>
+      <tr><th>Structure</th><th>Used for</th><th>Complexity</th></tr>
+      <tr><td class="mono">AVLTree&lt;K,V&gt;</td><td>car index by name (sorted fleet view)</td><td>O(log n) guaranteed</td></tr>
+      <tr><td class="mono">HashTable&lt;K,V&gt;</td><td>username index, auto-rehash at load 0.75</td><td>O(1) average</td></tr>
+      <tr><td class="mono">PriorityQueue&lt;T&gt;</td><td>per-car booking schedule, earliest pickup first</td><td>O(log n)</td></tr>
+      <tr><td class="mono">DoublyLinkedList&lt;T&gt;</td><td>insertion-order fleet list</td><td>O(1) push</td></tr>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="k">▸</span>Highlights</h2>
+    <div class="grid">
+      <div class="card"><h3>Real calendar dates</h3><p>Bookings, returns and maintenance logs speak strict <code>YYYY-MM-DD</code> — leap years included. Data files from older versions still load.</p></div>
+      <div class="card"><h3>Security done properly</h3><p>Salted SHA-256 password hashing verified against official FIPS 180-4 vectors, auto-lockout after 3 failed logins, role hierarchy.</p></div>
+      <div class="card"><h3>Booking rules that hold</h3><p>Date-range overlap rejection, earliest-pickup-first scheduling with FIFO ties, renewal blocked while others wait.</p></div>
+      <div class="card"><h3>Money with an audit trail</h3><p>Automatic invoicing, 1.5× late-day penalties charged exactly once, customer balances, per-car income ledger.</p></div>
+      <div class="card"><h3>CSV everything</h3><p>Full state round-trip in <code>data/*.csv</code>, plus manager-exported fleet &amp; bookings reports into <code>reports/</code>.</p></div>
+      <div class="card"><h3>Tested like it matters</h3><p>4,338 dependency-free checks — every v1.0 bug is now a regression test — green under AddressSanitizer + UBSan on every push.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="k">▸</span>Build &amp; run in 10 seconds</h2>
+<pre><span class="c"># fastest path (any machine with a C++17 compiler)</span>
+g++ -std=c++17 -O2 mainApp.cpp manager_system/*.cpp -o car_rental
+./car_rental
+
+<span class="c"># or the full workflow</span>
+make            <span class="c"># car_rental + unit_tests</span>
+make test       <span class="c"># 4,338 checks</span>
+make bench      <span class="c"># containers vs std, measured</span>
+./scripts/demo.sh   <span class="c"># scripted end-to-end walkthrough</span></pre>
+    <p style="color:var(--muted); margin-top:12px; font-size:14.5px;">
+      Demo accounts on first run: <code>admin / manager123</code> ·
+      <code>sara / staff123</code> · <code>ali / customer123</code>
+    </p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>Car Rental Management System — released under the <a href="https://github.com/Abolfazlrwm/Car-Rental-System/blob/main/LICENSE">MIT License</a></div>
+    <div><a href="https://github.com/Abolfazlrwm/Car-Rental-System">GitHub</a> · <a href="https://github.com/Abolfazlrwm/Car-Rental-System/blob/main/CHANGELOG.md">Changelog</a> · <a href="https://github.com/Abolfazlrwm/Car-Rental-System/releases">Releases</a></div>
+  </div>
+</footer>
+
+</body>
+</html>
