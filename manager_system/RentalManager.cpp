@@ -1,5 +1,7 @@
 #include "RentalManager.h"
 
+#include "Date.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -328,9 +330,9 @@ bool RentalManager::makeReservation(const std::string &carName, int startDate,
         errorOut = "Car is under maintenance.";
         return false;
     }
-    if (startDate < 1 || startDate > endDate)
+    if (startDate < Date::MIN_SERIAL || startDate > endDate)
     {
-        errorOut = "Invalid date range (need 1 <= start <= end).";
+        errorOut = "Invalid date range (need start >= 1970-01-01 and start <= end).";
         return false;
     }
     if (car->hasOverlap(startDate, endDate)) // double-booking guard
@@ -658,8 +660,8 @@ bool RentalManager::exportBookingReport(const std::string &path) const
     file << "id,carName,customer,startDate,endDate,durationDays\n";
     for (const Reservation *r : bookings)
         file << r->id() << ',' << r->car()->name() << ','
-             << r->customer()->username() << ',' << r->startDate() << ','
-             << r->endDate() << ',' << r->durationDays() << '\n';
+             << r->customer()->username() << ',' << Date::toISO(r->startDate())
+             << ',' << Date::toISO(r->endDate()) << ',' << r->durationDays() << '\n';
     return true;
 }
 
@@ -731,8 +733,8 @@ bool RentalManager::saveData(const std::string &dataDir) const
                                                               file << r->id() << ',' << name << ','
                                                                    << r->customer()->username() << ','
                                                                    << r->requestTime() << ','
-                                                                   << r->startDate() << ','
-                                                                   << r->endDate() << '\n';
+                                                                   << Date::toISO(r->startDate()) << ','
+                                                                   << Date::toISO(r->endDate()) << '\n';
                                                           });
                           });
     }
@@ -845,9 +847,16 @@ bool RentalManager::loadData(const std::string &dataDir)
             int id = std::stoi(idStr);
             reservationCounter_ = std::max(reservationCounter_, id);
 
+            // startDate/endDate: ISO dates since 2.3.0, day numbers
+            // before that — accept both so old data files keep loading.
+            int start = 0, end = 0;
+            if (!Date::parseFlexible(startStr, start) ||
+                !Date::parseFlexible(endStr, end) || start > end)
+                continue; // corrupt row -> drop it, don't crash
+
             Reservation *r = new Reservation(static_cast<Customer *>(*userSlot),
                                              *carSlot, id, std::stoi(reqStr),
-                                             std::stoi(startStr), std::stoi(endStr));
+                                             start, end);
             (*carSlot)->reinsertReservation(r);
         }
     }

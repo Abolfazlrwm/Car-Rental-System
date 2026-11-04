@@ -412,7 +412,7 @@ static void testRentalManagerReservations()
     std::string err;
     CHECK(!m.makeReservation("No Such Car", 1, 5, err)); // unknown car
     CHECK(!m.makeReservation("Benz C200", 9, 5, err));   // start > end
-    CHECK(!m.makeReservation("Benz C200", 0, 5, err));   // day < 1
+    CHECK(!m.makeReservation("Benz C200", -1, 5, err)); // before 1970-01-01
 
     CHECK(m.makeReservation("Benz C200", 5, 9, err));
 
@@ -820,8 +820,8 @@ static void testRentalManagerReports()
                 lines.push_back(line);
         CHECK_EQ(lines.size(), std::size_t(3)); // header + 2 live bookings
         CHECK(lines[0] == "id,carName,customer,startDate,endDate,durationDays");
-        CHECK(lines[1].rfind("2,Samand LX,ali,2,4,3", 0) == 0);
-        CHECK(lines[2].rfind("1,Benz C200,ali,5,9,5", 0) == 0);
+        CHECK(lines[1].rfind("2,Samand LX,ali,1970-01-03,1970-01-05,3", 0) == 0);
+        CHECK(lines[2].rfind("1,Benz C200,ali,1970-01-06,1970-01-10,5", 0) == 0);
     }
 
     /* ---- failure path: a directory is not a writable report file ---- */

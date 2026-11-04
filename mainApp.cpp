@@ -31,6 +31,7 @@
 #endif
 
 #include "manager_system/RentalManager.h"
+#include "manager_system/Date.h"
 
 /* Program version, reported by --version / --help. */
 static const char *APP_VERSION = "2.2.0";
@@ -129,6 +130,22 @@ static bool readDouble(const std::string &prompt, double &out)
     return false;
 }
 
+/// Read a calendar date (YYYY-MM-DD), re-asking until it parses.
+/// Serial day numbers never reach the user — the calendar layer
+/// (Date, proleptic Gregorian) sits between the prompt and the
+/// scheduler. Returns false on EOF.
+static bool readDate(const std::string &prompt, int &serialOut)
+{
+    std::string line;
+    while (readToken(prompt, line))
+    {
+        if (Date::parseISO(line, serialOut) && serialOut >= Date::MIN_SERIAL)
+            return true;
+        std::cout << red("  Invalid date - use YYYY-MM-DD (e.g. 2026-11-09).\n");
+    }
+    return false;
+}
+
 static int readMenuChoice(const std::string &prompt, int minChoice, int maxChoice)
 {
     int choice;
@@ -219,12 +236,13 @@ static void printReservations(const std::vector<Reservation *> &list)
         return;
     }
     std::cout << bold("\n  YOUR RESERVATIONS\n");
-    std::cout << "  " << std::string(58, '-') << "\n";
+    std::cout << "  " << std::string(66, '-') << "\n";
     for (const Reservation *r : list)
     {
         std::cout << "  #" << r->id()
                   << " | " << std::left << std::setw(16) << r->car()->name()
-                  << " | days " << r->startDate() << " -> " << r->endDate()
+                  << " | " << Date::toISO(r->startDate()) << " -> "
+                  << Date::toISO(r->endDate())
                   << " (" << r->durationDays() << " day(s))\n";
     }
 }
@@ -324,9 +342,9 @@ static void customerMenu(RentalManager &system, bool &running)
         int start, end;
         if (!readToken("  Car name: ", name))
             return;
-        if (!readInt("  Start day (number): ", start))
+        if (!readDate("  Start date (YYYY-MM-DD): ", start))
             return;
-        if (!readInt("  End day   (number): ", end))
+        if (!readDate("  End date   (YYYY-MM-DD): ", end))
             return;
         if (system.makeReservation(name, start, end, error))
             std::cout << green("  Reservation confirmed! Pay on delivery.\n");
@@ -426,7 +444,7 @@ static void staffMenu(RentalManager &system, bool &running)
         int day;
         if (!readToken("  Car name: ", name))
             return;
-        if (!readInt("  Actual return day: ", day))
+        if (!readDate("  Actual return date (YYYY-MM-DD): ", day))
             return;
         if (system.returnCar(name, day, error))
             std::cout << green("  Return processed and invoiced.\n");
@@ -436,17 +454,18 @@ static void staffMenu(RentalManager &system, bool &running)
     }
     case 5:
     {
-        std::string name, date, desc, error;
+        std::string name, desc, error;
+        int maintDay;
         double cost;
         if (!readToken("  Car name: ", name))
             return;
-        if (!readToken("  Date (e.g. 1404-08-12): ", date))
+        if (!readDate("  Date (YYYY-MM-DD): ", maintDay))
             return;
         if (!readLine("  Description: ", desc) || desc.empty())
             desc = "general service";
         if (!readDouble("  Cost: ", cost))
             return;
-        if (system.recordMaintenance(name, date, desc, cost, error))
+        if (system.recordMaintenance(name, Date::toISO(maintDay), desc, cost, error))
             std::cout << yellow("  Car moved to MAINTENANCE. Log saved.\n");
         else
             std::cout << red("  Failed: " + error + "\n");

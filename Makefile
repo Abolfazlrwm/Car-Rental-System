@@ -4,6 +4,7 @@
 #    make          build the app + tests
 #    make test     run the unit tests
 #    make run      build & start the app
+#    make bench    build & run the container benchmarks
 #    make asan     build & run the tests under AddressSanitizer + UBSan
 #    make format   reformat all sources with clang-format
 #    make clean    remove build artifacts
@@ -13,10 +14,10 @@ CXX      ?= g++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -O2
 SRC       = mainApp.cpp manager_system/SHA256.cpp manager_system/User.cpp \
             manager_system/Car.cpp manager_system/Reservation.cpp \
-            manager_system/RentalManager.cpp
+            manager_system/Date.cpp manager_system/RentalManager.cpp
 TEST_SRC  = tests/test_main.cpp manager_system/SHA256.cpp manager_system/User.cpp \
             manager_system/Car.cpp manager_system/Reservation.cpp \
-            manager_system/RentalManager.cpp
+            manager_system/Date.cpp manager_system/RentalManager.cpp
 
 all: car_rental unit_tests
 
@@ -32,7 +33,7 @@ test: unit_tests
 run: car_rental
 	./car_rental
 
-# Full suite under AddressSanitizer + UBSan — same job CI runs on every push.
+# Full suite under AddressSanitizer + UBSan -- same job CI runs on every push.
 asan:
 	$(CXX) -std=c++17 -g -Wall -Wextra -fsanitize=address,undefined \
 	    $(TEST_SRC) -o unit_tests_asan
