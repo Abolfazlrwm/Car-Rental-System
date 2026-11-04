@@ -500,21 +500,51 @@ static void staffMenu(RentalManager &system, bool &running)
  *  Screens: manager
  * ============================================================ */
 
+/// Pretty-print the aggregate snapshot computed by the manager.
+static void printFleetStats(const FleetStats &s)
+{
+    std::cout << bold("\n  FLEET STATISTICS\n");
+    std::cout << "  " << std::string(50, '-') << "\n";
+
+    auto row = [](const std::string &label, const std::string &value)
+    {
+        std::cout << "  " << std::left << std::setw(24) << label
+                  << std::right << std::setw(26) << value << "\n";
+    };
+
+    row("Fleet size", std::to_string(s.totalCars) + " car(s)");
+    row("Available", std::to_string(s.availableCars));
+    row("Reserved", std::to_string(s.reservedCars));
+    row("Rented", std::to_string(s.rentedCars));
+    row("Under maintenance", std::to_string(s.maintenanceCars));
+    row("Active bookings", std::to_string(s.activeBookings));
+    std::ostringstream util;
+    util << std::fixed << std::setprecision(1) << s.utilization << "%";
+    row("Fleet utilization", util.str());
+    row("Gross income", money(s.grossIncome));
+    row("Maintenance spend", money(s.maintenanceSpend));
+    row("NET revenue", money(s.netRevenue));
+    row("Top earner", s.topEarner.empty() ? "-" : s.topEarner);
+}
+
 static void managerMenu(RentalManager &system, bool &running)
 {
     std::cout << bold(cyan("\n===== MANAGER MENU | " + system.currentUsername() + " =====\n"));
     std::cout << "  1. Add car\n"
                  "  2. View fleet (insertion order)\n"
                  "  3. View fleet (sorted by name - AVL index)\n"
-                 "  4. Income report\n"
-                 "  5. Block user\n"
-                 "  6. Unblock user\n"
-                 "  7. Create staff account\n"
-                 "  8. Save data to disk\n"
-                 "  9. Save & logout\n"
-                 " 10. Exit program\n";
+                 "  4. Search fleet by keyword\n"
+                 "  5. Fleet statistics\n"
+                 "  6. Income report\n"
+                 "  7. Export CSV reports\n"
+                 "  8. Block user\n"
+                 "  9. Unblock user\n"
+                 " 10. Create staff account\n"
+                 " 11. Save data to disk\n"
+                 " 12. Save & logout\n"
+                 " 13. Exit program\n";
 
-    switch (readMenuChoice("  Choice: ", 1, 10))
+    switch (readMenuChoice("  Choice: ", 1, 13))
     {
     case 1:
     {
@@ -539,9 +569,43 @@ static void managerMenu(RentalManager &system, bool &running)
         printFleet(system, true);
         break;
     case 4:
+    {
+        std::string keyword;
+        if (!readToken("  Keyword (name or brand): ", keyword))
+            return;
+        std::vector<Car *> matches = system.searchFleet(keyword);
+        if (matches.empty())
+        {
+            std::cout << red("  Nothing matches \"" + keyword + "\".\n");
+            break;
+        }
+        std::cout << bold("\n  MATCHES (" + std::to_string(matches.size())
+                          + ")\n");
+        printCarTableHeader();
+        for (const Car *car : matches)
+            printCarRow(car);
+        break;
+    }
+    case 5:
+        printFleetStats(system.computeStats());
+        break;
+    case 6:
         system.printIncomeReport();
         break;
-    case 5:
+    case 7:
+    {
+        const bool fleetOk = system.exportFleetReport("reports/fleet_report.csv");
+        const bool bookingsOk =
+            system.exportBookingReport("reports/bookings_report.csv");
+        if (fleetOk && bookingsOk)
+            std::cout << green("  Reports written:\n"
+                               "    reports/fleet_report.csv\n"
+                               "    reports/bookings_report.csv\n");
+        else
+            std::cout << red("  Could not write the report files.\n");
+        break;
+    }
+    case 8:
     {
         std::string user;
         if (!readToken("  Username to block: ", user))
@@ -552,7 +616,7 @@ static void managerMenu(RentalManager &system, bool &running)
             std::cout << red("  No such user.\n");
         break;
     }
-    case 6:
+    case 9:
     {
         std::string user;
         if (!readToken("  Username to unblock: ", user))
@@ -563,7 +627,7 @@ static void managerMenu(RentalManager &system, bool &running)
             std::cout << red("  No such user.\n");
         break;
     }
-    case 7:
+    case 10:
     {
         std::string user, pass, role;
         if (!readToken("  New username: ", user))
@@ -579,16 +643,16 @@ static void managerMenu(RentalManager &system, bool &running)
                              "role is Staff or Manager.\n");
         break;
     }
-    case 8:
+    case 11:
         std::cout << (system.saveData() ? green("  Data saved to ./data\n")
                                         : red("  Could not write data files.\n"));
         break;
-    case 9:
+    case 12:
         system.saveData();
         system.logout();
         std::cout << yellow("  Data saved. Logged out.\n");
         break;
-    case 10:
+    case 13:
         system.saveData();
         std::cout << yellow("  Data saved. Goodbye!\n");
         running = false;
