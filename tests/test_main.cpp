@@ -33,6 +33,7 @@
 #include <utility>
 #include <vector>
 
+#include "../manager_system/Analytics.h"
 #include "../basic_structures/AVLTree.h"
 #include "../basic_structures/DoublyLinkedList.h"
 #include "../basic_structures/HashTable.h"
@@ -1412,6 +1413,116 @@ static void testJsonExport()
         CHECK(secondCust != nullptr && secondCust->text == "ali");
     }
 }
+/* ============================================================
+ *  Fleet analytics dashboard
+ * ============================================================
+ *  The maths is pure (today's date is a parameter), so the
+ *  checks are fully deterministic — no clock dependency.
+ * ============================================================ */
+
+static void testAnalytics()
+{
+    /* ---- pure rendering helpers: exact, deterministic ---- */
+    CHECK(analyticsBar(0, 0) == "");
+    CHECK(analyticsBar(0, 5) == "");
+    CHECK(analyticsBar(5, 0) == ""); // degenerate max
+    CHECK(analyticsBar(3, 3, 12).size() == 12 * 3);  // full bar: 12 blocks
+    CHECK(analyticsBar(1, 3, 12).size() == 4 * 3);   // 1/3 rounds to 4
+    CHECK(analyticsBar(2, 3, 12).size() == 8 * 3);   // 2/3 rounds to 8
+    CHECK(analyticsBar(1, 1000, 24).size() == 3);    // tiny value stays visible
+    CHECK(analyticsBar(2, 5, 10) == analyticsBar(2, 5, 10)); // deterministic
+    CHECK(analyticsPad("ab", 5) == "   ab");
+    CHECK(analyticsPad("abcde", 5) == "abcde");
+    CHECK(analyticsPad("abcdef", 5) == "abcdef"); // never truncates
+
+    /* ---- empty system: fixed shapes, zeros, no crash ---- */
+    {
+        RentalManager empty;
+        const AnalyticsReport r = buildAnalytics(empty, 20000);
+        CHECK(r.fleetByStatus.size() == 4);
+        CHECK(r.priceBuckets.size() == 4);
+        int sumStatus = 0;
+        for (const NamedCount &s : r.fleetByStatus)
+            sumStatus += s.count;
+        CHECK(sumStatus == 0);
+        CHECK(r.bookingsPerCar.empty());
+        CHECK(r.upcoming.empty());
+        CHECK(r.overdueReturns == 0);
+        CHECK(r.totalActiveBookings == 0);
+    }
+
+    /* ---- seeded system, synthetic "today" = 2026-11-05 ---- */
+    int today = 0;
+    CHECK(Date::parseISO("2026-11-05", today));
+    {
+        RentalManager m;
+        CHECK(m.addCar(new Car("Cheap", "X", 30.0)));    // 0-50
+        CHECK(m.addCar(new Car("Mid", "Y", 75.0)));      // 51-100
+        CHECK(m.addCar(new Car("Idle", "V", 60.0)));     // 51-100, no booking
+        CHECK(m.addCar(new Car("Premium", "Z", 150.0))); // 101-200
+        CHECK(m.addCar(new Car("Lux", "W", 350.0)));     // 200+
+
+        CHECK(m.registerCustomer("ana", "pass1234"));
+        CHECK(m.login("ana", "pass1234"));
+        std::string err;
+        int s1 = 0, e1 = 0, s2 = 0, e2 = 0, s3 = 0, e3 = 0;
+        CHECK(Date::parseISO("2026-11-05", s1));
+        CHECK(Date::parseISO("2026-11-08", e1));
+        CHECK(Date::parseISO("2026-11-10", s2));
+        CHECK(Date::parseISO("2026-11-12", e2));
+        CHECK(Date::parseISO("2026-11-01", s3));
+        CHECK(Date::parseISO("2026-11-02", e3));
+        CHECK(m.makeReservation("Cheap", s1, e1, err));   // picks up today
+        CHECK(m.makeReservation("Mid", s2, e2, err));     // upcoming
+        CHECK(m.makeReservation("Premium", s2, e2, err)); // tie on start
+        CHECK(m.makeReservation("Lux", s3, e3, err));     // already overdue
+        m.logout();
+
+        const AnalyticsReport r = buildAnalytics(m, today);
+
+        // Fleet composition: every booked car is Reserved, Idle is not.
+        CHECK(r.fleetByStatus.size() == 4);
+        CHECK(r.fleetByStatus[0].label == "Available");
+        CHECK(r.fleetByStatus[0].count == 1);
+        CHECK(r.fleetByStatus[1].count == 4);
+        CHECK(r.fleetByStatus[2].count == 0);
+        CHECK(r.fleetByStatus[3].count == 0);
+
+        // Price buckets landed exactly where they should.
+        CHECK(r.priceBuckets[0].count == 1); // Cheap 30
+        CHECK(r.priceBuckets[1].count == 2); // Mid 75, Idle 60
+        CHECK(r.priceBuckets[2].count == 1); // Premium 150
+        CHECK(r.priceBuckets[3].count == 1); // Lux 350
+
+        // Bookings per car: all tied at 1 -> alphabetical, only
+        // cars WITH bookings are listed.
+        CHECK(r.bookingsPerCar.size() == 4);
+        CHECK(r.bookingsPerCar.front().label == "Cheap");
+        CHECK(r.bookingsPerCar.back().label == "Premium");
+
+        // Upcoming pickups: from today, earliest first, id breaks ties.
+        CHECK(r.upcoming.size() == 3);
+        CHECK(r.upcoming[0].carName == "Cheap");
+        CHECK(r.upcoming[0].daysAway == 0);
+        CHECK(r.upcoming[0].startDate == "2026-11-05");
+        CHECK(r.upcoming[0].customer == "ana");
+        CHECK(r.upcoming[1].carName == "Mid");
+        CHECK(r.upcoming[1].daysAway == 5);
+        CHECK(r.upcoming[2].carName == "Premium");
+
+        // The overdue Lux booking (ended 2026-11-02).
+        CHECK(r.overdueReturns == 1);
+        CHECK(r.totalActiveBookings == 4);
+
+        // A later "today" moves every booking into the overdue bin.
+        int later = 0;
+        CHECK(Date::parseISO("2026-11-20", later));
+        const AnalyticsReport future = buildAnalytics(m, later);
+        CHECK(future.upcoming.empty());
+        CHECK(future.overdueReturns == 4);
+        CHECK(future.totalActiveBookings == 4);
+    }
+}
 
 
 int main()
@@ -1434,6 +1545,7 @@ int main()
     runSuite("RentalManager: CSV reports", testRentalManagerReports);
     runSuite("JSON escaping", testJsonEscaping);
     runSuite("JSON report export", testJsonExport);
+    runSuite("Fleet analytics dashboard", testAnalytics);
     runSuite("RentalManager: CSV persistence", testRentalManagerPersistence);
     runSuite("Role hierarchy", testRoleHierarchy);
 
