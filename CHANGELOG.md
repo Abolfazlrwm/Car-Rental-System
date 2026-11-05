@@ -4,6 +4,42 @@ All notable changes to the Car Rental System are documented in this file.
 The detailed v1.0 → v2.0 story lives in
 [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md).
 
+## [2.4.0] — 2026-11-05
+
+### Added
+
+- **JSON report export** — the export option now also writes
+  `reports/report.json`, one self-contained file holding the stats
+  snapshot, the name-sorted fleet (maintenance logs included) and
+  every live booking ordered by pickup date, dates as ISO strings.
+  Hand-rolled RFC 8259 escaping (quotes, backslashes, control bytes
+  as `\u00XX`, multi-byte UTF-8 passed through) — and the suite
+  validates the produced file with its own strict recursive-descent
+  JSON parser, so the output is proven parseable, not just eyeballed
+- **Fleet analytics dashboard** (manager menu → 6) — live ASCII bar
+  charts: fleet composition by status, the fleet split over
+  daily-rate buckets, bookings per car, the next five pickups with
+  "in N days" countdowns, and a warning line listing bookings past
+  their end date. The maths lives in the new
+  `manager_system/Analytics` module — pure (today's date is a
+  parameter), deterministic and fully unit-tested; the UI only draws
+- `Date::todaySerial()` — the calendar layer can now read the system
+  clock, powering the report's `generatedAt` stamp and the
+  dashboard's countdowns
+- 119 new checks: JSON escaping edge cases (quotes, backslashes,
+  control bytes, DEL and UTF-8 pass-through), full-file parse
+  round-trips, hostile car names (`P\206 "GT"`, a raw newline —
+  neither of which CSV could ever carry), exact bar-rendering maths,
+  and deterministic analytics against a synthetic clock — suite now
+  at **4,457 checks**, still leak-free under AddressSanitizer + UBSan
+
+### Changed
+
+- Export option renamed to "Export CSV & JSON reports"; the CSV pair
+  is byte-identical to 2.3.0's
+- Manager menu renumbered (new option 6); README, USAGE and the
+  landing page updated to match
+
 ## [2.3.0] — 2026-11-05
 
 ### Added

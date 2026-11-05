@@ -106,14 +106,15 @@ customer's balance.
 | 3. View fleet (sorted by name) | walks the AVL tree index |
 | 4. Search fleet by keyword | case-insensitive match on names **and** brands |
 | 5. Fleet statistics | composition, utilization, revenue, top earner |
-| 6. Income report | per-car gross / maintenance / net + totals |
-| 7. Export CSV reports | write `reports/fleet_report.csv` + `reports/bookings_report.csv` |
-| 8. Block user | lock an account immediately |
-| 9. Unblock user | release a blocked account |
-| 10. Create staff account | add a Staff login |
-| 11. Save data to disk | flush state without leaving |
-| 12. Save & logout | save and return to the main menu |
-| 13. Exit program | save everything and quit |
+| 6. Fleet analytics dashboard | live bar charts: composition, rate buckets, bookings per car, next pickups, overdue returns |
+| 7. Income report | per-car gross / maintenance / net + totals |
+| 8. Export CSV & JSON reports | write `reports/fleet_report.csv`, `reports/bookings_report.csv` + `reports/report.json` |
+| 9. Block user | lock an account immediately |
+| 10. Unblock user | release a blocked account |
+| 11. Create staff account | add a Staff login |
+| 12. Save data to disk | flush state without leaving |
+| 13. Save & logout | save and return to the main menu |
+| 14. Exit program | save everything and quit |
 
 Options 2 and 3 show the **same data through two different structures**
 — insertion order via the doubly linked list, alphabetical via the AVL
@@ -146,16 +147,31 @@ Utilization is the share of the fleet currently **rented or reserved**
 (cars under maintenance count as idle — nothing is earning while
 parked).
 
-**Export CSV reports (7)** writes the same numbers to spreadsheets:
+**Export CSV & JSON reports (8)** writes the same numbers to
+spreadsheets — and one JSON file:
 
 - `reports/fleet_report.csv` — one row per car, name-sorted
 - `reports/bookings_report.csv` — one row per live booking, ordered by
   start date
+- `reports/report.json` — the whole state as one JSON object
+  (`stats` + `fleet` + `bookings`), dates as ISO strings, all strings
+  escaped per RFC 8259 — safe to feed straight into any script,
+  spreadsheet or dashboard
 
-Both files are plain CSV with a header line; see
-[DATA_FORMATS.md](DATA_FORMATS.md) for the exact columns. The
+Both CSV files are plain CSV with a header line; the JSON layout is
+sketched at the end of [DATA_FORMATS.md](DATA_FORMATS.md). The
 `reports/` folder is created on demand and git-ignored, since it is
 output, not state.
+
+### Fleet analytics dashboard
+
+**Fleet analytics dashboard (6)** renders the live state as ASCII bar
+charts: fleet composition by status, the fleet split over daily-rate
+buckets, bookings per car, the next five pickups with "in N days"
+countdowns, and a warning line when bookings are past their end date.
+The numbers are computed in the pure `Analytics` module — the same
+figures the statistics screen and the JSON report carry, so all three
+views can never drift apart.
 
 ## Maintenance
 

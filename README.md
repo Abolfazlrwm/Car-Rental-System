@@ -3,7 +3,7 @@
 [![CI](https://github.com/Abolfazlrwm/Car-Rental-System/actions/workflows/ci.yml/badge.svg)](https://github.com/Abolfazlrwm/Car-Rental-System/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Abolfazlrwm/Car-Rental-System)](https://github.com/Abolfazlrwm/Car-Rental-System/releases)
 ![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-4%2C338%20checks-3AAFA9)
+![Tests](https://img.shields.io/badge/tests-4%2C457%20checks-3AAFA9)
 ![Memory](https://img.shields.io/badge/AddressSanitizer-leak--free-4C6EF5)
 ![License](https://img.shields.io/badge/license-MIT-64748B)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)
@@ -52,7 +52,7 @@ basic_structures/ (Templates) AVLTree<K,V> · HashTable<K,V> ·
 | `DoublyLinkedList<T>` | insertion-order fleet list | push front/back, remove, traversal | O(1) push |
 
 All four are **header-only templates** with injectable comparators and an
-explicit ownership model (`ownsValues`), covered by 2,200+ assertions —
+explicit ownership model (`ownsValues`), covered by 4,400+ assertions —
 including the worst-case test: inserting 500 ascending keys into the AVL
 tree and asserting the height stays within the theoretical bound.
 
@@ -85,6 +85,11 @@ tree and asserting the height stays within the theoretical bound.
   revenue and the top-earning car in one screen
 - **One-click CSV reports**: name-sorted fleet sheet + live bookings
   by start date, written to `reports/*.csv` for spreadsheets
+- **One-file JSON export**: `reports/report.json` (stats + fleet +
+  bookings) with strict RFC 8259 escaping, validated by the suite's
+  own JSON parser
+- **Fleet analytics dashboard**: ASCII bar charts — composition, rate
+  buckets, bookings per car, the next pickups and overdue returns
 
 **Maintenance**
 - Send to / return from maintenance, blocked while rented
@@ -188,6 +193,8 @@ Car-Rental-System/
 ├── mainApp.cpp              # console UI: menus, input guards, colors
 ├── manager_system/          # business layer
 │   ├── RentalManager.{h,cpp}# facade: rules, invoicing, persistence
+│   ├── Analytics.{h,cpp}    # dashboard maths (pure, unit-tested)
+│   ├── JsonExport.{h,cpp}   # RFC 8259 report writer + escaper
 │   ├── User.{h,cpp}         # User → Customer / Staff / Manager
 │   ├── Car.{h,cpp}          # status, income ledger, maintenance log
 │   ├── Reservation.{h,cpp}  # booking + priority rule
@@ -198,7 +205,7 @@ Car-Rental-System/
 │   ├── HashTable.h          # separate chaining + rehashing
 │   ├── PriorityQueue.h      # binary min-heap, auto-growing
 │   └── DoublyLinkedList.h   # O(1) pushes at both ends
-├── tests/test_main.cpp      # 4,338 checks, dependency-free framework
+├── tests/test_main.cpp      # 4,457 checks, dependency-free framework
 ├── scripts/demo.sh          # scripted end-to-end walkthrough
 ├── benchmarks/
 │   └── bench_containers.cpp # `make bench` — ours vs std, measured
@@ -239,10 +246,13 @@ The suite needs no external framework and runs in milliseconds:
   [ ok ] RentalManager: keyword search
   [ ok ] RentalManager: statistics
   [ ok ] RentalManager: CSV reports
+  [ ok ] JSON escaping
+  [ ok ] JSON report export
+  [ ok ] Fleet analytics dashboard
   [ ok ] RentalManager: CSV persistence
   [ ok ] Role hierarchy
 
-4338 checks, 0 failure(s)
+4457 checks, 0 failure(s)
 ALL TESTS PASSED
 ```
 
@@ -257,8 +267,11 @@ Memory safety is verified with `g++ -fsanitize=address,undefined`.
 ## 🗺 Roadmap
 
 - [x] Real calendar dates — strict `YYYY-MM-DD` across the app (v2.3.0)
+- [x] JSON export in addition to CSV — one `reports/report.json`
+  holding stats, fleet and bookings (v2.4.0)
+- [x] Fleet analytics dashboard — live ASCII bars in the manager menu
+  (v2.4.0)
 - [ ] Text-based UI using ncurses (windows, colors, arrow-key navigation)
-- [ ] JSON export in addition to CSV
 - [ ] Fine-grained permissions inside the Staff/Manager roles
 - [ ] Docker devcontainer for one-click contributor setup
 
