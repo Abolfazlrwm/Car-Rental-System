@@ -115,6 +115,35 @@ id,carName,customer,startDate,endDate,durationDays
 Completed (returned) bookings are not listed — the fleet report's
 `income` column is where their revenue lives.
 
+## reports/report.json (JSON)
+
+Written by manager option **8** next to the two CSV sheets — the same
+state as one JSON object:
+
+```json
+{
+  "report": "car-rental-system",
+  "generatedAt": "2026-11-05",
+  "stats":    { "totalCars": 8, "grossIncome": 0, "...": "..." },
+  "fleet":    [ { "name": "Benz C200", "brand": "Mercedes",
+                  "pricePerDay": 180, "status": "AVAILABLE",
+                  "income": 0, "maintenanceCost": 0, "netRevenue": 0,
+                  "maintenanceLog": [] } ],
+  "bookings": [ { "id": 1, "carName": "Benz C200", "customer": "ali",
+                  "startDate": "2026-11-10", "endDate": "2026-11-12",
+                  "durationDays": 3 } ]
+}
+```
+
+- `stats` mirrors the manager's statistics screen one-to-one.
+- `fleet` is name-sorted (same order as `fleet_report.csv`);
+  `maintenanceLog` carries `{date, description, cost}` records.
+- `bookings` is ordered by pickup date (id breaks ties), same as
+  `bookings_report.csv`.
+- Every string is escaped per RFC 8259 — the unit suite parses the
+  exported file with its own strict JSON parser, so the format is a
+  tested contract, not a best effort.
+
 ## Notes
 
 - Files are rewritten in full on every save; do not edit them while the
