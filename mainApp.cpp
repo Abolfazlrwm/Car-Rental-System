@@ -30,8 +30,10 @@
 #define IS_TTY isatty(STDOUT_FILENO)
 #endif
 
+#include "manager_system/Analytics.h"
 #include "manager_system/RentalManager.h"
 #include "manager_system/Date.h"
+#include "manager_system/JsonExport.h"
 
 /* Program version, reported by --version / --help. */
 static const char *APP_VERSION = "2.3.0";
@@ -546,6 +548,82 @@ static void printFleetStats(const FleetStats &s)
     row("Top earner", s.topEarner.empty() ? "-" : s.topEarner);
 }
 
+/* ============================================================
+ *  Fleet analytics dashboard (manager option 6)
+ * ============================================================
+ *  Renders the AnalyticsReport as labelled ASCII bar charts.
+ *  All the math lives in the Analytics module — this function
+ *  only draws, and it never mutates state.
+ * ============================================================ */
+static void renderDashboard(const RentalManager &system)
+{
+    const int today = Date::todaySerial();
+    const AnalyticsReport report = buildAnalytics(system, today);
+
+    std::cout << bold(cyan("\n===== FLEET ANALYTICS | " + Date::toISO(today)
+                           + " =====\n"));
+
+    const auto drawBars = [](const std::string &title,
+                             const std::vector<NamedCount> &slices,
+                             std::size_t labelWidth)
+    {
+        std::cout << "\n  " << bold(title) << "\n";
+        int maxCount = 0;
+        for (const NamedCount &slice : slices)
+            maxCount = std::max(maxCount, slice.count);
+        for (const NamedCount &slice : slices)
+            std::cout << "   " << analyticsPad(slice.label, labelWidth) << "  "
+                      << analyticsBar(slice.count, maxCount) << " "
+                      << slice.count << "\n";
+    };
+
+    drawBars("Fleet composition", report.fleetByStatus, 13);
+    drawBars("Fleet by daily-rate bucket", report.priceBuckets, 8);
+
+    std::cout << "\n  " << bold("Active bookings per car") << "\n";
+    if (report.bookingsPerCar.empty())
+    {
+        std::cout << "   (no live bookings)\n";
+    }
+    else
+    {
+        const int maxBookings = report.bookingsPerCar.front().count;
+        for (const NamedCount &row : report.bookingsPerCar)
+            std::cout << "   " << analyticsPad(row.label, 16) << "  "
+                      << analyticsBar(row.count, maxBookings, 16) << " "
+                      << row.count << "\n";
+    }
+
+    std::cout << "\n  " << bold("Upcoming pickups") << "\n";
+    if (report.upcoming.empty())
+    {
+        std::cout << "   (nothing scheduled)\n";
+    }
+    else
+    {
+        for (const UpcomingPickup &p : report.upcoming)
+        {
+            std::string when;
+            if (p.daysAway == 0)
+                when = "today";
+            else if (p.daysAway == 1)
+                when = "tomorrow";
+            else
+                when = "in " + std::to_string(p.daysAway) + " days";
+            std::cout << "   " << p.startDate << "  "
+                      << analyticsPad(p.carName, 16) << "  "
+                      << p.customer << "  (" << when << ")\n";
+        }
+    }
+
+    if (report.overdueReturns > 0)
+        std::cout << yellow(
+            "\n  ! " + std::to_string(report.overdueReturns)
+            + " booking(s) past their end date — chase up the returns.\n");
+    std::cout << "\n  " << report.totalActiveBookings
+              << " live booking(s) fleet-wide.\n";
+}
+
 static void managerMenu(RentalManager &system, bool &running)
 {
     std::cout << bold(cyan("\n===== MANAGER MENU | " + system.currentUsername() + " =====\n"));
@@ -554,16 +632,17 @@ static void managerMenu(RentalManager &system, bool &running)
                  "  3. View fleet (sorted by name - AVL index)\n"
                  "  4. Search fleet by keyword\n"
                  "  5. Fleet statistics\n"
-                 "  6. Income report\n"
-                 "  7. Export CSV reports\n"
-                 "  8. Block user\n"
-                 "  9. Unblock user\n"
-                 " 10. Create staff account\n"
-                 " 11. Save data to disk\n"
-                 " 12. Save & logout\n"
-                 " 13. Exit program\n";
+                 "  6. Fleet analytics dashboard\n"
+                 "  7. Income report\n"
+                 "  8. Export CSV & JSON reports\n"
+                 "  9. Block user\n"
+                 " 10. Unblock user\n"
+                 " 11. Create staff account\n"
+                 " 12. Save data to disk\n"
+                 " 13. Save & logout\n"
+                 " 14. Exit program\n";
 
-    switch (readMenuChoice("  Choice: ", 1, 13))
+    switch (readMenuChoice("  Choice: ", 1, 14))
     {
     case 1:
     {
@@ -609,22 +688,27 @@ static void managerMenu(RentalManager &system, bool &running)
         printFleetStats(system.computeStats());
         break;
     case 6:
-        system.printIncomeReport();
+        renderDashboard(system);
         break;
     case 7:
+        system.printIncomeReport();
+        break;
+    case 8:
     {
         const bool fleetOk = system.exportFleetReport("reports/fleet_report.csv");
         const bool bookingsOk =
             system.exportBookingReport("reports/bookings_report.csv");
-        if (fleetOk && bookingsOk)
+        const bool jsonOk = exportJsonReport(system, "reports/report.json");
+        if (fleetOk && bookingsOk && jsonOk)
             std::cout << green("  Reports written:\n"
                                "    reports/fleet_report.csv\n"
-                               "    reports/bookings_report.csv\n");
+                               "    reports/bookings_report.csv\n"
+                               "    reports/report.json\n");
         else
             std::cout << red("  Could not write the report files.\n");
         break;
     }
-    case 8:
+    case 9:
     {
         std::string user;
         if (!readToken("  Username to block: ", user))
@@ -635,7 +719,7 @@ static void managerMenu(RentalManager &system, bool &running)
             std::cout << red("  No such user.\n");
         break;
     }
-    case 9:
+    case 10:
     {
         std::string user;
         if (!readToken("  Username to unblock: ", user))
@@ -646,7 +730,7 @@ static void managerMenu(RentalManager &system, bool &running)
             std::cout << red("  No such user.\n");
         break;
     }
-    case 10:
+    case 11:
     {
         std::string user, pass, role;
         if (!readToken("  New username: ", user))
@@ -662,16 +746,16 @@ static void managerMenu(RentalManager &system, bool &running)
                              "role is Staff or Manager.\n");
         break;
     }
-    case 11:
+    case 12:
         std::cout << (system.saveData() ? green("  Data saved to ./data\n")
                                         : red("  Could not write data files.\n"));
         break;
-    case 12:
+    case 13:
         system.saveData();
         system.logout();
         std::cout << yellow("  Data saved. Logged out.\n");
         break;
-    case 13:
+    case 14:
         system.saveData();
         std::cout << yellow("  Data saved. Goodbye!\n");
         running = false;
