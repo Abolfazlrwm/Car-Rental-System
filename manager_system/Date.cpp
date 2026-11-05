@@ -3,6 +3,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 
 /* 1970-01-01 == serial day 0 (the Unix epoch, the booking floor). */
 const int Date::MIN_SERIAL = 0;
@@ -126,4 +127,18 @@ bool Date::parseFlexible(const std::string &text, int &serialOut)
 
     serialOut = static_cast<int>(value);
     return true;
+}
+
+int Date::todaySerial()
+{
+    const std::time_t now = std::time(nullptr);
+    std::tm local{};
+#ifdef _WIN32
+    localtime_s(&local, &now);
+#else
+    localtime_r(&now, &local);
+#endif
+    return daysFromCivil(local.tm_year + 1900,
+                         static_cast<unsigned>(local.tm_mon + 1),
+                         static_cast<unsigned>(local.tm_mday));
 }

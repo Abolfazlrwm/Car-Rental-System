@@ -23,7 +23,8 @@ add_executable(car_rental
     manager_system/Car.cpp
     manager_system/Reservation.cpp
     manager_system/Date.cpp
-    manager_system/RentalManager.cpp)
+    manager_system/RentalManager.cpp
+    manager_system/JsonExport.cpp)
 target_include_directories(car_rental PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 # ---------------------------------------------------------------- tests
@@ -35,7 +36,8 @@ add_executable(unit_tests
     manager_system/Car.cpp
     manager_system/Reservation.cpp
     manager_system/Date.cpp
-    manager_system/RentalManager.cpp)
+    manager_system/RentalManager.cpp
+    manager_system/JsonExport.cpp)
 target_include_directories(unit_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME unit_tests COMMAND unit_tests)
 
