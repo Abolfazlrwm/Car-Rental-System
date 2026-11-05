@@ -55,6 +55,11 @@ public:
     /// day number, so CSV files written by pre-2.3.0 builds
     /// (which stored day numbers) still load.
     static bool parseFlexible(const std::string &text, int &serialOut);
+
+    /// Today's serial day, read from the system clock (local
+    /// timezone). Powers the "generatedAt" stamp of the JSON
+    /// report and the analytics dashboard's "days away" math.
+    static int todaySerial();
 };
 
 #endif // DATE_H
