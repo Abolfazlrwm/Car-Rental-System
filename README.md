@@ -22,6 +22,11 @@ penalties and full CSV persistence.
 > fixed segfaults, memory leaks, an income double-count and more — is
 > told in [`docs/IMPROVEMENTS.md`](docs/IMPROVEMENTS.md).
 
+There is also a live landing page, deployed automatically on every push:
+**[abolfazlrwm.github.io/Car-Rental-System](https://abolfazlrwm.github.io/Car-Rental-System/)**
+
+![Car Rental System — GitHub Pages landing page: dark hero with the project stats](docs/landing.png)
+
 ---
 
 ## 🏗 Architecture
@@ -203,7 +208,8 @@ Car-Rental-System/
 │   ├── BENCHMARKS.md        # measured numbers + honest analysis
 │   ├── IMPROVEMENTS.md      # the v1.0 → v2.0 rebuild story
 │   ├── architecture.png     # diagram used above
-│   └── manager_dashboard.png# screenshot used above
+│   ├── manager_dashboard.png# screenshot used above
+│   └── landing.png          # landing-page screenshot used above
 ├── docs-site/               # GitHub Pages landing page (auto-deployed)
 ├── CHANGELOG.md             # version-by-version history
 ├── CONTRIBUTING.md / SECURITY.md / CODE_OF_CONDUCT.md
