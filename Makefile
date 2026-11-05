@@ -15,11 +15,11 @@ CXXFLAGS ?= -std=c++17 -Wall -Wextra -O2
 SRC       = mainApp.cpp manager_system/SHA256.cpp manager_system/User.cpp \
             manager_system/Car.cpp manager_system/Reservation.cpp \
             manager_system/Date.cpp manager_system/RentalManager.cpp \
-            manager_system/JsonExport.cpp
+            manager_system/JsonExport.cpp manager_system/Analytics.cpp
 TEST_SRC  = tests/test_main.cpp manager_system/SHA256.cpp manager_system/User.cpp \
             manager_system/Car.cpp manager_system/Reservation.cpp \
             manager_system/Date.cpp manager_system/RentalManager.cpp \
-            manager_system/JsonExport.cpp
+            manager_system/JsonExport.cpp manager_system/Analytics.cpp
 BENCH_SRC = benchmarks/bench_containers.cpp
 
 all: car_rental unit_tests
