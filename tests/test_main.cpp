@@ -21,13 +21,16 @@
  */
 
 #include <cmath>
+#include <cctype>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "../basic_structures/AVLTree.h"
@@ -36,6 +39,7 @@
 #include "../basic_structures/PriorityQueue.h"
 #include "../manager_system/Car.h"
 #include "../manager_system/Date.h"
+#include "../manager_system/JsonExport.h"
 #include "../manager_system/Reservation.h"
 #include "../manager_system/RentalManager.h"
 #include "../manager_system/SHA256.h"
@@ -964,8 +968,451 @@ static void testRentalManagerReports()
 }
 
 /* ============================================================
- *  main
+ *  JSON report export
+ * ============================================================
+ *  The exported report.json is validated by a tiny strict
+ *  recursive-descent parser written right here — the same trick
+ *  the SHA-256 suite uses against official vectors: the output
+ *  is not eyeballed, it is parsed and then asserted on.
  * ============================================================ */
+
+namespace json_check
+{
+
+struct JsonValue
+{
+    enum Kind
+    {
+        Object,
+        Array,
+        String,
+        Number,
+        Bool,
+        Null
+    } kind = Null;
+    std::string text;                                        // String / Number
+    bool boolean = false;                                    // Bool
+    std::vector<std::pair<std::string, JsonValue>> members;  // Object
+    std::vector<JsonValue> items;                            // Array
+};
+
+class Parser
+{
+public:
+    explicit Parser(const std::string &src) : src_(src) {}
+
+    bool parse(JsonValue &out)
+    {
+        pos_ = 0;
+        return skipWs() && value(out, 0) && skipWs() &&
+               pos_ == src_.size();
+    }
+
+private:
+    const std::string &src_;
+    std::size_t pos_ = 0;
+
+    bool fail() { return false; }
+
+    bool skipWs()
+    {
+        while (pos_ < src_.size() &&
+               (src_[pos_] == ' ' || src_[pos_] == '\n' ||
+                src_[pos_] == '\t' || src_[pos_] == '\r'))
+            ++pos_;
+        return true;
+    }
+
+    bool value(JsonValue &out, int depth)
+    {
+        if (depth > 32)
+            return fail();
+        skipWs();
+        if (pos_ >= src_.size())
+            return fail();
+        switch (src_[pos_])
+        {
+        case '{':
+            return object(out, depth);
+        case '[':
+            return array(out, depth);
+        case '"':
+            out.kind = JsonValue::String;
+            return string(out.text);
+        case 't':
+            return literal("true", out, true);
+        case 'f':
+            return literal("false", out, false);
+        case 'n':
+            if (!literal("null", out, false))
+                return false;
+            out.kind = JsonValue::Null;
+            return true;
+        default:
+            return number(out);
+        }
+    }
+
+    bool literal(const char *lit, JsonValue &out, bool flag)
+    {
+        const std::size_t n = std::strlen(lit);
+        if (src_.compare(pos_, n, lit) != 0)
+            return fail();
+        pos_ += n;
+        out.kind = JsonValue::Bool;
+        out.boolean = flag;
+        return true;
+    }
+
+    bool object(JsonValue &out, int depth)
+    {
+        out.kind = JsonValue::Object;
+        ++pos_; // consume '{'
+        skipWs();
+        if (pos_ < src_.size() && src_[pos_] == '}')
+        {
+            ++pos_;
+            return true;
+        }
+        while (true)
+        {
+            skipWs();
+            std::string key;
+            if (pos_ >= src_.size() || src_[pos_] != '"')
+                return fail();
+            if (!string(key))
+                return false;
+            skipWs();
+            if (pos_ >= src_.size() || src_[pos_] != ':')
+                return fail();
+            ++pos_;
+            JsonValue item;
+            if (!value(item, depth + 1))
+                return false;
+            out.members.emplace_back(std::move(key), std::move(item));
+            skipWs();
+            if (pos_ < src_.size() && src_[pos_] == ',')
+            {
+                ++pos_;
+                continue;
+            }
+            if (pos_ < src_.size() && src_[pos_] == '}')
+            {
+                ++pos_;
+                return true;
+            }
+            return fail();
+        }
+    }
+
+    bool array(JsonValue &out, int depth)
+    {
+        out.kind = JsonValue::Array;
+        ++pos_; // consume '['
+        skipWs();
+        if (pos_ < src_.size() && src_[pos_] == ']')
+        {
+            ++pos_;
+            return true;
+        }
+        while (true)
+        {
+            JsonValue item;
+            if (!value(item, depth + 1))
+                return false;
+            out.items.push_back(std::move(item));
+            skipWs();
+            if (pos_ < src_.size() && src_[pos_] == ',')
+            {
+                ++pos_;
+                continue;
+            }
+            if (pos_ < src_.size() && src_[pos_] == ']')
+            {
+                ++pos_;
+                return true;
+            }
+            return fail();
+        }
+    }
+
+    bool string(std::string &out)
+    {
+        ++pos_; // consume '"'
+        out.clear();
+        while (true)
+        {
+            if (pos_ >= src_.size())
+                return fail();
+            const char c = src_[pos_++];
+            if (c == '"')
+                return true;
+            if (c != '\\')
+            {
+                out += c;
+                continue;
+            }
+            if (pos_ >= src_.size())
+                return fail();
+            const char e = src_[pos_++];
+            switch (e)
+            {
+            case '"': out += '"'; break;
+            case '\\': out += '\\'; break;
+            case '/': out += '/'; break;
+            case 'b': out += '\b'; break;
+            case 'f': out += '\f'; break;
+            case 'n': out += '\n'; break;
+            case 'r': out += '\r'; break;
+            case 't': out += '\t'; break;
+            case 'u':
+            {
+                if (pos_ + 4 > src_.size())
+                    return fail();
+                int code = 0;
+                for (int i = 0; i < 4; ++i)
+                {
+                    const char h = src_[pos_++];
+                    code *= 16;
+                    if (h >= '0' && h <= '9')
+                        code += h - '0';
+                    else if (h >= 'A' && h <= 'F')
+                        code += h - 'A' + 10;
+                    else if (h >= 'a' && h <= 'f')
+                        code += h - 'a' + 10;
+                    else
+                        return fail();
+                }
+                if (code < 0x80)
+                    out += static_cast<char>(code);
+                else // BMP code point -> 2-byte UTF-8 (enough for tests)
+                {
+                    out += static_cast<char>(0xC0 | (code >> 6));
+                    out += static_cast<char>(0x80 | (code & 0x3F));
+                }
+                break;
+            }
+            default:
+                return fail();
+            }
+        }
+    }
+
+    bool number(JsonValue &out)
+    {
+        const std::size_t start = pos_;
+        if (pos_ < src_.size() && src_[pos_] == '-')
+            ++pos_;
+        bool digits = false;
+        while (pos_ < src_.size() &&
+               (std::isdigit(static_cast<unsigned char>(src_[pos_])) ||
+                src_[pos_] == '.'))
+        {
+            if (std::isdigit(static_cast<unsigned char>(src_[pos_])))
+                digits = true;
+            ++pos_;
+        }
+        if (!digits)
+            return fail();
+        out.kind = JsonValue::Number;
+        out.text = src_.substr(start, pos_ - start);
+        return true;
+    }
+};
+
+const JsonValue *member(const JsonValue &obj, const std::string &key)
+{
+    if (obj.kind != JsonValue::Object)
+        return nullptr;
+    for (const auto &kv : obj.members)
+        if (kv.first == key)
+            return &kv.second;
+    return nullptr;
+}
+
+const JsonValue *fleetCarNamed(const JsonValue &report,
+                               const std::string &name)
+{
+    const JsonValue *fleet = member(report, "fleet");
+    if (fleet == nullptr)
+        return nullptr;
+    for (const JsonValue &car : fleet->items)
+    {
+        const JsonValue *n = member(car, "name");
+        if (n != nullptr && n->text == name)
+            return &car;
+    }
+    return nullptr;
+}
+
+bool readFile(const std::string &path, std::string &out)
+{
+    std::ifstream in(path, std::ios::binary);
+    if (!in)
+        return false;
+    std::ostringstream buf;
+    buf << in.rdbuf();
+    out = buf.str();
+    return true;
+}
+
+} // namespace json_check
+
+static void testJsonEscaping()
+{
+    CHECK(jsonEscape("plain text") == "plain text");
+    CHECK(jsonEscape("") == "");
+    CHECK(jsonEscape("say \"hi\"") == "say \\\"hi\\\"");
+    CHECK(jsonEscape("back\\slash") == "back\\\\slash");
+    CHECK(jsonEscape("line1\nline2") == "line1\\nline2");
+    CHECK(jsonEscape("a\tb") == "a\\tb");
+    CHECK(jsonEscape("a\rb") == "a\\rb");
+    CHECK(jsonEscape(std::string("x\x01y", 3)) == "x\\u0001y");
+    CHECK(jsonEscape(std::string("\x1F", 1)) == "\\u001F");
+    // DEL (0x7F) and multi-byte UTF-8 are legal raw JSON bytes.
+    CHECK(jsonEscape(std::string("\x7F", 1)) == std::string("\x7F", 1));
+    CHECK(jsonEscape("\xE2\x98\xBA") == "\xE2\x98\xBA");
+    CHECK(jsonEscape("«سـ»") == "«سـ»");
+}
+
+static void testJsonExport()
+{
+    const std::string dir = "/tmp/crs_test_json";
+    std::system(("rm -rf " + dir).c_str());
+
+    /* ---- todaySerial round-trips through the calendar layer ---- */
+    const int today = Date::todaySerial();
+    int back = -1;
+    CHECK(Date::parseISO(Date::toISO(today), back));
+    CHECK_EQ(back, today);
+    int floor2024 = 0;
+    CHECK(Date::parseISO("2024-01-01", floor2024));
+    CHECK(today >= floor2024);
+
+    /* ---- empty system: valid JSON, empty collections ---- */
+    {
+        RentalManager empty;
+        const std::string path = dir + "/nested/deeper/empty.json";
+        CHECK(exportJsonReport(empty, path)); // creates the parents
+        std::string body;
+        CHECK(json_check::readFile(path, body));
+        json_check::Parser p(body);
+        json_check::JsonValue root;
+        CHECK(p.parse(root));
+        const json_check::JsonValue *stats =
+            json_check::member(root, "stats");
+        CHECK(stats != nullptr);
+        const json_check::JsonValue *total =
+            stats ? json_check::member(*stats, "totalCars") : nullptr;
+        CHECK(total != nullptr && total->text == "0");
+        const json_check::JsonValue *fleet =
+            json_check::member(root, "fleet");
+        CHECK(fleet != nullptr && fleet->items.empty());
+        const json_check::JsonValue *bookings =
+            json_check::member(root, "bookings");
+        CHECK(bookings != nullptr && bookings->items.empty());
+        const json_check::JsonValue *at =
+            json_check::member(root, "generatedAt");
+        CHECK(at != nullptr && Date::isISODate(at->text));
+    }
+
+    /* ---- seeded system: escaping, ordering, real figures ---- */
+    {
+        RentalManager m;
+        m.seedDemoData();
+        // A car name that breaks naive JSON writers: quote, backslash
+        // and a raw newline — none of which CSV could ever carry.
+        CHECK(m.addCar(new Car("P\\206 \"GT\"", "Peugeot", 90.0)));
+        CHECK(m.addCar(new Car("Multi\nLine \"car\"", "Debug", 10.0)));
+        std::string err;
+        CHECK(m.login("admin", "manager123"));
+        CHECK(m.recordMaintenance("Tucson 2023", "2026-11-01",
+                                  "oil change + filters", 45.5, err));
+        m.logout();
+        CHECK(m.login("ali", "customer123"));
+        int startA = 0, endA = 0, startB = 0, endB = 0;
+        CHECK(Date::parseISO("2026-11-10", startA));
+        CHECK(Date::parseISO("2026-11-12", endA));
+        CHECK(Date::parseISO("2026-11-05", startB));
+        CHECK(Date::parseISO("2026-11-07", endB));
+        CHECK(m.makeReservation("Benz C200", startA, endA, err)); // id 1
+        CHECK(m.makeReservation("Samand LX", startB, endB, err)); // id 2
+        m.logout();
+
+        const std::string path = dir + "/report.json";
+        CHECK(exportJsonReport(m, path));
+        std::string body;
+        CHECK(json_check::readFile(path, body));
+        json_check::Parser p(body);
+        json_check::JsonValue root;
+        CHECK(p.parse(root));
+
+        // Header fields.
+        const json_check::JsonValue *rep =
+            json_check::member(root, "report");
+        CHECK(rep != nullptr && rep->text == "car-rental-system");
+        const json_check::JsonValue *at =
+            json_check::member(root, "generatedAt");
+        CHECK(at != nullptr && Date::isISODate(at->text));
+
+        // Stats: 8 seeded cars + 2 = 10, two live bookings.
+        const json_check::JsonValue *stats =
+            json_check::member(root, "stats");
+        CHECK(stats != nullptr);
+        const json_check::JsonValue *totalCars =
+            json_check::member(*stats, "totalCars");
+        CHECK(totalCars != nullptr && totalCars->text == "10");
+        const json_check::JsonValue *active =
+            json_check::member(*stats, "activeBookings");
+        CHECK(active != nullptr && active->text == "2");
+
+        // Fleet: name-sorted, and the hostile names round-trip exactly.
+        const json_check::JsonValue *fleet =
+            json_check::member(root, "fleet");
+        CHECK(fleet != nullptr && fleet->items.size() == 10);
+        CHECK(json_check::fleetCarNamed(root, "P\\206 \"GT\"") !=
+              nullptr);
+        CHECK(json_check::fleetCarNamed(root, "Multi\nLine \"car\"") !=
+              nullptr);
+
+        // The maintenance log travelled intact.
+        const json_check::JsonValue *tucson =
+            json_check::fleetCarNamed(root, "Tucson 2023");
+        CHECK(tucson != nullptr);
+        const json_check::JsonValue *log =
+            tucson ? json_check::member(*tucson, "maintenanceLog")
+                   : nullptr;
+        CHECK(log != nullptr && log->items.size() == 1);
+        const json_check::JsonValue *desc =
+            log ? json_check::member(log->items[0], "description")
+                : nullptr;
+        CHECK(desc != nullptr && desc->text == "oil change + filters");
+
+        // Bookings ordered by pickup date, not insertion order.
+        const json_check::JsonValue *bookings =
+            json_check::member(root, "bookings");
+        CHECK(bookings != nullptr && bookings->items.size() == 2);
+        const json_check::JsonValue *firstCar =
+            json_check::member(bookings->items[0], "carName");
+        CHECK(firstCar != nullptr && firstCar->text == "Samand LX");
+        const json_check::JsonValue *firstId =
+            json_check::member(bookings->items[0], "id");
+        CHECK(firstId != nullptr && firstId->text == "2");
+        const json_check::JsonValue *firstStart =
+            json_check::member(bookings->items[0], "startDate");
+        CHECK(firstStart != nullptr && firstStart->text == "2026-11-05");
+        const json_check::JsonValue *firstDur =
+            json_check::member(bookings->items[0], "durationDays");
+        CHECK(firstDur != nullptr && firstDur->text == "3");
+        const json_check::JsonValue *secondStart =
+            json_check::member(bookings->items[1], "startDate");
+        CHECK(secondStart != nullptr && secondStart->text == "2026-11-10");
+        const json_check::JsonValue *secondCust =
+            json_check::member(bookings->items[1], "customer");
+        CHECK(secondCust != nullptr && secondCust->text == "ali");
+    }
+}
+
 
 int main()
 {
@@ -985,6 +1432,8 @@ int main()
     runSuite("RentalManager: keyword search", testRentalManagerSearch);
     runSuite("RentalManager: statistics", testRentalManagerStats);
     runSuite("RentalManager: CSV reports", testRentalManagerReports);
+    runSuite("JSON escaping", testJsonEscaping);
+    runSuite("JSON report export", testJsonExport);
     runSuite("RentalManager: CSV persistence", testRentalManagerPersistence);
     runSuite("Role hierarchy", testRoleHierarchy);
 
