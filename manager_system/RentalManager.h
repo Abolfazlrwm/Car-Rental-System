@@ -9,6 +9,7 @@
 #include "../basic_structures/HashTable.h"
 #include "AuditLog.h"
 #include "Car.h"
+#include "Permissions.h"
 #include "User.h"
 
 /**
@@ -211,6 +212,12 @@ public:
     /// the trail round-trips through data/audit_log.csv.
     const AuditLog &auditLog() const { return auditLog_; }
 
+    /* ---------------- Permissions (v2.5.0) ---------------- */
+
+    /// Does the LOGGED-IN user hold `p`? False when nobody is
+    /// logged in — the matrix governs interactive sessions.
+    bool hasPermission(Permission p) const;
+
     /* ---------------- Persistence ---------------- */
 
     /// Write users.csv / cars.csv / reservations.csv under `dataDir`.
@@ -248,6 +255,12 @@ private:
     /// logged-in username ("?" when no session is active).
     void audit(const std::string &action, const std::string &detail,
                bool allowed = true) const;
+
+    /// Permission gate for manager-exclusive calls: passes through
+    /// when no session is active (programmatic use: scripts, tests,
+    /// seeding), otherwise checks the role matrix and records a
+    /// denial in the audit trail. Returns true when allowed.
+    bool permitted(Permission p, const std::string &action) const;
 
     // Classic polynomial rolling hash (base 31) used for username indexing.
     static std::size_t stringHash(const std::string &key);

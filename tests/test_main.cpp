@@ -633,8 +633,13 @@ static void testRentalManagerFleetAndMaintenance()
     // Brand search (linear scan over the AVL index).
     CHECK_EQ(m.findCarsByBrand("IKCO").size(), std::size_t(2));
 
-    // Manager-only blocking of a customer, enforced at login.
-    CHECK(m.unblockUser("ali")); // staff cannot block, but API allows unblock
+    // v2.5.0: account management is manager-only in the facade too —
+    // the logged-in staff member is denied at the gate...
+    CHECK(!m.unblockUser("ali"));
+    m.logout();
+    // ...and only a manager can lift the block.
+    m.login("admin", "manager123");
+    CHECK(m.unblockUser("ali"));
     m.logout();
 }
 

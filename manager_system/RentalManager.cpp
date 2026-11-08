@@ -71,6 +71,21 @@ void RentalManager::audit(const std::string &action,
                      action, detail, allowed);
 }
 
+bool RentalManager::hasPermission(Permission p) const
+{
+    return currentUser_ && roleHasPermission(currentUser_->role(), p);
+}
+
+bool RentalManager::permitted(Permission p, const std::string &action) const
+{
+    // Programmatic calls with no interactive session (scripts, tests,
+    // demo seeding) keep working — the matrix governs logged-in users.
+    if (!currentUser_ || roleHasPermission(currentUser_->role(), p))
+        return true;
+    audit(action, std::string("denied: needs ") + permissionName(p), false);
+    return false;
+}
+
 /// Lowercased copy used by the keyword search (ASCII only — car names
 /// and brands are Latin by contract, see docs/DATA_FORMATS.md).
 static std::string toLowerCopy(const std::string &text)
@@ -105,6 +120,8 @@ bool RentalManager::registerStaffAccount(const std::string &username,
                                          const std::string &password,
                                          const std::string &role)
 {
+    if (!permitted(Permission::MANAGE_USERS, "user.created"))
+        return false;
     if (username.empty() || password.size() < 4)
         return false;
     if (role != "Staff" && role != "Manager")
@@ -169,6 +186,8 @@ std::string RentalManager::currentUsername() const
 
 bool RentalManager::blockUser(const std::string &username)
 {
+    if (!permitted(Permission::MANAGE_USERS, "user.blocked"))
+        return false;
     User **slot = userIndex_.find(username);
     if (!slot)
         return false;
@@ -179,6 +198,8 @@ bool RentalManager::blockUser(const std::string &username)
 
 bool RentalManager::unblockUser(const std::string &username)
 {
+    if (!permitted(Permission::MANAGE_USERS, "user.unblocked"))
+        return false;
     User **slot = userIndex_.find(username);
     if (!slot)
         return false;
@@ -643,6 +664,8 @@ FleetStats RentalManager::computeStats() const
 
 bool RentalManager::exportFleetReport(const std::string &path) const
 {
+    if (!permitted(Permission::EXPORT_REPORTS, "export.fleet"))
+        return false;
     const std::filesystem::path parent =
         std::filesystem::path(path).parent_path();
     if (!parent.empty())
@@ -669,6 +692,8 @@ bool RentalManager::exportFleetReport(const std::string &path) const
 
 bool RentalManager::exportBookingReport(const std::string &path) const
 {
+    if (!permitted(Permission::EXPORT_REPORTS, "export.bookings"))
+        return false;
     const std::filesystem::path parent =
         std::filesystem::path(path).parent_path();
     if (!parent.empty())
