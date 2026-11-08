@@ -249,6 +249,25 @@ static void printReservations(const std::vector<Reservation *> &list)
     }
 }
 
+/// The logged-in customer's waitlist wishes (v2.6.0).
+static void printWaitlist(const std::vector<WaitlistEntry *> &list)
+{
+    if (list.empty())
+    {
+        std::cout << yellow("\n  You are not waiting for any car.\n");
+        return;
+    }
+    std::cout << bold("\n  YOUR WAITLIST\n");
+    std::cout << "  " << std::string(60, '-') << "\n";
+    for (const WaitlistEntry *e : list)
+        std::cout << "  wish #" << e->joinOrder()
+                  << " | " << std::left << std::setw(16) << e->car()->name()
+                  << " | " << Date::toISO(e->startDate()) << " -> "
+                  << Date::toISO(e->endDate())
+                  << " (" << e->durationDays() << " day(s))\n";
+    std::cout << yellow("  We auto-book you the moment a wished range frees up.\n");
+}
+
 /* ============================================================
  *  Screens: authentication
  * ============================================================ */
@@ -311,11 +330,14 @@ static void customerMenu(RentalManager &system, bool &running)
                  "  2. Search car by name\n"
                  "  3. My reservations\n"
                  "  4. Make a reservation\n"
-                 "  5. Renew a rental\n"
-                 "  6. Pay my bill\n"
-                 "  7. Logout\n";
+                 "  5. Find cars free for a date range\n"
+                 "  6. Join a waitlist\n"
+                 "  7. My waitlist (leave)\n"
+                 "  8. Renew a rental\n"
+                 "  9. Pay my bill\n"
+                 " 10. Logout\n";
 
-    switch (readMenuChoice("  Choice: ", 1, 7))
+    switch (readMenuChoice("  Choice: ", 1, 10))
     {
     case 1:
         printFleet(system, false);
@@ -351,10 +373,70 @@ static void customerMenu(RentalManager &system, bool &running)
         if (system.makeReservation(name, start, end, error))
             std::cout << green("  Reservation confirmed! Pay on delivery.\n");
         else
+        {
             std::cout << red("  Reservation failed: " + error + "\n");
+            if (error.find("overlap") != std::string::npos)
+                std::cout << yellow(
+                    "  Tip: join the waitlist (option 6) and we book you\n"
+                    "       automatically when the range frees up.\n");
+        }
         break;
     }
     case 5:
+    {
+        int start, end;
+        if (!readDate("  Start date (YYYY-MM-DD): ", start))
+            return;
+        if (!readDate("  End date   (YYYY-MM-DD): ", end))
+            return;
+        std::vector<Car *> freeCars = system.findAvailableCars(start, end);
+        if (freeCars.empty())
+        {
+            std::cout << red("  No car is free for " + Date::toISO(start)
+                             + " -> " + Date::toISO(end) + ".\n");
+            std::cout << yellow("  Tip: join a car's waitlist (option 6) to be\n"
+                                "       auto-booked when a window opens up.\n");
+            break;
+        }
+        std::cout << bold("\n  FREE FOR " + Date::toISO(start) + " -> "
+                          + Date::toISO(end) + " ("
+                          + std::to_string(freeCars.size()) + " car(s))\n");
+        printCarTableHeader();
+        for (const Car *car : freeCars)
+            printCarRow(car);
+        break;
+    }
+    case 6:
+    {
+        std::string name, error;
+        int start, end;
+        if (!readToken("  Car name: ", name))
+            return;
+        if (!readDate("  Desired start (YYYY-MM-DD): ", start))
+            return;
+        if (!readDate("  Desired end   (YYYY-MM-DD): ", end))
+            return;
+        if (system.joinWaitlist(name, start, end, error))
+            std::cout << green("  You are on the waitlist for \"" + name
+                               + "\". We book you automatically when it frees up.\n");
+        else
+            std::cout << red("  Waitlist failed: " + error + "\n");
+        break;
+    }
+    case 7:
+    {
+        printWaitlist(system.myWaitlist());
+        std::string name;
+        if (!readLine("  Car to leave (empty = stay): ", name) || name.empty())
+            break;
+        std::string error;
+        if (system.leaveWaitlist(name, error))
+            std::cout << green("  You left the waitlist of \"" + name + "\".\n");
+        else
+            std::cout << red("  " + error + "\n");
+        break;
+    }
+    case 8:
     {
         std::string name, error;
         int days;
@@ -369,7 +451,7 @@ static void customerMenu(RentalManager &system, bool &running)
             std::cout << red("  Renewal failed: " + error + "\n");
         break;
     }
-    case 6:
+    case 9:
     {
         double owed = system.currentCustomerBalance();
         if (owed <= 0.0)
@@ -383,7 +465,7 @@ static void customerMenu(RentalManager &system, bool &running)
         }
         break;
     }
-    case 7:
+    case 10:
         system.logout();
         std::cout << yellow("  Logged out.\n");
         break;
@@ -407,9 +489,10 @@ static void staffMenu(RentalManager &system, bool &running)
                  "  5. Send car to maintenance\n"
                  "  6. Finish maintenance\n"
                  "  7. Show maintenance history\n"
-                 "  8. Logout\n";
+                 "  8. Serve waitlist now\n"
+                 "  9. Logout\n";
 
-    switch (readMenuChoice("  Choice: ", 1, 8))
+    switch (readMenuChoice("  Choice: ", 1, 9))
     {
     case 1:
         printFleet(system, false);
@@ -508,6 +591,22 @@ static void staffMenu(RentalManager &system, bool &running)
         break;
     }
     case 8:
+    {
+        std::string name, error;
+        if (!readToken("  Car name: ", name))
+            return;
+        if (system.serveWaitlist(name, error))
+        {
+            Car *car = system.searchCar(name);
+            const Reservation *r = car ? car->currentReservation() : nullptr;
+            std::string who = r ? r->customer()->username() : "?";
+            std::cout << green("  Booked " + who + " from the waitlist.\n");
+        }
+        else
+            std::cout << red("  Serve failed: " + error + "\n");
+        break;
+    }
+    case 9:
         system.logout();
         std::cout << yellow("  Logged out.\n");
         break;
@@ -594,6 +693,20 @@ static void renderDashboard(const RentalManager &system)
                       << row.count << "\n";
     }
 
+    std::cout << "\n  " << bold("Waitlist depth per car") << "\n";
+    if (report.waitlistPerCar.empty())
+    {
+        std::cout << "   (nobody is waiting)\n";
+    }
+    else
+    {
+        const int maxWaiting = report.waitlistPerCar.front().count;
+        for (const NamedCount &row : report.waitlistPerCar)
+            std::cout << "   " << analyticsPad(row.label, 16) << "  "
+                      << analyticsBar(row.count, maxWaiting, 16) << " "
+                      << row.count << "\n";
+    }
+
     std::cout << "\n  " << bold("Upcoming pickups") << "\n";
     if (report.upcoming.empty())
     {
@@ -620,6 +733,10 @@ static void renderDashboard(const RentalManager &system)
         std::cout << yellow(
             "\n  ! " + std::to_string(report.overdueReturns)
             + " booking(s) past their end date — chase up the returns.\n");
+    if (report.totalWaitlisted > 0)
+        std::cout << yellow(
+            "  ! " + std::to_string(report.totalWaitlisted)
+            + " customer(s) on a waitlist — serving one after every return.\n");
     std::cout << "\n  " << report.totalActiveBookings
               << " live booking(s) fleet-wide.\n";
 }
