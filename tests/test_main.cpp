@@ -12,6 +12,8 @@
  *    - AVLTree: sorted-insert stress (worst case) + height bound
  *    - HashTable: collisions, rehashing, custom hash function
  *    - Reservation: priority + overlap rules
+ *    - Waitlist: wish priority, per-car heap, facade promotion,
+ *      CSV round-trip
  *    - RentalManager: the bugs that existed in v1.0 are now
  *      regression tests (null login, double income, fake renewal,
  *      duplicate fleet names, blocked accounts, persistence)
@@ -1704,6 +1706,303 @@ static void testRbacEnforcement()
     CHECK(reloaded.auditLog().all().back().actor == "?");
 }
 
+/* ============================================================
+ *  Waitlist (v2.6.0)
+ * ============================================================ */
+
+/// Priority rules of a single wish: earliest pickup first, FCFS tie.
+static void testWaitlistEntryOrdering()
+{
+    Customer ali("ali"), sara("sara");
+    Car car("Pride 131", "Saipa", 30.0);
+
+    WaitlistEntry early(&ali, &car, 1, 100, 102);
+    WaitlistEntry late(&sara, &car, 2, 105, 106);
+    WaitlistEntry sameStart(&sara, &car, 3, 100, 100);
+
+    // Earlier desired start wins outright.
+    CHECK(early.hasHigherPriorityThan(&late));
+    CHECK(!late.hasHigherPriorityThan(&early));
+
+    // Equal starts -> the smaller join counter (first come) wins.
+    CHECK(early.hasHigherPriorityThan(&sameStart));
+    CHECK(!sameStart.hasHigherPriorityThan(&early));
+    CHECK(sameStart.hasHigherPriorityThan(&late));
+    CHECK(!late.hasHigherPriorityThan(&sameStart));
+
+    // Accessors and the inclusive duration.
+    CHECK_EQ(early.durationDays(), 3);
+    CHECK_EQ(late.durationDays(), 2);
+    CHECK_EQ(sameStart.durationDays(), 1);
+    CHECK(sameStart.customer() == &sara);
+    CHECK(sameStart.car() == &car);
+    CHECK_EQ(sameStart.joinOrder(), 3);
+    CHECK_EQ(sameStart.startDate(), 100);
+    CHECK_EQ(sameStart.endDate(), 100);
+}
+
+/// Car-level wish heap: enqueue, fit-aware extraction, per-user
+/// removal. The destructor frees whatever is still queued (ASan).
+static void testCarWaitlistQueue()
+{
+    Customer ali("ali"), sara("sara"), reza("reza");
+    Car car("Quick R", "Saipa", 35.0);
+
+    CHECK(car.waitlistCount() == std::size_t(0));
+    CHECK(car.takeBestWaitlistEntry() == nullptr); // nothing waiting
+
+    // Booked solid for 10..19 — every wish inside clashes.
+    Reservation *held = new Reservation(&ali, &car, 1, 1, 10, 19);
+    car.reserve(held);
+    CHECK(car.hasOverlap(10, 19));
+    CHECK(!car.hasOverlap(1, 9));
+
+    WaitlistEntry *e1 = new WaitlistEntry(&ali, &car, 1, 5, 7);   // fits
+    WaitlistEntry *e2 = new WaitlistEntry(&sara, &car, 2, 12, 14); // clashes
+    WaitlistEntry *e3 = new WaitlistEntry(&reza, &car, 3, 25, 26); // fits
+    car.enqueueWaitlistEntry(e1);
+    car.enqueueWaitlistEntry(e2);
+    car.enqueueWaitlistEntry(e3);
+    CHECK(car.waitlistCount() == std::size_t(3));
+
+    // Extraction is fit-aware AND priority-ordered: e1 (start 5)
+    // beats e3 (start 25); the clashing e2 stays queued.
+    WaitlistEntry *best = car.takeBestWaitlistEntry();
+    CHECK(best == e1);
+    CHECK(car.waitlistCount() == std::size_t(2));
+    delete best;
+
+    // Next round: e2 clashes, e3 fits -> e3 is served, e2 survives.
+    WaitlistEntry *next = car.takeBestWaitlistEntry();
+    CHECK(next == e3);
+    delete next;
+    CHECK(car.waitlistCount() == std::size_t(1));
+    CHECK(car.takeBestWaitlistEntry() == nullptr); // only e2 left, it clashes
+
+    // Per-user removal: only ali's wishes come back (e2 is sara's).
+    std::vector<WaitlistEntry *> removed = car.takeWaitlistEntriesFor("ali");
+    CHECK(removed.empty());
+    removed = car.takeWaitlistEntriesFor("sara");
+    CHECK(removed.size() == std::size_t(1));
+    CHECK(removed[0] == e2);
+    CHECK(car.waitlistCount() == std::size_t(0));
+    for (WaitlistEntry *e : removed)
+        delete e;
+
+    // Re-insertion path used by the CSV loader.
+    WaitlistEntry *again = new WaitlistEntry(&reza, &car, 4, 5, 6);
+    car.reinsertWaitlistEntry(again);
+    CHECK(car.waitlistCount() == std::size_t(1));
+    WaitlistEntry *out = car.takeBestWaitlistEntry();
+    CHECK(out == again);
+    delete out;
+}
+
+/// Facade behaviour end-to-end: availability search, join/leave
+/// validation, front-desk serving, auto-promotion on return and on
+/// finished maintenance, and the waitlist.csv round-trip.
+static void testRentalManagerWaitlist()
+{
+    RentalManager m;
+    m.seedDemoData();
+    std::string err;
+
+    // seedDemoData already ships ali (customer), sara (staff) and
+    // admin (manager) — two more customers for the queue games.
+    CHECK(m.registerCustomer("behnam", "pass1234"));
+    CHECK(m.registerCustomer("parisa", "pass1234"));
+
+    int s1 = 0, s2 = 0;
+    CHECK(Date::parseISO("2026-12-01", s1));
+    CHECK(Date::parseISO("2026-12-05", s2));
+
+    /* ---- availability search ---- */
+    CHECK(m.findAvailableCars(s1, s2).size() == std::size_t(8)); // all free
+    m.login("ali", "customer123");
+    CHECK(m.makeReservation("Pride 131", s1, s1 + 2, err));
+    CHECK(m.findAvailableCars(s1, s2).size() == std::size_t(7));
+    CHECK(m.findAvailableCars(s1 + 3, s2).size() == std::size_t(8));
+    CHECK(m.findAvailableCars(s2, s1).empty()); // inverted range
+    m.logout();
+
+    /* ---- joining: every rejection path ---- */
+    m.login("sara", "staff123"); // staff, not a customer
+    CHECK(!m.joinWaitlist("Pride 131", s1, s1 + 2, err));
+    CHECK(err.find("Only logged-in customers") != std::string::npos);
+    m.logout();
+
+    m.login("behnam", "pass1234");
+    CHECK(!m.joinWaitlist("Ghost", s1, s2, err));      // unknown car
+    CHECK(!m.joinWaitlist("Pride 131", s2, s1, err));  // inverted range
+    CHECK(!m.joinWaitlist("Pride 131", -7, s1, err));  // before 1970-01-01
+    CHECK(!m.joinWaitlist("Quick R", s1, s2, err));    // simply bookable
+    CHECK(err.find("make a reservation instead") != std::string::npos);
+
+    // Pride 131 holds 12-01..12-03 -> behnam may wait for the clash.
+    CHECK(m.joinWaitlist("Pride 131", s1 + 1, s1 + 3, err)); // wish #1
+    CHECK(m.totalWaitlisted() == std::size_t(1));
+    CHECK(!m.joinWaitlist("Pride 131", s1 + 2, s1 + 4, err)); // duplicate wish
+    CHECK(err.find("already waiting") != std::string::npos);
+    CHECK(m.myWaitlist().size() == std::size_t(1));
+    CHECK(m.myWaitlist().front()->car()->name() == "Pride 131");
+    CHECK(m.myWaitlist().front()->joinOrder() == 1);
+
+    // Leaving: once works, twice is an honest refusal.
+    CHECK(m.leaveWaitlist("Pride 131", err));
+    CHECK(m.totalWaitlisted() == std::size_t(0));
+    CHECK(!m.leaveWaitlist("Pride 131", err));
+    CHECK(m.myWaitlist().empty());
+
+    // Two wishes on two cars; the earliest pickup lists first even
+    // though it was joined later.
+    CHECK(m.joinWaitlist("Pride 131", s1 + 1, s1 + 3, err)); // wish #2
+    m.sendToMaintenance("Samand LX"); // a serviced car is wish-worthy
+    CHECK(m.joinWaitlist("Samand LX", s1, s1 + 1, err));     // wish #3
+    CHECK(m.totalWaitlisted() == std::size_t(2));
+    CHECK(m.myWaitlist().size() == std::size_t(2));
+    CHECK(m.myWaitlist().front()->startDate() == s1);        // Samand wish
+    CHECK(m.myWaitlist().front()->joinOrder() == 3);
+    CHECK(m.myWaitlist().back()->car()->name() == "Pride 131");
+    m.logout();
+
+    /* ---- serving: permissions first ---- */
+    m.login("behnam", "pass1234"); // customers cannot serve
+    CHECK(!m.serveWaitlist("Samand LX", err));
+    CHECK(m.auditLog().all().back().action == "waitlist.served");
+    CHECK(!m.auditLog().all().back().allowed);
+    CHECK(m.auditLog().all().back().detail.find("handle-deliveries") !=
+          std::string::npos);
+    m.logout();
+
+    m.login("sara", "staff123");
+    // Samand is under maintenance — the facade refuses first.
+    CHECK(!m.serveWaitlist("Samand LX", err));
+    CHECK(err.find("maintenance") != std::string::npos);
+    // Pride: every queued wish still clashes with ali's booking.
+    CHECK(!m.serveWaitlist("Pride 131", err));
+    CHECK(err.find("No waitlisted wish") != std::string::npos);
+    m.logout();
+
+    /* ---- auto-promotion on return ---- */
+    m.login("ali", "customer123");
+    CHECK(m.deliverCar("Pride 131", err)); // ali drives off with his booking
+    m.logout();
+    m.login("parisa", "pass1234");
+    CHECK(m.joinWaitlist("Pride 131", s1 + 1, s1 + 3, err)); // wish #4
+    m.logout();
+    m.login("ali", "customer123");
+    CHECK(m.returnCar("Pride 131", s1 + 2, err)); // on-time return frees it
+    m.logout();
+    {
+        Car *car = m.searchCar("Pride 131");
+        // The return auto-served behnam's earlier wish (12-02..12-04);
+        // parisa's wish clashes with it and keeps waiting.
+        CHECK(car->status() == CarStatus::Reserved);
+        CHECK(car->currentReservation()->customer()->username() == "behnam");
+        CHECK(car->currentReservation()->startDate() == s1 + 1);
+        CHECK(car->currentReservation()->endDate() == s1 + 3);
+    }
+    CHECK(m.auditLog().all().back().action == "waitlist.promoted");
+    CHECK(m.auditLog().all().back().detail.find("(auto)") !=
+          std::string::npos);
+    CHECK(m.totalWaitlisted() == std::size_t(2)); // parisa + the Samand wish
+
+    // behnam's rental ends -> parisa is auto-booked in her turn.
+    CHECK(m.deliverCar("Pride 131", err));
+    CHECK(m.returnCar("Pride 131", s1 + 3, err));
+    {
+        Car *car = m.searchCar("Pride 131");
+        CHECK(car->currentReservation()->customer()->username() == "parisa");
+        CHECK(car->currentReservation()->startDate() == s1 + 1);
+    }
+    CHECK(m.totalWaitlisted() == std::size_t(1)); // the Samand wish remains
+
+    /* ---- manual serve of the wish the auto pass left behind ---- */
+    m.login("ali", "customer123");
+    CHECK(m.makeReservation("Benz C200", s1, s1 + 4, err));
+    CHECK(m.deliverCar("Benz C200", err)); // Benz is out with ali now
+    m.logout();
+    m.login("parisa", "pass1234");
+    CHECK(m.joinWaitlist("Benz C200", s1 + 1, s1 + 2, err)); // wish #5
+    m.logout();
+    m.login("behnam", "pass1234");
+    CHECK(m.joinWaitlist("Benz C200", s1 + 6, s1 + 7, err)); // wish #6
+    m.logout();
+    m.login("ali", "customer123");
+    CHECK(m.returnCar("Benz C200", s1 + 4, err)); // auto-books parisa ONLY
+    {
+        Car *car = m.searchCar("Benz C200");
+        CHECK(car->currentReservation()->customer()->username() == "parisa");
+    }
+    m.logout();
+    m.login("sara", "staff123");
+    CHECK(m.serveWaitlist("Benz C200", err)); // the front desk serves behnam
+    {
+        // parisa keeps the earlier pickup; behnam's wish became the
+        // second booking of the schedule.
+        Car *car = m.searchCar("Benz C200");
+        CHECK(car->reservationCount() == std::size_t(2));
+    }
+    CHECK(m.auditLog().all().back().action == "waitlist.served");
+    CHECK(m.auditLog().all().back().detail.find("behnam") !=
+          std::string::npos);
+    CHECK(m.auditLog().all().back().allowed);
+    CHECK(!m.serveWaitlist("Benz C200", err)); // queue exhausted
+    CHECK(err.find("No waitlisted wish") != std::string::npos);
+    m.logout();
+    CHECK(m.totalWaitlisted() == std::size_t(1));
+
+    /* ---- auto-promotion on finished maintenance ---- */
+    CHECK(m.finishMaintenance("Samand LX"));
+    {
+        Car *car = m.searchCar("Samand LX");
+        CHECK(car->currentReservation() != nullptr);
+        CHECK(car->currentReservation()->customer()->username() == "behnam");
+        CHECK(car->currentReservation()->startDate() == s1);
+    }
+    CHECK(m.auditLog().all().back().action == "waitlist.promoted");
+    CHECK(m.totalWaitlisted() == std::size_t(0));
+
+    /* ---- a clashing wish survives serving (stays queued) ---- */
+    m.login("ali", "customer123");
+    CHECK(m.makeReservation("Dena Plus", s1, s1 + 4, err));
+    m.logout();
+    m.login("parisa", "pass1234");
+    CHECK(m.joinWaitlist("Dena Plus", s1 + 2, s1 + 3, err)); // wish #7
+    m.logout();
+    m.login("sara", "staff123");
+    CHECK(!m.serveWaitlist("Dena Plus", err)); // wish clashes with booking
+    CHECK(err.find("No waitlisted wish") != std::string::npos);
+    m.logout();
+    CHECK(m.totalWaitlisted() == std::size_t(1));
+
+    /* ---- waitlist.csv round-trip ---- */
+    CHECK(m.saveData("/tmp/waitlist_data_dir"));
+    RentalManager reloaded;
+    CHECK(reloaded.loadData("/tmp/waitlist_data_dir"));
+    CHECK(reloaded.totalWaitlisted() == std::size_t(1));
+    reloaded.login("parisa", "pass1234");
+    CHECK(reloaded.myWaitlist().size() == std::size_t(1));
+    CHECK(reloaded.myWaitlist().front()->car()->name() == "Dena Plus");
+    CHECK(reloaded.myWaitlist().front()->startDate() == s1 + 2);
+    CHECK(reloaded.myWaitlist().front()->endDate() == s1 + 3);
+
+    // The join counter survived the reload: parisa waits for the
+    // Pride slot wedged against her own booking and continues the
+    // global order at #8.
+    CHECK(reloaded.joinWaitlist("Pride 131", s1 + 3, s1 + 4, err));
+    CHECK(reloaded.myWaitlist().size() == std::size_t(2));
+    CHECK(reloaded.myWaitlist().back()->joinOrder() == 8);
+    reloaded.logout();
+
+    // The dashboard maths see the queue too.
+    AnalyticsReport report = buildAnalytics(reloaded, s1);
+    CHECK(report.totalWaitlisted == 2);
+    CHECK(report.waitlistPerCar.size() == std::size_t(2));
+    CHECK(report.waitlistPerCar.front().label == "Dena Plus"); // tie -> name
+    CHECK(report.waitlistPerCar.front().count == 1);
+}
+
 int main()
 {
     std::cout << "==== Car Rental System — unit tests ====\n";
@@ -1730,6 +2029,9 @@ int main()
     runSuite("Permissions: role matrix", testPermissions);
     runSuite("AuditLog: recording & CSV round-trip", testAuditLog);
     runSuite("RBAC enforcement at the facade", testRbacEnforcement);
+    runSuite("Waitlist: wish priority rules", testWaitlistEntryOrdering);
+    runSuite("Car waitlist queue", testCarWaitlistQueue);
+    runSuite("Waitlist: facade, promotion & persistence", testRentalManagerWaitlist);
 
     std::cout << "\n" << g_checks << " checks, " << g_failures << " failure(s)\n";
     if (g_failures == 0)
