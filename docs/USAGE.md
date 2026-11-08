@@ -107,14 +107,21 @@ customer's balance.
 | 4. Search fleet by keyword | case-insensitive match on names **and** brands |
 | 5. Fleet statistics | composition, utilization, revenue, top earner |
 | 6. Fleet analytics dashboard | live bar charts: composition, rate buckets, bookings per car, next pickups, overdue returns |
-| 7. Income report | per-car gross / maintenance / net + totals |
-| 8. Export CSV & JSON reports | write `reports/fleet_report.csv`, `reports/bookings_report.csv` + `reports/report.json` |
-| 9. Block user | lock an account immediately |
-| 10. Unblock user | release a blocked account |
-| 11. Create staff account | add a Staff login |
-| 12. Save data to disk | flush state without leaving |
-| 13. Save & logout | save and return to the main menu |
-| 14. Exit program | save everything and quit |
+| 7. Audit log | newest 15 trail entries — logins, privileged actions, denials in red |
+| 8. Income report | per-car gross / maintenance / net + totals |
+| 9. Export CSV & JSON reports | write `reports/fleet_report.csv`, `reports/bookings_report.csv` + `reports/report.json` |
+| 10. Block user | lock an account immediately |
+| 11. Unblock user | release a blocked account |
+| 12. Create staff account | add a Staff login |
+| 13. Save data to disk | flush state without leaving |
+| 14. Save & logout | save and return to the main menu |
+| 15. Exit program | save everything and quit |
+
+Every row above is also enforced inside the facade by the v2.5.0
+permission matrix: managing accounts and exporting reports is
+manager-only even if some future client skips the menus, and each
+denial is written to the audit trail with the missing permission
+named.
 
 Options 2 and 3 show the **same data through two different structures**
 — insertion order via the doubly linked list, alphabetical via the AVL
@@ -147,7 +154,7 @@ Utilization is the share of the fleet currently **rented or reserved**
 (cars under maintenance count as idle — nothing is earning while
 parked).
 
-**Export CSV & JSON reports (8)** writes the same numbers to
+**Export CSV & JSON reports (9)** writes the same numbers to
 spreadsheets — and one JSON file:
 
 - `reports/fleet_report.csv` — one row per car, name-sorted

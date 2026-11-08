@@ -4,6 +4,51 @@ All notable changes to the Car Rental System are documented in this file.
 The detailed v1.0 → v2.0 story lives in
 [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md).
 
+## [2.5.0] — 2026-11-08
+
+### Added
+
+- **Fine-grained permissions** — an explicit role matrix
+  (`manager_system/Permissions.h`) re-checked by the facade on every
+  manager-exclusive call: managers hold all seven permissions, staff
+  keep the front-desk trio (deliver, return, maintenance), customers
+  none. Denials land in the audit trail with the missing permission
+  named; headless calls with no active session (scripts, tests,
+  demo seeding) keep working.
+- **Audit trail** — the facade records logins (success, wrong
+  password, unknown user, blocked account, the 3-strike autoblock),
+  account and staff creation, fleet changes, maintenance
+  transitions, deliveries, returns (late penalties flagged),
+  reservations and report exports in an append-only trail built on
+  the project's own `DoublyLinkedList`, round-tripped through
+  `data/audit_log.csv` with RFC 4180 quoting and newline
+  flattening.
+- **Audit log screen** — manager menu option 7 lists the newest 15
+  entries (date, actor, action, result, detail), denials in red.
+- **Dev container** — `.devcontainer/` builds an Ubuntu 24.04 image
+  with build-essential, CMake, gdb and clang-format and runs `make`
+  on creation: clone, open, compile.
+
+### Changed
+
+- Account management (block / unblock, staff creation) and report
+  export are enforced manager-only at the facade level — until now
+  only the CLI menus separated the roles.
+- Manager menu renumbered: audit log is option 7, everything after
+  the analytics dashboard shifts by one.
+
+### Fixed
+
+- `make` (and `make test / bench / asan`) failed with *missing
+  separator* since the 2.4.0 build edit had swapped the recipe tabs
+  for spaces — CI never noticed because it builds via CMake.
+
+### Tests
+
+- Suite grown from 4,457 to **4,542 checks** (three new suites: the
+  role matrix, the audit-log CSV round-trip and RBAC enforcement)
+  — still zero dependencies, still leak-free under ASan + UBSan.
+
 ## [2.4.0] — 2026-11-05
 
 ### Added

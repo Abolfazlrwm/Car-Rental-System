@@ -43,6 +43,5 @@ Benz C200
 2
 admin
 manager123
-6
-3
+8
 INPUT

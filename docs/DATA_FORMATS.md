@@ -144,6 +144,34 @@ state as one JSON object:
   exported file with its own strict JSON parser, so the format is a
   tested contract, not a best effort.
 
+## audit_log.csv (data/)
+
+Append-only trail of privileged actions, written by the facade on
+every save. One record per line; fields containing commas or quotes
+are RFC 4180 quoted, newlines inside details are flattened to the
+two-character sequence `\n` (and `\r`), a literal backslash is
+doubled — all unescaped on load.
+
+```
+date,actor,action,result,detail
+2026-11-08,?,car.added,ok,Benz C200
+2026-11-08,admin,login.ok,ok,Manager
+2026-11-08,sara,export.fleet,denied,"denied: needs export-reports"
+2026-11-08,admin,car.returned,ok,Benz C200 (late penalty applied)
+```
+
+- `date` — ISO calendar date of the entry
+- `actor` — username; `?` when no session was active
+- `action` — dotted id: `login.ok`, `login.failed`, `login.denied`,
+  `account.autoblock`, `customer.registered`, `user.created`,
+  `user.blocked`, `user.unblocked`, `car.added`, `car.delivered`,
+  `car.returned`, `reservation.made`, `maintenance.sent`,
+  `maintenance.finished`, `maintenance.logged`, `export.fleet`,
+  `export.bookings`
+- `result` — `ok` or `denied` (failed logins count as denied)
+- `detail` — full free-text context (the on-screen table truncates
+  it to 30 characters; the file never does)
+
 ## Notes
 
 - Files are rewritten in full on every save; do not edit them while the

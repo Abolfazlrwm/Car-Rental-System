@@ -3,7 +3,7 @@
 [![CI](https://github.com/Abolfazlrwm/Car-Rental-System/actions/workflows/ci.yml/badge.svg)](https://github.com/Abolfazlrwm/Car-Rental-System/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Abolfazlrwm/Car-Rental-System)](https://github.com/Abolfazlrwm/Car-Rental-System/releases)
 ![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-4%2C457%20checks-3AAFA9)
+![Tests](https://img.shields.io/badge/tests-4%2C542%20checks-3AAFA9)
 ![Memory](https://img.shields.io/badge/AddressSanitizer-leak--free-4C6EF5)
 ![License](https://img.shields.io/badge/license-MIT-64748B)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)
@@ -14,7 +14,7 @@ with rehashing, a binary heap and a doubly linked list. Every container is
 implemented from scratch, unit-tested, and documented; the application on
 top is a layered, leak-free C++17 console system with real password
 hashing, ISO calendar dates, double-booking prevention, late-return
-penalties and full CSV persistence.
+penalties, an audited permission matrix and full CSV persistence.
 
 > Originally written as a data-structures course project, then rebuilt
 > into a portfolio-grade repository. Release-by-release history lives in
@@ -52,7 +52,7 @@ basic_structures/ (Templates) AVLTree<K,V> · HashTable<K,V> ·
 | `DoublyLinkedList<T>` | insertion-order fleet list | push front/back, remove, traversal | O(1) push |
 
 All four are **header-only templates** with injectable comparators and an
-explicit ownership model (`ownsValues`), covered by 4,400+ assertions —
+explicit ownership model (`ownsValues`), covered by 4,500+ assertions —
 including the worst-case test: inserting 500 ascending keys into the AVL
 tree and asserting the height stays within the theoretical bound.
 
@@ -65,6 +65,12 @@ tree and asserting the height stays within the theoretical bound.
 - **Salted SHA-256** password storage (implemented from scratch, verified
   against official NIST test vectors)
 - Auto-block after 3 failed logins, Manager can unblock
+- **Permission matrix** (v2.5.0): manager / staff / customer rights
+  enforced by the facade itself — staff cannot manage accounts or
+  export reports, and every denial is audited
+- **Append-only audit trail** (v2.5.0): logins, privileged actions
+  and denials round-trip through `data/audit_log.csv`; the manager
+  menu lists the newest entries (denials in red)
 
 **Fleet & reservations**
 - Car lifecycle: `AVAILABLE → RESERVED → RENTED → MAINTENANCE`
@@ -195,6 +201,8 @@ Car-Rental-System/
 │   ├── RentalManager.{h,cpp}# facade: rules, invoicing, persistence
 │   ├── Analytics.{h,cpp}    # dashboard maths (pure, unit-tested)
 │   ├── JsonExport.{h,cpp}   # RFC 8259 report writer + escaper
+│   ├── AuditLog.{h,cpp}     # append-only trail + CSV round-trip
+│   ├── Permissions.h        # the 7-permission role matrix
 │   ├── User.{h,cpp}         # User → Customer / Staff / Manager
 │   ├── Car.{h,cpp}          # status, income ledger, maintenance log
 │   ├── Reservation.{h,cpp}  # booking + priority rule
@@ -205,7 +213,7 @@ Car-Rental-System/
 │   ├── HashTable.h          # separate chaining + rehashing
 │   ├── PriorityQueue.h      # binary min-heap, auto-growing
 │   └── DoublyLinkedList.h   # O(1) pushes at both ends
-├── tests/test_main.cpp      # 4,457 checks, dependency-free framework
+├── tests/test_main.cpp      # 4,542 checks, dependency-free framework
 ├── scripts/demo.sh          # scripted end-to-end walkthrough
 ├── benchmarks/
 │   └── bench_containers.cpp # `make bench` — ours vs std, measured
@@ -218,6 +226,7 @@ Car-Rental-System/
 │   ├── manager_dashboard.png# screenshot used above
 │   └── landing.png          # landing-page screenshot used above
 ├── docs-site/               # GitHub Pages landing page (auto-deployed)
+├── .devcontainer/           # one-click contributor container (v2.5.0)
 ├── CHANGELOG.md             # version-by-version history
 ├── CONTRIBUTING.md / SECURITY.md / CODE_OF_CONDUCT.md
 ├── CMakeLists.txt / Makefile / .clang-format
@@ -251,8 +260,11 @@ The suite needs no external framework and runs in milliseconds:
   [ ok ] Fleet analytics dashboard
   [ ok ] RentalManager: CSV persistence
   [ ok ] Role hierarchy
+  [ ok ] Permissions: role matrix
+  [ ok ] AuditLog: recording & CSV round-trip
+  [ ok ] RBAC enforcement at the facade
 
-4457 checks, 0 failure(s)
+4542 checks, 0 failure(s)
 ALL TESTS PASSED
 ```
 
@@ -272,8 +284,9 @@ Memory safety is verified with `g++ -fsanitize=address,undefined`.
 - [x] Fleet analytics dashboard — live ASCII bars in the manager menu
   (v2.4.0)
 - [ ] Text-based UI using ncurses (windows, colors, arrow-key navigation)
-- [ ] Fine-grained permissions inside the Staff/Manager roles
-- [ ] Docker devcontainer for one-click contributor setup
+- [x] Fine-grained permissions + an append-only audit trail,
+  enforced inside the facade (v2.5.0)
+- [x] Docker devcontainer for one-click contributor setup (v2.5.0)
 
 ## 📚 Documentation
 
