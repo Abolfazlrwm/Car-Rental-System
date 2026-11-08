@@ -34,6 +34,7 @@
 #include <vector>
 
 #include "../manager_system/Analytics.h"
+#include "../manager_system/AuditLog.h"
 #include "../basic_structures/AVLTree.h"
 #include "../basic_structures/DoublyLinkedList.h"
 #include "../basic_structures/HashTable.h"
@@ -41,6 +42,7 @@
 #include "../manager_system/Car.h"
 #include "../manager_system/Date.h"
 #include "../manager_system/JsonExport.h"
+#include "../manager_system/Permissions.h"
 #include "../manager_system/Reservation.h"
 #include "../manager_system/RentalManager.h"
 #include "../manager_system/SHA256.h"
@@ -1529,6 +1531,178 @@ static void testAnalytics()
     }
 }
 
+/* ============================================================
+ *  Permissions: the role matrix
+ * ============================================================ */
+
+static void testPermissions()
+{
+    // Managers hold the whole matrix, staff the front-desk trio,
+    // customers (and unknown roles) nothing at all.
+    CHECK_EQ(rolePermissions("Manager").size(), std::size_t(7));
+    CHECK_EQ(rolePermissions("Staff").size(), std::size_t(3));
+    CHECK(rolePermissions("Customer").empty());
+    CHECK(rolePermissions("ghost").empty());
+
+    // Every staff permission is also a manager permission.
+    for (const Permission p : rolePermissions("Staff"))
+        CHECK(roleHasPermission("Manager", p));
+
+    // Spot checks in both directions.
+    CHECK(roleHasPermission("Manager", Permission::MANAGE_USERS));
+    CHECK(roleHasPermission("Manager", Permission::VIEW_AUDIT_LOG));
+    CHECK(roleHasPermission("Staff", Permission::PROCESS_RETURNS));
+    CHECK(roleHasPermission("Staff", Permission::HANDLE_DELIVERIES));
+    CHECK(roleHasPermission("Staff", Permission::SEND_MAINTENANCE));
+    CHECK(!roleHasPermission("Staff", Permission::MANAGE_USERS));
+    CHECK(!roleHasPermission("Staff", Permission::EXPORT_REPORTS));
+    CHECK(!roleHasPermission("Staff", Permission::VIEW_ANALYTICS));
+    CHECK(!roleHasPermission("Staff", Permission::VIEW_AUDIT_LOG));
+    CHECK(!roleHasPermission("Customer", Permission::PROCESS_RETURNS));
+    CHECK(!roleHasPermission("", Permission::MANAGE_USERS));
+
+    // Stable kebab-case ids — the audit trail spells them out.
+    CHECK(std::string(permissionName(Permission::MANAGE_USERS)) ==
+          "manage-users");
+    CHECK(std::string(permissionName(Permission::EXPORT_REPORTS)) ==
+          "export-reports");
+    CHECK(std::string(permissionName(Permission::VIEW_ANALYTICS)) ==
+          "view-analytics");
+    CHECK(std::string(permissionName(Permission::VIEW_AUDIT_LOG)) ==
+          "view-audit-log");
+    CHECK(std::string(permissionName(Permission::HANDLE_DELIVERIES)) ==
+          "handle-deliveries");
+    CHECK(std::string(permissionName(Permission::PROCESS_RETURNS)) ==
+          "process-returns");
+    CHECK(std::string(permissionName(Permission::SEND_MAINTENANCE)) ==
+          "send-maintenance");
+}
+
+/* ============================================================
+ *  AuditLog: recording, windowing, CSV round-trip
+ * ============================================================ */
+
+static void testAuditLog()
+{
+    AuditLog log;
+    CHECK(log.empty());
+    CHECK_EQ(log.size(), std::size_t(0));
+
+    log.record("2026-11-08", "admin", "login.ok", "Manager", true);
+    log.record("2026-11-08", "sara", "export.fleet",
+               "denied: needs export-reports", false);
+    log.record("2026-11-08", "ali", "reservation.made", "Benz 1..3", true);
+    CHECK_EQ(log.size(), std::size_t(3));
+
+    // Reads are oldest-first.
+    const std::vector<AuditEntry> everything = log.all();
+    CHECK_EQ(everything.size(), std::size_t(3));
+    CHECK(everything.front().action == "login.ok");
+    CHECK(everything.back().action == "reservation.made");
+
+    // The newest-N window keeps chronological order inside.
+    const std::vector<AuditEntry> tail = log.recent(2);
+    CHECK_EQ(tail.size(), std::size_t(2));
+    CHECK(tail[0].actor == "sara");
+    CHECK(tail[1].actor == "ali");
+    CHECK(!tail[0].allowed);
+    CHECK(log.recent(10).size() == std::size_t(3));
+    CHECK(log.recent(0).empty());
+
+    // RFC 4180 quoting plus newline flattening.
+    CHECK(AuditLog::escapeField("plain") == "plain");
+    CHECK(AuditLog::escapeField("a,b") == "\"a,b\"");
+    CHECK(AuditLog::escapeField("say \"hi\"") == "\"say \"\"hi\"\"\"");
+    CHECK(AuditLog::escapeField("line\nbreak") == "line\\nbreak");
+    CHECK(AuditLog::escapeField("back\\slash") == "back\\\\slash");
+
+    // Round-trip through CSV, hostile details included.
+    AuditLog saved;
+    saved.record("2026-11-08", "admin", "user.created",
+                 "Staff, \"big\"", true);
+    saved.record("2026-11-08", "sara", "login.failed", "multi\nline",
+                 false);
+    CHECK(saved.saveCSV("/tmp/audit_roundtrip.csv"));
+
+    AuditLog loaded;
+    CHECK(loaded.loadCSV("/tmp/audit_roundtrip.csv"));
+    CHECK_EQ(loaded.size(), std::size_t(2));
+    const std::vector<AuditEntry> rows = loaded.all();
+    CHECK(rows[0].detail == "Staff, \"big\"");
+    CHECK(rows[0].allowed);
+    CHECK(rows[1].detail == "multi\nline");
+    CHECK(!rows[1].allowed);
+    CHECK(rows[1].action == "login.failed");
+
+    // A missing file is not an error: fresh installs simply have
+    // no trail yet.
+    AuditLog fresh;
+    CHECK(!fresh.loadCSV("/tmp/definitely-missing-audit.csv"));
+    CHECK(fresh.empty());
+}
+
+/* ============================================================
+ *  RBAC enforcement at the facade
+ * ============================================================ */
+
+static void testRbacEnforcement()
+{
+    RentalManager m;
+    m.seedDemoData();
+    std::string err;
+
+    // Seeding already wrote its account-creation entries into the
+    // trail; remember the size and watch it grow from the first login.
+    const std::size_t seeded = m.auditLog().size();
+    CHECK(seeded > 0);
+    CHECK(m.login("sara", "staff123"));
+    CHECK(m.auditLog().size() > seeded);
+    CHECK(m.auditLog().all().back().action == "login.ok");
+    CHECK(m.hasPermission(Permission::PROCESS_RETURNS));
+    CHECK(!m.hasPermission(Permission::MANAGE_USERS));
+    CHECK(!m.hasPermission(Permission::EXPORT_REPORTS));
+
+    // Staff cannot export: denied at the facade, and the denial is
+    // attributed and explained in the trail.
+    const std::size_t before = m.auditLog().size();
+    CHECK(!m.exportFleetReport("/tmp/staff_denied_export.csv"));
+    const std::vector<AuditEntry> trail = m.auditLog().all();
+    CHECK_EQ(trail.size(), before + 1);
+    CHECK(!trail.back().allowed);
+    CHECK(trail.back().actor == "sara");
+    CHECK(trail.back().action == "export.fleet");
+    CHECK(trail.back().detail.find("export-reports") !=
+          std::string::npos);
+
+    // Same story for account management — nothing is created.
+    CHECK(!m.registerStaffAccount("eve", "pass1234", "Staff"));
+    CHECK(!m.userExists("eve"));
+    CHECK(!m.blockUser("ali"));
+    CHECK(m.auditLog().all().back().action == "user.blocked");
+    CHECK(!m.auditLog().all().back().allowed);
+
+    // Managers hold the keys: export works and is logged as allowed.
+    m.logout();
+    CHECK(m.login("admin", "manager123"));
+    CHECK(m.hasPermission(Permission::EXPORT_REPORTS));
+    CHECK(m.hasPermission(Permission::MANAGE_USERS));
+    CHECK(m.hasPermission(Permission::VIEW_AUDIT_LOG));
+    CHECK(m.exportFleetReport("/tmp/manager_export.csv"));
+    CHECK(m.auditLog().all().back().action == "export.fleet");
+    CHECK(m.auditLog().all().back().allowed);
+
+    // The whole trail survives save/load for the next session.
+    CHECK(m.saveData("/tmp/rbac_data_dir"));
+    RentalManager reloaded;
+    CHECK(reloaded.loadData("/tmp/rbac_data_dir"));
+    CHECK(reloaded.auditLog().size() == m.auditLog().size());
+    CHECK(reloaded.auditLog().all().back().action == "export.fleet");
+
+    // Unknown-user logins are audited too (the old segfault path).
+    CHECK(!reloaded.login("ghost", "nope"));
+    CHECK(reloaded.auditLog().all().back().action == "login.failed");
+    CHECK(reloaded.auditLog().all().back().actor == "?");
+}
 
 int main()
 {
@@ -1553,6 +1727,9 @@ int main()
     runSuite("Fleet analytics dashboard", testAnalytics);
     runSuite("RentalManager: CSV persistence", testRentalManagerPersistence);
     runSuite("Role hierarchy", testRoleHierarchy);
+    runSuite("Permissions: role matrix", testPermissions);
+    runSuite("AuditLog: recording & CSV round-trip", testAuditLog);
+    runSuite("RBAC enforcement at the facade", testRbacEnforcement);
 
     std::cout << "\n" << g_checks << " checks, " << g_failures << " failure(s)\n";
     if (g_failures == 0)
