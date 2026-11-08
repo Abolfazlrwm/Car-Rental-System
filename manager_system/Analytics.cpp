@@ -63,6 +63,9 @@ AnalyticsReport buildAnalytics(const RentalManager &mgr, int todaySerial)
                                                            : 3;
                        ++report.priceBuckets[bucket].count;
 
+                       report.totalWaitlisted +=
+                           static_cast<int>(car->waitlistCount());
+
                        car->forEachReservation(
                            [&](const Reservation *r)
                            {
@@ -90,6 +93,26 @@ AnalyticsReport buildAnalytics(const RentalManager &mgr, int todaySerial)
                   return a.label < b.label;
               });
     report.bookingsPerCar = std::move(perCar);
+
+    // Waitlist depth per car: only cars with waiting customers,
+    // deepest queue first, name breaks ties (same ordering
+    // contract as bookingsPerCar).
+    std::vector<NamedCount> perCarWaitlist;
+    mgr.forEachCar([&](Car *car)
+                   {
+                       if (car->waitlistCount() > 0)
+                           perCarWaitlist.push_back(
+                               {car->name(),
+                                static_cast<int>(car->waitlistCount())});
+                   });
+    std::sort(perCarWaitlist.begin(), perCarWaitlist.end(),
+              [](const NamedCount &a, const NamedCount &b)
+              {
+                  if (a.count != b.count)
+                      return a.count > b.count;
+                  return a.label < b.label;
+              });
+    report.waitlistPerCar = std::move(perCarWaitlist);
 
     // Upcoming pickups from today onwards, earliest first.
     std::vector<const Reservation *> scheduled;

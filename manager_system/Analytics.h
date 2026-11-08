@@ -50,6 +50,10 @@ struct AnalyticsReport
     /// name breaks ties.
     std::vector<NamedCount> bookingsPerCar;
 
+    /// Cars with at least one waitlisted customer (v2.6.0),
+    /// deepest queue first, name breaks ties.
+    std::vector<NamedCount> waitlistPerCar;
+
     /// Fleet split over four fixed daily-rate buckets:
     /// "0-50", "51-100", "101-200", "200+".
     std::vector<NamedCount> priceBuckets;
@@ -65,6 +69,9 @@ struct AnalyticsReport
     /// All queued bookings fleet-wide (same number the
     /// statistics screen reports).
     int totalActiveBookings = 0;
+
+    /// Customers waiting for a free slot fleet-wide (v2.6.0).
+    int totalWaitlisted = 0;
 };
 
 /// Compute the dashboard numbers for `mgr` as of `todaySerial`.
