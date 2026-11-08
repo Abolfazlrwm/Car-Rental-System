@@ -7,6 +7,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <sstream>
 
@@ -641,6 +642,106 @@ std::size_t RentalManager::totalWaitlisted() const
     return total;
 }
 
+/* ============================================================
+ *  Loyalty program (v2.7.0)
+ * ============================================================ */
+
+LoyaltyProfile RentalManager::myLoyalty() const
+{
+    LoyaltyProfile profile;
+    const Customer *customer = asCustomer();
+    if (customer)
+    {
+        profile.points = customer->loyaltyPoints();
+        profile.lifetimePoints = customer->lifetimePoints();
+        profile.completedRentals = customer->completedRentals();
+    }
+    return profile;
+}
+
+double RentalManager::redeemPoints(int points, std::string &errorOut)
+{
+    Customer *customer = asCustomer();
+    if (!customer)
+    {
+        errorOut = "Only logged-in customers can redeem loyalty points.";
+        return -1.0;
+    }
+    if (!isRedeemableAmount(points))
+    {
+        errorOut = "Redeem at least 50 points, in steps of 10 (10 points = 1.00).";
+        return -1.0;
+    }
+    if (points > customer->loyaltyPoints())
+    {
+        errorOut = "You only hold "
+                   + std::to_string(customer->loyaltyPoints()) + " points.";
+        return -1.0;
+    }
+    const double credit = pointsToValue(points);
+    if (customer->balance() <= 0.0)
+    {
+        errorOut = "Your bill is clear - there is nothing to redeem against.";
+        return -1.0;
+    }
+    if (credit > customer->balance() + 1e-9)
+    {
+        std::ostringstream oss;
+        oss << std::fixed << std::setprecision(2) << customer->balance();
+        errorOut = "That credit exceeds your bill of " + oss.str()
+                   + " - redeem fewer points so none go to waste.";
+        return -1.0;
+    }
+
+    customer->deductLoyaltyPoints(points);
+    customer->creditBill(credit);
+
+    std::ostringstream creditStr;
+    creditStr << std::fixed << std::setprecision(2) << credit;
+    audit("loyalty.redeemed", customer->username() + " -"
+                                 + std::to_string(points) + " -> credit "
+                                 + creditStr.str());
+    return credit;
+}
+
+LoyaltyOverview RentalManager::loyaltyOverview() const
+{
+    LoyaltyOverview overview;
+    if (!permitted(Permission::VIEW_ANALYTICS, "loyalty.overview"))
+        return overview;
+
+    // Top member needs a deterministic winner: the HashTable walk
+    // order is not, so collect and sort (points desc, name asc).
+    std::vector<std::pair<std::string, int>> members;
+    userIndex_.forEach([&](const std::string &name, User *user)
+                       {
+                           if (user->role() != "Customer")
+                               return;
+                           const Customer *c = static_cast<const Customer *>(user);
+                           ++overview.totalMembers;
+                           ++overview.membersByTier[static_cast<int>(
+                               tierForLifetimePoints(c->lifetimePoints()))];
+                           overview.outstandingPoints += c->loyaltyPoints();
+                           members.emplace_back(name, c->lifetimePoints());
+                       });
+
+    overview.pointsLiability = pointsToValue(overview.outstandingPoints);
+    std::sort(members.begin(), members.end(),
+              [](const std::pair<std::string, int> &a,
+                 const std::pair<std::string, int> &b)
+              {
+                  if (a.second != b.second)
+                      return a.second > b.second;
+                  return a.first < b.first;
+              });
+    if (!members.empty())
+    {
+        overview.topMember = members.front().first;
+        overview.topMemberLifetime = members.front().second;
+    }
+    return overview;
+}
+
 Reservation *RentalManager::bookWaitlistEntry(Car *car, WaitlistEntry *entry)
 {
     const int newId = ++reservationCounter_; // same id scheme as makeReservation
@@ -740,7 +841,23 @@ bool RentalManager::returnCar(const std::string &carName, int actualReturnDay,
     // The customer owes the money until they pay their bill.
     Customer *cust = res->customer();
     if (cust)
+    {
         cust->charge(total);
+
+        // Loyalty (v2.7.0): the completed rental pays points on the
+        // invoice total, at the multiplier of the tier held BEFORE
+        // this return. The audit line shows the tier the customer
+        // lands on afterwards, so rank-ups are visible in the trail.
+        const int earned = pointsEarnedFor(cust->lifetimePoints(), total);
+        if (earned > 0)
+        {
+            cust->awardLoyaltyPoints(earned);
+            audit("loyalty.earned",
+                  cust->username() + " +" + std::to_string(earned) + " -> "
+                      + toString(tierForLifetimePoints(cust->lifetimePoints())));
+        }
+        cust->recordCompletedRental();
+    }
 
     // Close the booking and free it (Car does not delete it here —
     // ownership of a served booking moves to this function).
@@ -940,21 +1057,32 @@ bool RentalManager::saveData(const std::string &dataDir) const
 {
     std::filesystem::create_directories(dataDir); // portable mkdir -p
 
-    /* ---- users.csv ---- */
+    /* ---- users.csv (customer rows also carry loyalty, v2.7.0) ---- */
     {
         std::ofstream file(dataDir + "/users.csv");
         if (!file)
             return false;
-        file << "username,salt,hash,role,blocked,failedLogins,balance\n";
+        file << "username,salt,hash,role,blocked,failedLogins,balance"
+                ",loyaltyPoints,lifetimePoints,completedRentals\n";
         userIndex_.forEach([&](const std::string &, User *u)
                            {
-                               double balance = (u->role() == "Customer")
-                                                    ? static_cast<Customer *>(u)->balance()
-                                                    : 0.0;
+                               double balance = 0.0;
+                               int points = 0, lifetime = 0, rentals = 0;
+                               if (u->role() == "Customer")
+                               {
+                                   const Customer *c =
+                                       static_cast<const Customer *>(u);
+                                   balance = c->balance();
+                                   points = c->loyaltyPoints();
+                                   lifetime = c->lifetimePoints();
+                                   rentals = c->completedRentals();
+                               }
                                file << u->username() << ',' << u->salt() << ','
                                     << u->passwordHash() << ',' << u->role() << ','
                                     << (u->isBlocked() ? 1 : 0) << ','
-                                    << u->failedLogins() << ',' << balance << '\n';
+                                    << u->failedLogins() << ',' << balance << ','
+                                    << points << ',' << lifetime << ',' << rentals
+                                    << '\n';
                            });
     }
 
@@ -1048,7 +1176,8 @@ bool RentalManager::loadData(const std::string &dataDir)
             if (line.empty())
                 continue;
             std::stringstream ss(line);
-            std::string username, salt, hash, role, blockedStr, failedStr, balanceStr;
+            std::string username, salt, hash, role, blockedStr, failedStr,
+                balanceStr, pointsStr, lifetimeStr, rentalsStr;
             std::getline(ss, username, ',');
             std::getline(ss, salt, ',');
             std::getline(ss, hash, ',');
@@ -1056,12 +1185,31 @@ bool RentalManager::loadData(const std::string &dataDir)
             std::getline(ss, blockedStr, ',');
             std::getline(ss, failedStr, ',');
             std::getline(ss, balanceStr, ',');
+            // Loyalty columns since v2.7.0 — absent on legacy rows,
+            // which default to all-zero (the pre-2.7.0 behaviour).
+            std::getline(ss, pointsStr, ',');
+            std::getline(ss, lifetimeStr, ',');
+            std::getline(ss, rentalsStr, ',');
+
+            auto toIntOr = [](const std::string &text, int fallback)
+            {
+                try
+                {
+                    return text.empty() ? fallback : std::stoi(text);
+                }
+                catch (...)
+                {
+                    return fallback; // corrupt row -> default, don't crash
+                }
+            };
 
             User *user = nullptr;
             if (role == "Customer")
             {
                 Customer *c = new Customer(username);
                 c->setBalance(std::stod(balanceStr));
+                c->restoreLoyalty(toIntOr(pointsStr, 0), toIntOr(lifetimeStr, 0),
+                                  toIntOr(rentalsStr, 0));
                 user = c;
             }
             else if (role == "Staff")
@@ -1203,7 +1351,13 @@ void RentalManager::seedDemoData()
     };
     addDemoUser(new Manager("admin"), "manager123");
     addDemoUser(new Staff("sara"), "staff123");
-    addDemoUser(new Customer("ali"), "customer123");
+
+    // ali is a returning customer: Silver tier with points to
+    // spend, so the loyalty screens have something to show.
+    Customer *ali = new Customer("ali");
+    ali->setPassword("customer123");
+    ali->restoreLoyalty(340, 340, 3);
+    userIndex_.insert(ali->username(), ali);
 
     // Demo fleet ---------------------------------------------------
     struct SeedCar

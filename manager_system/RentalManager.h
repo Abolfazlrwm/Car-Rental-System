@@ -9,6 +9,7 @@
 #include "../basic_structures/HashTable.h"
 #include "AuditLog.h"
 #include "Car.h"
+#include "Loyalty.h"
 #include "Permissions.h"
 #include "User.h"
 #include "WaitlistEntry.h"
@@ -70,8 +71,10 @@ struct FleetStats
  *  reservations and maintenance records, and dereferenced a
  *  null user pointer on login of unknown usernames (segfault).
  *
- *  Persistence: the whole state round-trips through three CSV
- *  files in ./data (users.csv, cars.csv, reservations.csv).
+ *  Persistence: the whole state round-trips through CSV files in
+ *  ./data (users.csv, cars.csv, reservations.csv, audit_log.csv,
+ *  waitlist.csv). Customer rows in users.csv also carry the three
+ *  loyalty counters since v2.7.0; pre-2.7.0 files still load.
  * ============================================================
  */
 class RentalManager
@@ -202,6 +205,28 @@ public:
 
     /// Customers currently waiting fleet-wide (stats + dashboard).
     std::size_t totalWaitlisted() const;
+
+    /* ---------------- Loyalty program (v2.7.0) ----------------
+     *  Rules live in Loyalty.h; the facade owns the three moments
+     *  that touch state: points are EARNED when a return closes a
+     *  rental, SPENT when a customer redeems them against their
+     *  bill, and COUNTED here for the manager's program overview.
+     */
+
+    /// The logged-in customer's standing (zero profile for
+    /// staff / manager sessions and before login).
+    LoyaltyProfile myLoyalty() const;
+
+    /// Turn points into a bill credit: 10 points = 1.00, minimum
+    /// 50, whole currency only, never more than the outstanding
+    /// bill (points are spent, not cashed out). Returns the credited
+    /// amount, or -1.0 with the reason in `errorOut`.
+    double redeemPoints(int points, std::string &errorOut);
+
+    /// Program snapshot for the manager screen: members per tier,
+    /// outstanding points and their credit liability, top member.
+    /// Gated by VIEW_ANALYTICS, like the rest of the dashboards.
+    LoyaltyOverview loyaltyOverview() const;
 
     /* ---------------- Staff operations ---------------- */
 
