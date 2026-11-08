@@ -97,7 +97,11 @@ protected:
 class Customer : public User
 {
 public:
-    Customer(const std::string &username) : User(username, "Customer"), balance_(0.0) {}
+    Customer(const std::string &username)
+        : User(username, "Customer"), balance_(0.0), loyaltyPoints_(0),
+          lifetimePoints_(0), completedRentals_(0)
+    {
+    }
 
     std::string role() const override { return "Customer"; }
 
@@ -107,10 +111,59 @@ public:
     void payBalance() { balance_ = 0.0; }
     void setBalance(double amount) { balance_ = amount; }
 
+    /// Apply a loyalty redemption credit to the bill (clamped at 0,
+    /// so a rounding hiccup can never make the balance negative).
+    void creditBill(double amount)
+    {
+        balance_ -= amount;
+        if (balance_ < 0.0)
+            balance_ = 0.0;
+    }
+
+    /* ---------------- Loyalty program (v2.7.0) ----------------
+     *  Rules live in Loyalty.h; this record only stores the three
+     *  counters. The tier is always derived from lifetimePoints_.
+     */
+
+    /// Points available for redemption (lifetime minus redeemed).
+    int loyaltyPoints() const { return loyaltyPoints_; }
+    /// Never decremented — decides the tier.
+    int lifetimePoints() const { return lifetimePoints_; }
+    /// Returns processed for this customer so far.
+    int completedRentals() const { return completedRentals_; }
+
+    /// Earn path (facade, after a completed rental): credit points.
+    /// Non-positive requests are ignored, so a zero invoice is a no-op.
+    void awardLoyaltyPoints(int points)
+    {
+        if (points <= 0)
+            return;
+        loyaltyPoints_ += points;
+        lifetimePoints_ += points;
+    }
+
+    /// Redeem path (facade, after validation): spend points.
+    void deductLoyaltyPoints(int points) { loyaltyPoints_ -= points; }
+
+    /// Bookkeeping for the completed-rentals counter.
+    void recordCompletedRental() { ++completedRentals_; }
+
+    /// Restore a saved users.csv row. Legacy rows (pre-2.7.0) carry
+    /// no loyalty columns and default to all-zero.
+    void restoreLoyalty(int points, int lifetime, int completedRentals)
+    {
+        loyaltyPoints_ = points;
+        lifetimePoints_ = lifetime;
+        completedRentals_ = completedRentals;
+    }
+
     std::string serializeExtra() const override;
 
 private:
     double balance_;
+    int loyaltyPoints_;
+    int lifetimePoints_;
+    int completedRentals_;
 };
 
 class Staff : public User
