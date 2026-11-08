@@ -60,9 +60,12 @@ older versions (bare day numbers) still load.
 | 2. Search car by name | O(log n) lookup in the AVL index |
 | 3. My reservations | your bookings and their status |
 | 4. Make a reservation | pick a car + start/end date; overlap checks apply |
-| 5. Renew a rental | extend your current rental if nobody is waiting |
-| 6. Pay my bill | settle what you owe (rental + late penalties) |
-| 7. Logout | back to the main menu |
+| 5. Find cars free for a date range | fleet table of cars bookable for an exact range |
+| 6. Join a waitlist | wait for a booked/serviced car to free up |
+| 7. My waitlist (leave) | list your wishes, withdraw one |
+| 8. Renew a rental | extend your current rental if nobody is waiting |
+| 9. Pay my bill | settle what you owe (rental + late penalties) |
+| 10. Logout | back to the main menu |
 
 A typical session:
 
@@ -80,6 +83,32 @@ rejected by the double-booking guard. Renewing is refused when another
 customer is already waiting in that car's queue — first come, first
 served.
 
+### The waitlist (v2.6.0)
+
+When the car you want is not free for your dates, you do not have to
+keep re-checking: join its waitlist and the system books you
+automatically the moment a matching window opens up.
+
+1. **Find out what is free** — option 5 lists every car bookable for
+   an exact `start -> end` range (bookable status AND no queued booking
+   overlapping the range). Nothing free? The screen says so and points
+   at the waitlist.
+2. **Join** — option 6 files your wish (car + desired range). Refused
+   honestly when the car is actually bookable for that range ("make a
+   reservation instead") or when you already have an overlapping wish
+   on it. Wishes are ranked by earliest desired pickup, first-come as
+   the tie-break — the same rule the booking schedule uses.
+3. **Get booked automatically** — as soon as a return is processed or
+   maintenance finishes, the facade promotes the best-fitting wish into
+   a real reservation (audited as `waitlist.promoted`); no re-booking
+   needed, and the front desk can also serve the queue by hand.
+4. **Change your mind** — option 7 lists your wishes and lets you
+   leave a car's waitlist at any time.
+
+Wishes survive restarts: they round-trip through `data/waitlist.csv`
+together with the global join counter (see
+[DATA_FORMATS](DATA_FORMATS.md)).
+
 ## Staff menu
 
 | Option | What it does |
@@ -87,15 +116,20 @@ served.
 | 1. View fleet | fleet table |
 | 2. Search car by name | quick lookup |
 | 3. Deliver car to customer | hand a RESERVED car over → status `RENTED` |
-| 4. Process car return (with penalty) | invoice + late fees, car returns to the fleet |
+| 4. Process car return (with penalty) | invoice + late fees, car returns to the fleet; a waiting wish is auto-booked |
 | 5. Send car to maintenance | take an idle car out of service |
-| 6. Finish maintenance | put the car back into `AVAILABLE` |
+| 6. Finish maintenance | put the car back into `AVAILABLE`; a waiting wish is auto-booked |
 | 7. Show maintenance history | full log: date, description, cost |
-| 8. Logout | back to the main menu |
+| 8. Serve waitlist now | book the best-fitting wish of a car on demand |
+| 9. Logout | back to the main menu |
 
 The return flow asks for the **actual return date**; every day past the
 agreed end date is charged at **1.5 × the daily rate** and added to the
-customer's balance.
+customer's balance. After the return (and after every finished
+maintenance) the facade automatically promotes the best-fitting
+waitlisted wish into a reservation — option 8 covers the rare case a
+wish should jump the queue right now. Serving the waitlist requires the
+`handle-deliveries` permission, so customers cannot trigger it.
 
 ## Manager menu
 

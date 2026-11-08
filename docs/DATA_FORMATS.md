@@ -69,6 +69,29 @@ Within a car, the booking queue serves the earliest `startDate` first
 reservations survive restarts because the queues are rebuilt from this
 file on load.
 
+## waitlist.csv (data/)   — since v2.6.0
+
+The customer wishes that could not be booked directly. One row per
+wish, dumped in fleet insertion order (heap order within a car):
+
+```
+carName,customer,startDate,endDate,joinOrder
+Pride 131,ali,2026-12-01,2026-12-02,1
+```
+
+| Column | Meaning |
+|---|---|
+| `carName` | car name, matches `cars.csv` |
+| `customer` | username, matches `users.csv` |
+| `startDate` / `endDate` | desired rental window, ISO `YYYY-MM-DD` (inclusive) |
+| `joinOrder` | position in the global first-come counter |
+
+Loading rebuilds each car's wish heap and continues the global join
+counter at `max(joinOrder) + 1`. Wishes are served by earliest desired
+pickup first, `joinOrder` as the tie-break — mirroring
+`reservations.csv`. Rows referencing a deleted car, an unknown user or
+a non-customer role are dropped on load instead of crashing.
+
 ## Exported reports (reports/)
 
 Separate from `data/`, the manager can export two snapshot reports
@@ -167,7 +190,8 @@ date,actor,action,result,detail
   `user.blocked`, `user.unblocked`, `car.added`, `car.delivered`,
   `car.returned`, `reservation.made`, `maintenance.sent`,
   `maintenance.finished`, `maintenance.logged`, `export.fleet`,
-  `export.bookings`
+  `export.bookings`, `waitlist.joined`, `waitlist.left`,
+  `waitlist.served`, `waitlist.promoted`
 - `result` — `ok` or `denied` (failed logins count as denied)
 - `detail` — full free-text context (the on-screen table truncates
   it to 30 characters; the file never does)

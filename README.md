@@ -3,7 +3,7 @@
 [![CI](https://github.com/Abolfazlrwm/Car-Rental-System/actions/workflows/ci.yml/badge.svg)](https://github.com/Abolfazlrwm/Car-Rental-System/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Abolfazlrwm/Car-Rental-System)](https://github.com/Abolfazlrwm/Car-Rental-System/releases)
 ![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-4%2C542%20checks-3AAFA9)
+![Tests](https://img.shields.io/badge/tests-4%2C668%20checks-3AAFA9)
 ![Memory](https://img.shields.io/badge/AddressSanitizer-leak--free-4C6EF5)
 ![License](https://img.shields.io/badge/license-MIT-64748B)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)
@@ -14,7 +14,8 @@ with rehashing, a binary heap and a doubly linked list. Every container is
 implemented from scratch, unit-tested, and documented; the application on
 top is a layered, leak-free C++17 console system with real password
 hashing, ISO calendar dates, double-booking prevention, late-return
-penalties, an audited permission matrix and full CSV persistence.
+penalties, a waitlist that auto-books freed slots, an audited permission
+matrix and full CSV persistence.
 
 > Originally written as a data-structures course project, then rebuilt
 > into a portfolio-grade repository. Release-by-release history lives in
@@ -79,6 +80,13 @@ tree and asserting the height stays within the theoretical bound.
   day-number data files still load
 - Double-booking prevention (date-range overlap rejection)
 - Earliest-pickup-first scheduling (priority queue + FIFO tie-break)
+- **Date-range availability search** (v2.6.0): "which cars are free
+  2026-12-01 → 2026-12-03?" answered in one screen
+- **Waitlist with auto-booking** (v2.6.0): when your dates are taken,
+  file a wish into the car's own priority queue — the facade turns the
+  best-fitting wish into a real reservation the moment a return frees
+  the window (or maintenance ends), FCFS tie-break, wishes persisted
+  in `data/waitlist.csv`
 - Rental renewal with queue discipline (blocked when others wait)
 - Case-insensitive **keyword search** across car names and brands
 
@@ -95,7 +103,8 @@ tree and asserting the height stays within the theoretical bound.
   bookings) with strict RFC 8259 escaping, validated by the suite's
   own JSON parser
 - **Fleet analytics dashboard**: ASCII bar charts — composition, rate
-  buckets, bookings per car, the next pickups and overdue returns
+  buckets, bookings per car, waitlist depth per car, the next pickups
+  and overdue returns
 
 **Maintenance**
 - Send to / return from maintenance, blocked while rented
@@ -103,7 +112,8 @@ tree and asserting the height stays within the theoretical bound.
 
 **Persistence**
 - Full state round-trip: users (salted hashes, balances, blocked flags),
-  cars (status, income) and **live reservations** in `data/*.csv`
+  cars (status, income), **live reservations** and the **waitlist** in
+  `data/*.csv`
 - Auto-seeded demo fleet on first run — clone, build, and it just works
 
 ---
@@ -111,6 +121,12 @@ tree and asserting the height stays within the theoretical bound.
 ## 🎬 Demo
 
 ![Car Rental System — manager console: fleet status & income report](docs/manager_dashboard.png)
+
+New in v2.6.0 — the waitlist: search what is free for an exact range,
+file a wish on the booked car, and the analytics dashboard shows the
+queue depth per car:
+
+![Car Rental System — customer waitlist flow and the fleet analytics dashboard with waitlist depth bars](docs/waitlist.png)
 
 Reserve the Benz → staff delivers it → customer returns it 2 days late →
 the manager sees the penalty on the books:
@@ -203,6 +219,7 @@ Car-Rental-System/
 │   ├── JsonExport.{h,cpp}   # RFC 8259 report writer + escaper
 │   ├── AuditLog.{h,cpp}     # append-only trail + CSV round-trip
 │   ├── Permissions.h        # the 7-permission role matrix
+│   ├── WaitlistEntry.{h,cpp}# a wish: car + range + FCFS join order
 │   ├── User.{h,cpp}         # User → Customer / Staff / Manager
 │   ├── Car.{h,cpp}          # status, income ledger, maintenance log
 │   ├── Reservation.{h,cpp}  # booking + priority rule
@@ -213,7 +230,7 @@ Car-Rental-System/
 │   ├── HashTable.h          # separate chaining + rehashing
 │   ├── PriorityQueue.h      # binary min-heap, auto-growing
 │   └── DoublyLinkedList.h   # O(1) pushes at both ends
-├── tests/test_main.cpp      # 4,542 checks, dependency-free framework
+├── tests/test_main.cpp      # 4,668 checks, dependency-free framework
 ├── scripts/demo.sh          # scripted end-to-end walkthrough
 ├── benchmarks/
 │   └── bench_containers.cpp # `make bench` — ours vs std, measured
@@ -263,8 +280,11 @@ The suite needs no external framework and runs in milliseconds:
   [ ok ] Permissions: role matrix
   [ ok ] AuditLog: recording & CSV round-trip
   [ ok ] RBAC enforcement at the facade
+  [ ok ] Waitlist: wish priority rules
+  [ ok ] Car waitlist queue
+  [ ok ] Waitlist: facade, promotion & persistence
 
-4542 checks, 0 failure(s)
+4668 checks, 0 failure(s)
 ALL TESTS PASSED
 ```
 
@@ -287,6 +307,8 @@ Memory safety is verified with `g++ -fsanitize=address,undefined`.
 - [x] Fine-grained permissions + an append-only audit trail,
   enforced inside the facade (v2.5.0)
 - [x] Docker devcontainer for one-click contributor setup (v2.5.0)
+- [x] Date-range availability search + per-car waitlist that
+  auto-books freed slots (v2.6.0)
 
 ## 📚 Documentation
 

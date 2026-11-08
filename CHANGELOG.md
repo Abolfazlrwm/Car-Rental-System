@@ -4,6 +4,49 @@ All notable changes to the Car Rental System are documented in this file.
 The detailed v1.0 → v2.0 story lives in
 [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md).
 
+## [2.6.0] — 2026-11-09
+
+### Added
+
+- **Waitlist with auto-booking** — a car whose dates are taken no
+  longer turns customers away: they file a wish (car + desired
+  range) into the car's own `PriorityQueue`, ranked earliest desired
+  pickup first with a global first-come counter as the tie-break —
+  the exact priority shape of the booking schedule. The moment a
+  return frees the window (or maintenance finishes), the facade
+  promotes the best-fitting wish into a real reservation and logs it
+  as `waitlist.promoted`; clashing wishes stay queued and the front
+  desk can serve the queue by hand (`handle-deliveries` permission,
+  denials audited). Wishes round-trip through the new
+  `data/waitlist.csv` together with the global join counter.
+- **Date-range availability search** — the customer menu answers
+  "which cars are free 2026-12-01 → 2026-12-03?" in one screen:
+  bookable status AND no queued booking overlapping the range, in
+  fleet insertion order.
+- **Waitlist depth on the analytics dashboard** — a "Waitlist depth
+  per car" bar section (deepest queue first) plus a fleet-wide
+  waiting counter next to the overdue-returns warning.
+- Customer menu grown to 10 entries (find-free-cars, join waitlist,
+  my-waitlist/leave) with a waitlist tip after every overlap-rejected
+  reservation; staff menu gains "Serve waitlist now".
+
+### Changed
+
+- Returns and finished maintenance may now trigger a promotion right
+  after their own audit entry, so a freed window never sits idle
+  while someone is waiting for it.
+- `joinWaitlist` refuses (with a pointer to the reservation flow)
+  when the requested range is directly bookable — queueing people
+  who do not need to wait would be a lie.
+
+### Tests
+
+- Suite grown from 4,542 to **4,668 checks** (three new suites: wish
+  priority rules, the car-level wish heap, and the facade flow —
+  every rejection path, both auto-promotion triggers, the
+  clashing-wish survival case and the CSV round-trip) — still zero
+  dependencies, still leak-free under ASan + UBSan.
+
 ## [2.5.0] — 2026-11-08
 
 ### Added
