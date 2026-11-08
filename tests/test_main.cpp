@@ -14,6 +14,8 @@
  *    - Reservation: priority + overlap rules
  *    - Waitlist: wish priority, per-car heap, facade promotion,
  *      CSV round-trip
+ *    - Loyalty: tier maths, points accrual on returns,
+ *      redemption rules, program overview, CSV round-trip
  *    - RentalManager: the bugs that existed in v1.0 are now
  *      regression tests (null login, double income, fake renewal,
  *      duplicate fleet names, blocked accounts, persistence)
@@ -44,6 +46,7 @@
 #include "../manager_system/Car.h"
 #include "../manager_system/Date.h"
 #include "../manager_system/JsonExport.h"
+#include "../manager_system/Loyalty.h"
 #include "../manager_system/Permissions.h"
 #include "../manager_system/Reservation.h"
 #include "../manager_system/RentalManager.h"
@@ -2003,6 +2006,300 @@ static void testRentalManagerWaitlist()
     CHECK(report.waitlistPerCar.front().count == 1);
 }
 
+/* ============================================================
+ *  Loyalty program (v2.7.0)
+ * ============================================================ */
+
+/// The pure rule engine in Loyalty.h: thresholds, multipliers,
+/// accrual and redemption maths, progress to the next rank.
+static void testLoyaltyMaths()
+{
+    // Tier names and thresholds.
+    CHECK_EQ(std::string(toString(LoyaltyTier::Bronze)), std::string("Bronze"));
+    CHECK_EQ(std::string(toString(LoyaltyTier::Silver)), std::string("Silver"));
+    CHECK_EQ(std::string(toString(LoyaltyTier::Gold)), std::string("Gold"));
+    CHECK_EQ(std::string(toString(LoyaltyTier::Platinum)),
+             std::string("Platinum"));
+    CHECK_EQ(tierThreshold(LoyaltyTier::Bronze), 0);
+    CHECK_EQ(tierThreshold(LoyaltyTier::Silver), 250);
+    CHECK_EQ(tierThreshold(LoyaltyTier::Gold), 1000);
+    CHECK_EQ(tierThreshold(LoyaltyTier::Platinum), 2500);
+
+    // Earning multipliers per rank.
+    CHECK(approx(tierMultiplier(LoyaltyTier::Bronze), 1.0));
+    CHECK(approx(tierMultiplier(LoyaltyTier::Silver), 1.25));
+    CHECK(approx(tierMultiplier(LoyaltyTier::Gold), 1.5));
+    CHECK(approx(tierMultiplier(LoyaltyTier::Platinum), 2.0));
+
+    // Rank boundaries: the threshold itself flips the rank.
+    CHECK(tierForLifetimePoints(0) == LoyaltyTier::Bronze);
+    CHECK(tierForLifetimePoints(249) == LoyaltyTier::Bronze);
+    CHECK(tierForLifetimePoints(250) == LoyaltyTier::Silver);
+    CHECK(tierForLifetimePoints(999) == LoyaltyTier::Silver);
+    CHECK(tierForLifetimePoints(1000) == LoyaltyTier::Gold);
+    CHECK(tierForLifetimePoints(2499) == LoyaltyTier::Gold);
+    CHECK(tierForLifetimePoints(2500) == LoyaltyTier::Platinum);
+    CHECK(tierForLifetimePoints(9999) == LoyaltyTier::Platinum);
+
+    // nextTier chains up and caps Platinum at itself.
+    CHECK(nextTier(LoyaltyTier::Bronze) == LoyaltyTier::Silver);
+    CHECK(nextTier(LoyaltyTier::Silver) == LoyaltyTier::Gold);
+    CHECK(nextTier(LoyaltyTier::Gold) == LoyaltyTier::Platinum);
+    CHECK(nextTier(LoyaltyTier::Platinum) == LoyaltyTier::Platinum);
+
+    // Distance to the next rank (0 = top rank reached).
+    CHECK_EQ(pointsToNextTier(0), 250);
+    CHECK_EQ(pointsToNextTier(249), 1);
+    CHECK_EQ(pointsToNextTier(250), 750);
+    CHECK_EQ(pointsToNextTier(999), 1);
+    CHECK_EQ(pointsToNextTier(1000), 1500);
+    CHECK_EQ(pointsToNextTier(2499), 1);
+    CHECK_EQ(pointsToNextTier(2500), 0);
+    CHECK_EQ(pointsToNextTier(4000), 0);
+
+    // Accrual: 1 point per 10.00 spent, tier multiplier applied,
+    // floored to whole points. A zero or negative invoice earns
+    // nothing.
+    CHECK_EQ(pointsEarnedFor(0, 0.0), 0);
+    CHECK_EQ(pointsEarnedFor(0, -50.0), 0);
+    CHECK_EQ(pointsEarnedFor(0, 9.99), 0); // floor, never rounds up
+    CHECK_EQ(pointsEarnedFor(0, 90.0), 9);
+    CHECK_EQ(pointsEarnedFor(0, 540.0), 54);                     // Bronze x1.0
+    CHECK_EQ(pointsEarnedFor(250, 540.0), 67);                   // 67.5 -> 67
+    CHECK_EQ(pointsEarnedFor(1000, 540.0), 81);                  // Gold x1.5
+    CHECK_EQ(pointsEarnedFor(2500, 540.0), 108);                 // Platinum x2.0
+
+    // Redemption maths: 10 points = 1.00, min 50, steps of 10.
+    CHECK(approx(pointsToValue(50), 5.0));
+    CHECK(approx(pointsToValue(100), 10.0));
+    CHECK(approx(pointsToValue(340), 34.0));
+    CHECK(!isRedeemableAmount(0));
+    CHECK(!isRedeemableAmount(10));
+    CHECK(!isRedeemableAmount(49));
+    CHECK(isRedeemableAmount(50));
+    CHECK(!isRedeemableAmount(55));
+    CHECK(isRedeemableAmount(60));
+    CHECK(isRedeemableAmount(3200));
+    CHECK(!isRedeemableAmount(-50));
+
+    // The profile snapshot derives its rank from lifetime points.
+    const LoyaltyProfile fresh;
+    CHECK_EQ(fresh.points, 0);
+    CHECK_EQ(fresh.lifetimePoints, 0);
+    CHECK_EQ(fresh.completedRentals, 0);
+    CHECK(fresh.tier() == LoyaltyTier::Bronze);
+    CHECK_EQ(fresh.pointsToNextTier(), 250);
+
+    LoyaltyProfile ali;
+    ali.points = 340;
+    ali.lifetimePoints = 340;
+    ali.completedRentals = 3;
+    CHECK(ali.tier() == LoyaltyTier::Silver);
+    CHECK_EQ(ali.pointsToNextTier(), 660);
+}
+
+/// The full facade flow: points accrue on completed rentals at the
+/// multiplier held before each return, rank-ups happen mid-history,
+/// redemptions obey every rule, staff have no standing and the
+/// counters round-trip through users.csv.
+static void testRentalManagerLoyalty()
+{
+    const std::string dir = "/tmp/crs_loyalty_data";
+    std::system(("rm -rf " + dir).c_str());
+
+    RentalManager m;
+    CHECK(m.registerCustomer("parisa", "pass1234"));
+    CHECK(m.addCar(new Car("Testar", "TestCo", 45.0)));
+
+    // No session: a zero profile and no redemption.
+    CHECK(m.myLoyalty().points == 0);
+    CHECK(m.myLoyalty().tier() == LoyaltyTier::Bronze);
+    std::string err;
+    CHECK(m.redeemPoints(50, err) == -1.0);
+
+    // Rental 1: 10 days x 45 = 450 -> 45 points (Bronze x1.0).
+    m.login("parisa", "pass1234");
+    CHECK(m.makeReservation("Testar", 100, 109, err));
+    m.logout();
+    CHECK(m.deliverCar("Testar", err));
+    CHECK(m.returnCar("Testar", 109, err)); // on time
+
+    m.login("parisa", "pass1234");
+    CHECK_EQ(m.myLoyalty().points, 45);
+    CHECK_EQ(m.myLoyalty().lifetimePoints, 45);
+    CHECK_EQ(m.myLoyalty().completedRentals, 1);
+    CHECK(m.myLoyalty().tier() == LoyaltyTier::Bronze);
+    CHECK(approx(m.currentCustomerBalance(), 450.0));
+    m.logout();
+
+    // Rental 2: 47 days x 45 = 2115 -> floor(211.5) = 211, still
+    // Bronze at return time. Lifetime 45 + 211 = 256 -> Silver.
+    m.login("parisa", "pass1234");
+    CHECK(m.makeReservation("Testar", 120, 166, err));
+    m.logout();
+    CHECK(m.deliverCar("Testar", err));
+    CHECK(m.returnCar("Testar", 166, err));
+
+    m.login("parisa", "pass1234");
+    CHECK_EQ(m.myLoyalty().points, 256);
+    CHECK_EQ(m.myLoyalty().lifetimePoints, 256);
+    CHECK_EQ(m.myLoyalty().completedRentals, 2);
+    CHECK(m.myLoyalty().tier() == LoyaltyTier::Silver);
+    CHECK(approx(m.currentCustomerBalance(), 450.0 + 2115.0));
+    m.logout();
+
+    // Rental 3: a late return still earns, now at the Silver rate.
+    // 10 days x 45 = 450 + 1 late day x 45 x 1.5 = 517.50
+    // -> floor(517.5 x 0.1 x 1.25) = 64 points.
+    m.login("parisa", "pass1234");
+    CHECK(m.makeReservation("Testar", 200, 209, err));
+    m.logout();
+    CHECK(m.deliverCar("Testar", err));
+    CHECK(m.returnCar("Testar", 210, err)); // 1 day late
+
+    m.login("parisa", "pass1234");
+    CHECK_EQ(m.myLoyalty().points, 320);
+    CHECK_EQ(m.myLoyalty().lifetimePoints, 320);
+    CHECK_EQ(m.myLoyalty().completedRentals, 3);
+    CHECK(approx(m.currentCustomerBalance(), 450.0 + 2115.0 + 517.5));
+    m.logout();
+
+    // The trail logged every earn (and no redemption yet).
+    int earnCount = 0, redeemCount = 0;
+    for (const AuditEntry &e : m.auditLog().all())
+    {
+        if (e.action == "loyalty.earned")
+            ++earnCount;
+        if (e.action == "loyalty.redeemed")
+            ++redeemCount;
+    }
+    CHECK_EQ(earnCount, 3);
+    CHECK_EQ(redeemCount, 0);
+
+    // Redemption: every rule enforced, in order.
+    m.login("parisa", "pass1234");
+    CHECK(m.redeemPoints(45, err) == -1.0);   // below minimum
+    CHECK(m.redeemPoints(330, err) == -1.0);  // more than held
+    CHECK(m.redeemPoints(3200, err) == -1.0); // not a step of 10
+    const double credited = m.redeemPoints(100, err);
+    CHECK(approx(credited, 10.0));
+    CHECK(approx(m.currentCustomerBalance(), 3082.5 - 10.0));
+    CHECK_EQ(m.myLoyalty().points, 220);
+    CHECK_EQ(m.myLoyalty().lifetimePoints, 320); // lifetime never spent
+    CHECK(m.myLoyalty().tier() == LoyaltyTier::Silver);
+
+    // A cleared bill leaves nothing to redeem against.
+    CHECK(approx(m.payBill(), 3072.5));
+    CHECK(m.redeemPoints(50, err) == -1.0);
+    m.logout();
+
+    // Staff sessions have no standing and cannot redeem.
+    CHECK(m.registerStaffAccount("st", "st1234", "Staff"));
+    m.login("st", "st1234");
+    CHECK(m.myLoyalty().points == 0);
+    CHECK(m.myLoyalty().completedRentals == 0);
+    CHECK(m.redeemPoints(50, err) == -1.0);
+    m.logout();
+
+    // Persistence: the three counters round-trip through users.csv.
+    CHECK(m.saveData(dir));
+    RentalManager reloaded;
+    CHECK(reloaded.loadData(dir));
+    CHECK(reloaded.login("parisa", "pass1234"));
+    CHECK_EQ(reloaded.myLoyalty().points, 220);
+    CHECK_EQ(reloaded.myLoyalty().lifetimePoints, 320);
+    CHECK_EQ(reloaded.myLoyalty().completedRentals, 3);
+    CHECK(reloaded.myLoyalty().tier() == LoyaltyTier::Silver);
+    CHECK(approx(reloaded.currentCustomerBalance(), 0.0));
+
+    // Earning continues seamlessly on the reloaded state: 450 spent
+    // at the Silver rate -> floor(45 x 1.25) = 56 more points.
+    CHECK(reloaded.makeReservation("Testar", 300, 309, err));
+    reloaded.logout();
+    CHECK(reloaded.deliverCar("Testar", err));
+    CHECK(reloaded.returnCar("Testar", 309, err));
+    reloaded.login("parisa", "pass1234");
+    CHECK_EQ(reloaded.myLoyalty().points, 276);
+    reloaded.logout();
+}
+
+/// The manager's program overview, built from a hand-written
+/// users.csv that also exercises the legacy (7-column) row shape.
+static void testLoyaltyOverview()
+{
+    const std::string dir = "/tmp/crs_loyalty_overview";
+    std::system(("rm -rf " + dir).c_str());
+    std::filesystem::create_directories(dir);
+
+    // Five customers across the ranks, a top-member tie, one staff
+    // row and one legacy customer row without loyalty columns.
+    const std::string salt = "0123456789abcdef";
+    {
+        std::ofstream users(dir + "/users.csv");
+        users << "username,salt,hash,role,blocked,failedLogins,balance"
+                 ",loyaltyPoints,lifetimePoints,completedRentals\n";
+        users << "nima," << salt << ',' << SHA256::hash(salt + "pass1234")
+              << ",Customer,0,0,50.00,40,40,1\n";
+        users << "sahar," << salt << ',' << SHA256::hash(salt + "pass1234")
+              << ",Customer,0,0,0.00,250,250,2\n";
+        users << "behrad," << salt << ',' << SHA256::hash(salt + "pass1234")
+              << ",Customer,0,0,12.50,2600,2600,9\n";
+        users << "zara," << salt << ',' << SHA256::hash(salt + "pass1234")
+              << ",Customer,0,0,99.00,2600,2600,9\n";
+        users << "olduser," << salt << ','
+              << SHA256::hash(salt + "pass1234")
+              << ",Customer,0,0,12.50\n"; // pre-2.7.0 row shape
+        users << "st," << salt << ',' << SHA256::hash(salt + "pass1234")
+              << ",Staff,0,0,0.00,0,0,0\n";
+    }
+
+    RentalManager m;
+    CHECK(m.loadData(dir));
+
+    // A legacy row loads with an all-zero standing, not garbage.
+    m.login("olduser", "pass1234");
+    CHECK(m.myLoyalty().points == 0);
+    CHECK(m.myLoyalty().lifetimePoints == 0);
+    CHECK(m.myLoyalty().completedRentals == 0);
+    CHECK(m.myLoyalty().tier() == LoyaltyTier::Bronze);
+    CHECK(approx(m.currentCustomerBalance(), 12.5));
+    m.logout();
+
+    // The overview counts every customer in the right rank.
+    const LoyaltyOverview o = m.loyaltyOverview(); // no session -> allowed
+    CHECK_EQ(o.totalMembers, 5);
+    CHECK_EQ(o.membersByTier[0], 2); // Bronze: nima + olduser
+    CHECK_EQ(o.membersByTier[1], 1); // Silver: sahar
+    CHECK_EQ(o.membersByTier[2], 0); // Gold: none
+    CHECK_EQ(o.membersByTier[3], 2); // Platinum: behrad + zara
+    CHECK_EQ(o.outstandingPoints, 40 + 250 + 2600 + 2600);
+    CHECK(approx(o.pointsLiability, 549.0));
+    // Tie on 2600 lifetime points -> lexicographically smaller name.
+    CHECK(o.topMember == "behrad");
+    CHECK_EQ(o.topMemberLifetime, 2600);
+
+    // Staff are shut out of the overview (VIEW_ANALYTICS) and the
+    // denial lands in the audit trail.
+    m.login("st", "pass1234");
+    CHECK(!m.hasPermission(Permission::VIEW_ANALYTICS));
+    const LoyaltyOverview denied = m.loyaltyOverview();
+    CHECK_EQ(denied.totalMembers, 0);
+    CHECK_EQ(denied.outstandingPoints, 0);
+    bool denialLogged = false;
+    for (const AuditEntry &e : m.auditLog().all())
+        if (e.action == "loyalty.overview" && !e.allowed)
+            denialLogged = true;
+    CHECK(denialLogged);
+    m.logout();
+
+    // An empty program reads as all-zero, not garbage.
+    RentalManager empty;
+    const LoyaltyOverview none = empty.loyaltyOverview();
+    CHECK_EQ(none.totalMembers, 0);
+    CHECK_EQ(none.outstandingPoints, 0);
+    CHECK(none.topMember.empty());
+}
+
 int main()
 {
     std::cout << "==== Car Rental System — unit tests ====\n";
@@ -2032,6 +2329,9 @@ int main()
     runSuite("Waitlist: wish priority rules", testWaitlistEntryOrdering);
     runSuite("Car waitlist queue", testCarWaitlistQueue);
     runSuite("Waitlist: facade, promotion & persistence", testRentalManagerWaitlist);
+    runSuite("Loyalty: tiers & maths", testLoyaltyMaths);
+    runSuite("RentalManager: loyalty accrual & redemption", testRentalManagerLoyalty);
+    runSuite("Loyalty: program overview & legacy rows", testLoyaltyOverview);
 
     std::cout << "\n" << g_checks << " checks, " << g_failures << " failure(s)\n";
     if (g_failures == 0)
