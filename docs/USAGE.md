@@ -65,7 +65,9 @@ older versions (bare day numbers) still load.
 | 7. My waitlist (leave) | list your wishes, withdraw one |
 | 8. Renew a rental | extend your current rental if nobody is waiting |
 | 9. Pay my bill | settle what you owe (rental + late penalties) |
-| 10. Logout | back to the main menu |
+| 10. My loyalty card | your rank, points and progress to the next tier |
+| 11. Redeem points on my bill | turn points into a credit on what you owe |
+| 12. Logout | back to the main menu |
 
 A typical session:
 
@@ -109,6 +111,36 @@ Wishes survive restarts: they round-trip through `data/waitlist.csv`
 together with the global join counter (see
 [DATA_FORMATS](DATA_FORMATS.md)).
 
+### The loyalty program (v2.7.0)
+
+Every completed rental pays points on its invoice: **1 point per 10.00
+spent**, multiplied by the rank you already hold. Ranks grow on
+**lifetime points** — the points you keep even after spending them:
+
+| Rank | Lifetime points | Earning multiplier |
+|---|---|---|
+| Bronze | 0 | ×1.00 |
+| Silver | 250 | ×1.25 |
+| Gold | 1,000 | ×1.50 |
+| Platinum | 2,500 | ×2.00 |
+
+1. **Earn** — the moment the front desk processes your return, the
+   invoice pays points (a late penalty is part of the spend). The
+   audit trail records `loyalty.earned` with the rank you land on.
+2. **Watch the card** — option 10 shows your rank, a progress bar to
+   the next one, spendable vs lifetime points and your completed
+   rentals.
+3. **Redeem** — option 11 turns points into a credit on your
+   outstanding bill: 10 points = 1.00, minimum 50, steps of 10, and
+   never more than the bill itself — points are spent, not cashed
+   out. The redemption is audited as `loyalty.redeemed`.
+4. **Climb** — because the multiplier comes from the rank held
+   *before* the return, every rental at a higher rank pays even more
+   on the next one.
+
+Loyalty counters round-trip through `users.csv`; accounts created
+before v2.7.0 start at Bronze with zero points.
+
 ## Staff menu
 
 | Option | What it does |
@@ -116,7 +148,7 @@ together with the global join counter (see
 | 1. View fleet | fleet table |
 | 2. Search car by name | quick lookup |
 | 3. Deliver car to customer | hand a RESERVED car over → status `RENTED` |
-| 4. Process car return (with penalty) | invoice + late fees, car returns to the fleet; a waiting wish is auto-booked |
+| 4. Process car return (with penalty) | invoice + late fees, car returns to the fleet; a waiting wish is auto-booked and the customer's loyalty points are credited |
 | 5. Send car to maintenance | take an idle car out of service |
 | 6. Finish maintenance | put the car back into `AVAILABLE`; a waiting wish is auto-booked |
 | 7. Show maintenance history | full log: date, description, cost |
@@ -142,14 +174,15 @@ wish should jump the queue right now. Serving the waitlist requires the
 | 5. Fleet statistics | composition, utilization, revenue, top earner |
 | 6. Fleet analytics dashboard | live bar charts: composition, rate buckets, bookings per car, next pickups, overdue returns |
 | 7. Audit log | newest 15 trail entries — logins, privileged actions, denials in red |
-| 8. Income report | per-car gross / maintenance / net + totals |
-| 9. Export CSV & JSON reports | write `reports/fleet_report.csv`, `reports/bookings_report.csv` + `reports/report.json` |
-| 10. Block user | lock an account immediately |
-| 11. Unblock user | release a blocked account |
-| 12. Create staff account | add a Staff login |
-| 13. Save data to disk | flush state without leaving |
-| 14. Save & logout | save and return to the main menu |
-| 15. Exit program | save everything and quit |
+| 8. Loyalty program overview | members per rank, outstanding points, credit liability, top member |
+| 9. Income report | per-car gross / maintenance / net + totals |
+| 10. Export CSV & JSON reports | write `reports/fleet_report.csv`, `reports/bookings_report.csv` + `reports/report.json` |
+| 11. Block user | lock an account immediately |
+| 12. Unblock user | release a blocked account |
+| 13. Create staff account | add a Staff login |
+| 14. Save data to disk | flush state without leaving |
+| 15. Save & logout | save and return to the main menu |
+| 16. Exit program | save everything and quit |
 
 Every row above is also enforced inside the facade by the v2.5.0
 permission matrix: managing accounts and exporting reports is

@@ -3,7 +3,7 @@
 [![CI](https://github.com/Abolfazlrwm/Car-Rental-System/actions/workflows/ci.yml/badge.svg)](https://github.com/Abolfazlrwm/Car-Rental-System/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Abolfazlrwm/Car-Rental-System)](https://github.com/Abolfazlrwm/Car-Rental-System/releases)
 ![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-4%2C668%20checks-3AAFA9)
+![Tests](https://img.shields.io/badge/tests-4%2C804%20checks-3AAFA9)
 ![Memory](https://img.shields.io/badge/AddressSanitizer-leak--free-4C6EF5)
 ![License](https://img.shields.io/badge/license-MIT-64748B)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)
@@ -14,8 +14,8 @@ with rehashing, a binary heap and a doubly linked list. Every container is
 implemented from scratch, unit-tested, and documented; the application on
 top is a layered, leak-free C++17 console system with real password
 hashing, ISO calendar dates, double-booking prevention, late-return
-penalties, a waitlist that auto-books freed slots, an audited permission
-matrix and full CSV persistence.
+penalties, a waitlist that auto-books freed slots, a tiered loyalty
+program, an audited permission matrix and full CSV persistence.
 
 > Originally written as a data-structures course project, then rebuilt
 > into a portfolio-grade repository. Release-by-release history lives in
@@ -94,6 +94,13 @@ tree and asserting the height stays within the theoretical bound.
 - Automatic invoicing: duration × daily price
 - **Late-return penalty**: 1.5 × daily rate per late day
 - Customer balances with one-tap bill payment
+- **Loyalty program** (v2.7.0): Bronze → Silver → Gold → Platinum
+  ranks on lifetime points; every completed rental pays 1 point per
+  10.00 spent × the rank's multiplier (up to ×2.0 at Platinum); points
+  redeem against the outstanding bill at 10 points = 1.00 (min 50,
+  steps of 10, never above the bill — points are spent, not cashed);
+  customer loyalty card, manager program overview, counters persisted
+  in `users.csv` (pre-2.7.0 files still load)
 - Income report per car + net revenue (income − maintenance costs)
 - **Fleet statistics snapshot**: composition, utilization %, net
   revenue and the top-earning car in one screen
@@ -111,9 +118,9 @@ tree and asserting the height stays within the theoretical bound.
 - Queryable history log with date, description and cost
 
 **Persistence**
-- Full state round-trip: users (salted hashes, balances, blocked flags),
-  cars (status, income), **live reservations** and the **waitlist** in
-  `data/*.csv`
+- Full state round-trip: users (salted hashes, balances, blocked flags,
+  loyalty counters), cars (status, income), **live reservations** and
+  the **waitlist** in `data/*.csv`
 - Auto-seeded demo fleet on first run — clone, build, and it just works
 
 ---
@@ -127,6 +134,22 @@ file a wish on the booked car, and the analytics dashboard shows the
 queue depth per car:
 
 ![Car Rental System — customer waitlist flow and the fleet analytics dashboard with waitlist depth bars](docs/waitlist.png)
+
+New in v2.7.0 — the loyalty program: completed rentals pay points at
+the rank's multiplier, ranks grow on lifetime points, and points turn
+into bill credits:
+
+```text
+===== LOYALTY CARD | ali =====
+
+  Rank: Silver
+   ███  660 points to Gold
+  Points available  : 340
+  Lifetime points   : 340
+  Completed rentals : 3
+  Earning rate      : x1.25 - 1 point per 10.00 spent, credited on return
+  Redemption        : 10 points = 1.00 off your bill (min 50, steps of 10)
+```
 
 Reserve the Benz → staff delivers it → customer returns it 2 days late →
 the manager sees the penalty on the books:
@@ -283,8 +306,11 @@ The suite needs no external framework and runs in milliseconds:
   [ ok ] Waitlist: wish priority rules
   [ ok ] Car waitlist queue
   [ ok ] Waitlist: facade, promotion & persistence
+  [ ok ] Loyalty: tiers & maths
+  [ ok ] RentalManager: loyalty accrual & redemption
+  [ ok ] Loyalty: program overview & legacy rows
 
-4668 checks, 0 failure(s)
+4804 checks, 0 failure(s)
 ALL TESTS PASSED
 ```
 
@@ -309,6 +335,8 @@ Memory safety is verified with `g++ -fsanitize=address,undefined`.
 - [x] Docker devcontainer for one-click contributor setup (v2.5.0)
 - [x] Date-range availability search + per-car waitlist that
   auto-books freed slots (v2.6.0)
+- [x] Loyalty program — ranks, points and bill credits, derived
+  tier with nothing to forget on save (v2.7.0)
 
 ## 📚 Documentation
 

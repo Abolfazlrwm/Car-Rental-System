@@ -8,7 +8,7 @@ start. Deleting `data/` resets the app to the demo seed.
 ## users.csv
 
 ```
-username,salt,hash,role,blocked,failedLogins,balance
+username,salt,hash,role,blocked,failedLogins,balance,loyaltyPoints,lifetimePoints,completedRentals
 ```
 
 | Column | Meaning |
@@ -20,6 +20,13 @@ username,salt,hash,role,blocked,failedLogins,balance
 | `blocked` | `1` after 3 failed logins (or manual block), else `0` |
 | `failedLogins` | consecutive failed-login counter, reset on success |
 | `balance` | outstanding amount for customers, `0` for Staff/Manager |
+| `loyaltyPoints` | points available for redemption (customers, since v2.7.0) |
+| `lifetimePoints` | points earned over all time — never spent, decides the tier |
+| `completedRentals` | returns processed for this customer |
+
+The three loyalty columns exist since v2.7.0. Rows from older files
+(without them) still load and default to all-zero — the tier is derived
+from the lifetime points on every read, never stored.
 
 The plaintext password is never stored. Authentication recomputes
 SHA-256(salt + attempt) and compares hashes — see `SHA256.{h,cpp}`,

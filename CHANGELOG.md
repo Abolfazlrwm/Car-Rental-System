@@ -4,6 +4,56 @@ All notable changes to the Car Rental System are documented in this file.
 The detailed v1.0 → v2.0 story lives in
 [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md).
 
+## [2.7.0] — 2026-11-09
+
+### Added
+
+- **Loyalty program with tiers** — every completed rental (return
+  processed, invoice written) pays points on the invoice total:
+  1 point per 10.00 spent, multiplied by the rank the customer
+  already holds — Bronze ×1.0, Silver ×1.25, Gold ×1.5, Platinum
+  ×2.0. Ranks live on **lifetime points** (never decremented) and
+  are derived on every read, so a customer crosses into the next
+  rank the moment the threshold is met and there is no stored tier
+  to forget during a save/load round-trip.
+- **Points redemption against the bill** — 10 points = 1.00 credit,
+  minimum 50 points, whole currency only (steps of 10), and never
+  more than the outstanding bill: points can be spent, not cashed
+  out, so nothing is ever wasted. Both moments land in the audit
+  trail as `loyalty.earned` (with the rank the customer lands on)
+  and `loyalty.redeemed`.
+- **Loyalty card screen** (customer option 10) — rank, a progress
+  bar to the next rank, spendable vs lifetime points, completed
+  rentals and the program's earn/redeem rules in one view.
+- **Redeem screen** (customer option 11) — walks through a
+  redemption with balance and points in view; a cleared bill is
+  pointed out up front.
+- **Loyalty program overview** (manager option 8) — members per
+  rank as bars, outstanding points, their credit liability and a
+  deterministic top member (points desc, name as tie-break);
+  gated by the `view-analytics` permission like the other
+  dashboards, denials audited.
+- Customer menu grown to 12 entries, manager menu to 16.
+
+### Changed
+
+- `users.csv` customer rows carry three loyalty counters
+  (`loyaltyPoints,lifetimePoints,completedRentals`); pre-2.7.0
+  seven-column files still load with an all-zero standing.
+- The demo customer `ali` seeds as a Silver member holding 340
+  points over 3 completed rentals, so the loyalty screens have
+  something to show on a fresh clone.
+
+### Tests
+
+- Suite grown from 4,668 to **4,804 checks** (three new suites:
+  the tier/accrual/redemption maths, the full facade flow through
+  three completed rentals with a mid-history rank-up and every
+  redemption refusal path, and the manager overview built from a
+  hand-written `users.csv` with a legacy seven-column row and a
+  top-member tie) — still zero dependencies, still leak-free
+  under ASan + UBSan.
+
 ## [2.6.0] — 2026-11-09
 
 ### Added

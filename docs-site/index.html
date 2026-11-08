@@ -98,12 +98,13 @@
       A complete car-rental workflow — customers, staff and a manager — on top of an AVL tree,
       a rehashing hash table, a binary min-heap and a doubly linked list, all implemented from
       scratch in C++17. Salted SHA-256 auth, ISO calendar dates, double-booking prevention,
-      late-return penalties, a waitlist that auto-books freed slots, CSV &amp; JSON reports, a
-      live analytics dashboard and an audited permission matrix. Leak-free under AddressSanitizer.
+      late-return penalties, a waitlist that auto-books freed slots, a tiered loyalty program,
+      CSV &amp; JSON reports, a live analytics dashboard and an audited permission matrix.
+      Leak-free under AddressSanitizer.
     </p>
     <div class="badges">
       <span class="badge">C++17</span>
-      <span class="badge"><b>4,668</b> checks</span>
+      <span class="badge"><b>4,804</b> checks</span>
       <span class="badge">ASan leak-free</span>
       <span class="badge">GCC · Clang · MSVC</span>
       <span class="badge">MIT</span>
@@ -120,7 +121,7 @@
   <div class="wrap">
     <div class="stat-row">
       <div class="stat"><div class="num">4</div><div class="lbl">hand-written containers</div></div>
-      <div class="stat"><div class="num">4,668</div><div class="lbl">unit-test checks</div></div>
+      <div class="stat"><div class="num">4,804</div><div class="lbl">unit-test checks</div></div>
       <div class="stat"><div class="num">0</div><div class="lbl">third-party dependencies</div></div>
       <div class="stat"><div class="num">22</div><div class="lbl">AVL height at 400k keys (bound ~25)</div></div>
     </div>
@@ -147,9 +148,10 @@
       <div class="card"><h3>Real calendar dates</h3><p>Bookings, returns and maintenance logs speak strict <code>YYYY-MM-DD</code> — leap years included. Data files from older versions still load.</p></div>
       <div class="card"><h3>Security done properly</h3><p>Salted SHA-256 password hashing verified against official FIPS 180-4 vectors, auto-lockout after 3 failed logins — and since 2.5.0 a 7-permission matrix enforced inside the facade, with every privileged action and denial landing in an append-only audit trail.</p></div>
       <div class="card"><h3>Booking rules that hold</h3><p>Date-range overlap rejection, earliest-pickup-first scheduling with FIFO ties, renewal blocked while others wait — and since 2.6.0 a per-car waitlist that auto-books the best-fitting wish the moment a return frees the window.</p></div>
+      <div class="card"><h3>Loyalty that earns its rank</h3><p>Since 2.7.0 completed rentals pay 1 point per 10.00 spent at the rank's multiplier (Bronze → Platinum, up to ×2.0), ranks grow on lifetime points, and 10 points turn into 1.00 off the outstanding bill — every earn and redemption audited.</p></div>
       <div class="card"><h3>Money with an audit trail</h3><p>Automatic invoicing, 1.5× late-day penalties charged exactly once, customer balances, per-car income ledger.</p></div>
       <div class="card"><h3>CSV everything</h3><p>Full state round-trip in <code>data/*.csv</code>, plus manager-exported fleet &amp; bookings reports into <code>reports/</code>.</p></div>
-      <div class="card"><h3>Tested like it matters</h3><p>4,668 dependency-free checks — every v1.0 bug is now a regression test — green under AddressSanitizer + UBSan on every push.</p></div>
+      <div class="card"><h3>Tested like it matters</h3><p>4,804 dependency-free checks — every v1.0 bug is now a regression test — green under AddressSanitizer + UBSan on every push.</p></div>
     </div>
   </div>
 </section>
@@ -163,7 +165,7 @@ g++ -std=c++17 -O2 mainApp.cpp manager_system/*.cpp -o car_rental
 
 <span class="c"># or the full workflow</span>
 make            <span class="c"># car_rental + unit_tests</span>
-make test       <span class="c"># 4,668 checks</span>
+make test       <span class="c"># 4,804 checks</span>
 make bench      <span class="c"># containers vs std, measured</span>
 ./scripts/demo.sh   <span class="c"># scripted end-to-end walkthrough</span></pre>
     <p style="color:var(--muted); margin-top:12px; font-size:14.5px;">
