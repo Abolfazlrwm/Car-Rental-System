@@ -34,6 +34,7 @@
 #include "manager_system/RentalManager.h"
 #include "manager_system/Date.h"
 #include "manager_system/JsonExport.h"
+#include "manager_system/Loyalty.h"
 
 /* Program version, reported by --version / --help. */
 static const char *APP_VERSION = "2.6.0";
@@ -321,6 +322,44 @@ static std::string money(double amount)
     return oss.str();
 }
 
+/* ============================================================
+ *  Loyalty card (customer option 10) and redeem flow (option 11)
+ * ============================================================
+ *  Pure renderers over the Loyalty.h rules: the progress bar to
+ *  the next rank reuses the analytics bar primitives, so every
+ *  number the customer sees is pinned by the unit tests.
+ * ============================================================ */
+static void printLoyaltyCard(const std::string &username,
+                             const LoyaltyProfile &p)
+{
+    std::cout << bold(cyan("\n===== LOYALTY CARD | " + username + " =====\n"));
+    std::cout << "\n  Rank: " << bold(toString(p.tier())) << "\n";
+
+    if (p.tier() == LoyaltyTier::Platinum)
+    {
+        std::cout << "  You hold the top rank of the program.\n";
+    }
+    else
+    {
+        const LoyaltyTier next = nextTier(p.tier());
+        const int span = tierThreshold(next) - tierThreshold(p.tier());
+        const int done = p.lifetimePoints - tierThreshold(p.tier());
+        std::cout << "   " << analyticsBar(done, span, 28) << "  "
+                  << p.pointsToNextTier() << " points to " << toString(next)
+                  << "\n";
+    }
+
+    std::ostringstream rate;
+    rate << std::fixed << std::setprecision(2) << tierMultiplier(p.tier());
+    std::cout << "  Points available  : " << p.points << "\n"
+                 "  Lifetime points   : " << p.lifetimePoints << "\n"
+                 "  Completed rentals : " << p.completedRentals << "\n"
+                 "  Earning rate      : x" << rate.str()
+              << " - 1 point per 10.00 spent, credited on return\n"
+                 "  Redemption        : 10 points = 1.00 off your bill"
+                 " (min 50, steps of 10)\n";
+}
+
 static void customerMenu(RentalManager &system, bool &running)
 {
     std::cout << bold(cyan("\n===== CUSTOMER MENU | " + system.currentUsername()
@@ -335,9 +374,11 @@ static void customerMenu(RentalManager &system, bool &running)
                  "  7. My waitlist (leave)\n"
                  "  8. Renew a rental\n"
                  "  9. Pay my bill\n"
-                 " 10. Logout\n";
+                 " 10. My loyalty card\n"
+                 " 11. Redeem points on my bill\n"
+                 " 12. Logout\n";
 
-    switch (readMenuChoice("  Choice: ", 1, 10))
+    switch (readMenuChoice("  Choice: ", 1, 12))
     {
     case 1:
         printFleet(system, false);
@@ -466,6 +507,39 @@ static void customerMenu(RentalManager &system, bool &running)
         break;
     }
     case 10:
+        printLoyaltyCard(system.currentUsername(), system.myLoyalty());
+        break;
+    case 11:
+    {
+        const LoyaltyProfile profile = system.myLoyalty();
+        const double owed = system.currentCustomerBalance();
+        std::cout << bold(cyan("\n--- REDEEM LOYALTY POINTS ---\n"));
+        std::cout << "  Points available: " << profile.points
+                  << "  |  bill due: " << money(owed) << "\n";
+        if (owed <= 0.0)
+        {
+            std::cout << yellow(
+                "  Your bill is clear - points are redeemed against a bill,\n"
+                "       so come back after your next rental.\n");
+            break;
+        }
+        int points;
+        if (!readInt("  Points to redeem (min 50, steps of 10): ", points))
+            return;
+        std::string error;
+        const double credited = system.redeemPoints(points, error);
+        if (credited >= 0.0)
+            std::cout << green("  Credit of " + money(credited)
+                               + " applied. Bill now: "
+                               + money(system.currentCustomerBalance())
+                               + ", points left: "
+                               + std::to_string(system.myLoyalty().points)
+                               + ".\n");
+        else
+            std::cout << red("  Redemption failed: " + error + "\n");
+        break;
+    }
+    case 12:
         system.logout();
         std::cout << yellow("  Logged out.\n");
         break;
@@ -788,6 +862,44 @@ static void printAuditLog(const RentalManager &system)
     }
 }
 
+/* ============================================================
+ *  Loyalty program overview (manager option 8, v2.7.0)
+ * ============================================================
+ *  Renders the facade's LoyaltyOverview: members per rank as
+ *  bars, the outstanding-points liability and the top member.
+ *  Reads state only - never mutates.
+ * ============================================================ */
+static void renderLoyaltyOverview(const RentalManager &system)
+{
+    const LoyaltyOverview o = system.loyaltyOverview();
+    std::cout << bold(cyan("\n===== LOYALTY PROGRAM OVERVIEW =====\n"));
+    if (o.totalMembers == 0)
+    {
+        std::cout << yellow("\n  No customers are enrolled yet.\n");
+        return;
+    }
+
+    const char *tierNames[4] = {"Bronze", "Silver", "Gold", "Platinum"};
+    int maxMembers = 0;
+    for (const int count : o.membersByTier)
+        maxMembers = std::max(maxMembers, count);
+    std::cout << "\n  Members per rank\n";
+    for (int i = 0; i < 4; ++i)
+        std::cout << "   " << analyticsPad(tierNames[i], 9) << "  "
+                  << analyticsBar(o.membersByTier[i], maxMembers, 20) << " "
+                  << o.membersByTier[i] << "\n";
+
+    std::cout << "\n  Total members      : " << o.totalMembers << "\n"
+                 "  Outstanding points : " << o.outstandingPoints << "\n"
+                 "  Potential credits  : " << money(o.pointsLiability) << "\n"
+                 "  Top member         : ";
+    if (o.topMember.empty())
+        std::cout << "-\n";
+    else
+        std::cout << o.topMember << " (" << o.topMemberLifetime
+                  << " lifetime points)\n";
+}
+
 static void managerMenu(RentalManager &system, bool &running)
 {
     std::cout << bold(cyan("\n===== MANAGER MENU | " + system.currentUsername() + " =====\n"));
@@ -798,16 +910,17 @@ static void managerMenu(RentalManager &system, bool &running)
                  "  5. Fleet statistics\n"
                  "  6. Fleet analytics dashboard\n"
                  "  7. Audit log (who did what)\n"
-                 "  8. Income report\n"
-                 "  9. Export CSV & JSON reports\n"
-                 " 10. Block user\n"
-                 " 11. Unblock user\n"
-                 " 12. Create staff account\n"
-                 " 13. Save data to disk\n"
-                 " 14. Save & logout\n"
-                 " 15. Exit program\n";
+                 "  8. Loyalty program overview\n"
+                 "  9. Income report\n"
+                 " 10. Export CSV & JSON reports\n"
+                 " 11. Block user\n"
+                 " 12. Unblock user\n"
+                 " 13. Create staff account\n"
+                 " 14. Save data to disk\n"
+                 " 15. Save & logout\n"
+                 " 16. Exit program\n";
 
-    switch (readMenuChoice("  Choice: ", 1, 15))
+    switch (readMenuChoice("  Choice: ", 1, 16))
     {
     case 1:
     {
@@ -859,9 +972,12 @@ static void managerMenu(RentalManager &system, bool &running)
         printAuditLog(system);
         break;
     case 8:
-        system.printIncomeReport();
+        renderLoyaltyOverview(system);
         break;
     case 9:
+        system.printIncomeReport();
+        break;
+    case 10:
     {
         const bool fleetOk = system.exportFleetReport("reports/fleet_report.csv");
         const bool bookingsOk =
@@ -876,7 +992,7 @@ static void managerMenu(RentalManager &system, bool &running)
             std::cout << red("  Could not write the report files.\n");
         break;
     }
-    case 10:
+    case 11:
     {
         std::string user;
         if (!readToken("  Username to block: ", user))
@@ -887,7 +1003,7 @@ static void managerMenu(RentalManager &system, bool &running)
             std::cout << red("  No such user.\n");
         break;
     }
-    case 11:
+    case 12:
     {
         std::string user;
         if (!readToken("  Username to unblock: ", user))
@@ -898,7 +1014,7 @@ static void managerMenu(RentalManager &system, bool &running)
             std::cout << red("  No such user.\n");
         break;
     }
-    case 12:
+    case 13:
     {
         std::string user, pass, role;
         if (!readToken("  New username: ", user))
@@ -914,16 +1030,16 @@ static void managerMenu(RentalManager &system, bool &running)
                              "role is Staff or Manager.\n");
         break;
     }
-    case 13:
+    case 14:
         std::cout << (system.saveData() ? green("  Data saved to ./data\n")
                                         : red("  Could not write data files.\n"));
         break;
-    case 14:
+    case 15:
         system.saveData();
         system.logout();
         std::cout << yellow("  Data saved. Logged out.\n");
         break;
-    case 15:
+    case 16:
         system.saveData();
         std::cout << yellow("  Data saved. Goodbye!\n");
         running = false;
