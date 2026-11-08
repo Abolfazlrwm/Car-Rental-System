@@ -624,6 +624,53 @@ static void renderDashboard(const RentalManager &system)
               << " live booking(s) fleet-wide.\n";
 }
 
+/* ============================================================
+ *  Audit trail (manager option 7)
+ * ============================================================
+ *  The facade records every privileged action, login and denial
+ *  on its own; this screen only reads the newest entries back.
+ * ============================================================ */
+static void printAuditLog(const RentalManager &system)
+{
+    const std::vector<AuditEntry> tail = system.auditLog().recent(15);
+    if (tail.empty())
+    {
+        std::cout << yellow("  The audit trail is empty.\n");
+        return;
+    }
+
+    const auto pad = [](const std::string &text, std::size_t width)
+    {
+        std::string out = text;
+        if (out.size() > width)
+            out = out.substr(0, width);
+        while (out.size() < width)
+            out += ' ';
+        return out;
+    };
+
+    std::cout << bold(cyan("\n  AUDIT TRAIL — newest "
+                           + std::to_string(tail.size()) + " of "
+                           + std::to_string(system.auditLog().size())
+                           + " entry(ies)\n"));
+    std::cout << "  DATE       ACTOR        ACTION"
+                 "               RESULT  DETAIL\n"
+                 "  ---------------------------------------------------------"
+                 "------------\n";
+    for (const AuditEntry &e : tail)
+    {
+        const std::string line =
+            "  " + pad(e.date, 10) + " " + pad(e.actor, 12) + " "
+            + pad(e.action, 20) + "  "
+            + (e.allowed ? std::string("ok     ") : std::string("DENIED "))
+            + e.detail.substr(0, 30) + "\n";
+        if (e.allowed)
+            std::cout << line;
+        else
+            std::cout << red(line);
+    }
+}
+
 static void managerMenu(RentalManager &system, bool &running)
 {
     std::cout << bold(cyan("\n===== MANAGER MENU | " + system.currentUsername() + " =====\n"));
@@ -633,16 +680,17 @@ static void managerMenu(RentalManager &system, bool &running)
                  "  4. Search fleet by keyword\n"
                  "  5. Fleet statistics\n"
                  "  6. Fleet analytics dashboard\n"
-                 "  7. Income report\n"
-                 "  8. Export CSV & JSON reports\n"
-                 "  9. Block user\n"
-                 " 10. Unblock user\n"
-                 " 11. Create staff account\n"
-                 " 12. Save data to disk\n"
-                 " 13. Save & logout\n"
-                 " 14. Exit program\n";
+                 "  7. Audit log (who did what)\n"
+                 "  8. Income report\n"
+                 "  9. Export CSV & JSON reports\n"
+                 " 10. Block user\n"
+                 " 11. Unblock user\n"
+                 " 12. Create staff account\n"
+                 " 13. Save data to disk\n"
+                 " 14. Save & logout\n"
+                 " 15. Exit program\n";
 
-    switch (readMenuChoice("  Choice: ", 1, 14))
+    switch (readMenuChoice("  Choice: ", 1, 15))
     {
     case 1:
     {
@@ -691,9 +739,12 @@ static void managerMenu(RentalManager &system, bool &running)
         renderDashboard(system);
         break;
     case 7:
-        system.printIncomeReport();
+        printAuditLog(system);
         break;
     case 8:
+        system.printIncomeReport();
+        break;
+    case 9:
     {
         const bool fleetOk = system.exportFleetReport("reports/fleet_report.csv");
         const bool bookingsOk =
@@ -708,7 +759,7 @@ static void managerMenu(RentalManager &system, bool &running)
             std::cout << red("  Could not write the report files.\n");
         break;
     }
-    case 9:
+    case 10:
     {
         std::string user;
         if (!readToken("  Username to block: ", user))
@@ -719,7 +770,7 @@ static void managerMenu(RentalManager &system, bool &running)
             std::cout << red("  No such user.\n");
         break;
     }
-    case 10:
+    case 11:
     {
         std::string user;
         if (!readToken("  Username to unblock: ", user))
@@ -730,7 +781,7 @@ static void managerMenu(RentalManager &system, bool &running)
             std::cout << red("  No such user.\n");
         break;
     }
-    case 11:
+    case 12:
     {
         std::string user, pass, role;
         if (!readToken("  New username: ", user))
@@ -746,16 +797,16 @@ static void managerMenu(RentalManager &system, bool &running)
                              "role is Staff or Manager.\n");
         break;
     }
-    case 12:
+    case 13:
         std::cout << (system.saveData() ? green("  Data saved to ./data\n")
                                         : red("  Could not write data files.\n"));
         break;
-    case 13:
+    case 14:
         system.saveData();
         system.logout();
         std::cout << yellow("  Data saved. Logged out.\n");
         break;
-    case 14:
+    case 15:
         system.saveData();
         std::cout << yellow("  Data saved. Goodbye!\n");
         running = false;
