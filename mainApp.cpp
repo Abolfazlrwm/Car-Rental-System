@@ -36,7 +36,7 @@
 #include "manager_system/JsonExport.h"
 
 /* Program version, reported by --version / --help. */
-static const char *APP_VERSION = "2.5.0";
+static const char *APP_VERSION = "2.6.0";
 
 /* ============================================================
  *  Terminal colors (no-ops when stdout is piped)
