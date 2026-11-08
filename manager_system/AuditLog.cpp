@@ -30,11 +30,29 @@ std::vector<AuditEntry> AuditLog::recent(std::size_t n) const
 
 std::string AuditLog::escapeField(const std::string &raw)
 {
-    if (raw.find_first_of(",\"\n\r") == std::string::npos)
-        return raw; // plain field, no quoting needed
+    // Keep the file one-record-per-line: newlines inside details
+    // become the two-character sequences \n / \r (unescaped on
+    // load) and a literal backslash is doubled. Commas and quotes
+    // then get RFC 4180 quoting.
+    std::string flat;
+    flat.reserve(raw.size() + 8);
+    for (const char c : raw)
+    {
+        if (c == '\n')
+            flat += "\\n";
+        else if (c == '\r')
+            flat += "\\r";
+        else if (c == '\\')
+            flat += "\\\\";
+        else
+            flat += c;
+    }
+
+    if (flat.find_first_of(",\"") == std::string::npos)
+        return flat; // plain field, no quoting needed
 
     std::string out = "\"";
-    for (const char c : raw)
+    for (const char c : flat)
     {
         if (c == '"')
             out += "\"\""; // doubled quote inside a quoted field
@@ -95,6 +113,45 @@ bool splitCSV5(const std::string &line, std::string out[5])
     return field == 4;
 }
 
+/// Inverse of the escaping in escapeField(): \n, \r and the
+/// doubled backslash go back to their single-character forms.
+std::string unescapeField(const std::string &in)
+{
+    std::string out;
+    out.reserve(in.size());
+    for (std::size_t i = 0; i < in.size(); ++i)
+    {
+        if (in[i] == '\\' && i + 1 < in.size())
+        {
+            const char next = in[i + 1];
+            if (next == 'n')
+            {
+                out += '\n';
+                ++i;
+            }
+            else if (next == 'r')
+            {
+                out += '\r';
+                ++i;
+            }
+            else if (next == '\\')
+            {
+                out += '\\';
+                ++i;
+            }
+            else
+            {
+                out += in[i];
+            }
+        }
+        else
+        {
+            out += in[i];
+        }
+    }
+    return out;
+}
+
 } // namespace
 
 /* ============================================================
@@ -134,7 +191,9 @@ bool AuditLog::loadCSV(const std::string &path)
         std::string f[5];
         if (!splitCSV5(line, f))
             continue; // skip malformed rows instead of aborting
-        record(f[0], f[1], f[2], f[4], f[3] != "denied");
+        record(unescapeField(f[0]), unescapeField(f[1]),
+               unescapeField(f[2]), unescapeField(f[4]),
+               f[3] != "denied");
     }
     return true;
 }
