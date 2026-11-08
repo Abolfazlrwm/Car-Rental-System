@@ -20,7 +20,8 @@ RentalManager::RentalManager()
     : userIndex_(&RentalManager::stringHash, /*ownsValues=*/true),
       carIndex_(/*ownsValues=*/true),
       currentUser_(nullptr),
-      reservationCounter_(0) {}
+      reservationCounter_(0),
+      waitlistCounter_(0) {}
 
 RentalManager::~RentalManager()
 {
@@ -332,6 +333,20 @@ std::vector<Car *> RentalManager::searchFleet(const std::string &keyword) const
     return matches;
 }
 
+std::vector<Car *> RentalManager::findAvailableCars(int start, int end) const
+{
+    std::vector<Car *> out;
+    if (start < Date::MIN_SERIAL || start > end)
+        return out; // invalid window matches nothing
+
+    forEachCar([&](Car *car)
+               {
+                   if (car->isAvailableForBooking() && !car->hasOverlap(start, end))
+                       out.push_back(car);
+               });
+    return out;
+}
+
 bool RentalManager::sendToMaintenance(const std::string &carName)
 {
     Car *car = searchCar(carName);
@@ -354,6 +369,7 @@ bool RentalManager::finishMaintenance(const std::string &carName)
     car->setStatus(CarStatus::Available);
     car->refreshStatus(); // back to Reserved if bookings are queued
     audit("maintenance.finished", carName);
+    tryPromoteWaitlist(car); // a serviced car may free a wished range
     return true;
 }
 
@@ -472,6 +488,186 @@ double RentalManager::currentCustomerBalance() const
 }
 
 /* ============================================================
+ *  Waitlist (v2.6.0)
+ * ============================================================ */
+
+bool RentalManager::joinWaitlist(const std::string &carName, int startDate,
+                                 int endDate, std::string &errorOut)
+{
+    Customer *customer = asCustomer();
+    if (!customer)
+    {
+        errorOut = "Only logged-in customers can join a waitlist.";
+        return false;
+    }
+
+    Car *car = searchCar(carName);
+    if (!car)
+    {
+        errorOut = "Car not found.";
+        return false;
+    }
+    if (startDate < Date::MIN_SERIAL || startDate > endDate)
+    {
+        errorOut = "Invalid date range (need start >= 1970-01-01 and start <= end).";
+        return false;
+    }
+    // Directly bookable? Then the customer does not need to wait —
+    // pointing that out beats silently queueing them.
+    if (car->isAvailableForBooking() && !car->hasOverlap(startDate, endDate))
+    {
+        errorOut = "The car is bookable for that range - make a reservation instead.";
+        return false;
+    }
+    // One open wish per customer and car: overlapping duplicates
+    // would be auto-booked twice once the window frees up.
+    bool duplicate = false;
+    car->forEachWaitlistEntry([&](const WaitlistEntry *e)
+                              {
+                                  if (e->customer() == customer &&
+                                      Reservation::rangesOverlap(startDate, endDate,
+                                                                 e->startDate(), e->endDate()))
+                                      duplicate = true;
+                              });
+    if (duplicate)
+    {
+        errorOut = "You are already waiting for this car in that range.";
+        return false;
+    }
+
+    WaitlistEntry *wish = new WaitlistEntry(customer, car, ++waitlistCounter_,
+                                            startDate, endDate);
+    car->enqueueWaitlistEntry(wish);
+    audit("waitlist.joined", carName + " " + Date::toISO(startDate)
+                                 + ".." + Date::toISO(endDate));
+    return true;
+}
+
+bool RentalManager::leaveWaitlist(const std::string &carName,
+                                  std::string &errorOut)
+{
+    Customer *customer = asCustomer();
+    if (!customer)
+    {
+        errorOut = "Only logged-in customers can leave a waitlist.";
+        return false;
+    }
+
+    Car *car = searchCar(carName);
+    if (!car)
+    {
+        errorOut = "Car not found.";
+        return false;
+    }
+
+    std::vector<WaitlistEntry *> removed =
+        car->takeWaitlistEntriesFor(customer->username());
+    if (removed.empty())
+    {
+        errorOut = "You are not on the waitlist of this car.";
+        return false;
+    }
+    for (const WaitlistEntry *e : removed)
+        delete e;
+    audit("waitlist.left", carName);
+    return true;
+}
+
+std::vector<WaitlistEntry *> RentalManager::myWaitlist() const
+{
+    std::vector<WaitlistEntry *> result;
+    if (!currentUser_)
+        return result;
+
+    // AVL in-order walk: same stable, name-sorted listing as
+    // myReservations(); each car contributes its own heap entries.
+    carIndex_.inOrderForEach([&](const std::string &, Car *car)
+                             {
+                                 car->forEachWaitlistEntry([&](WaitlistEntry *e)
+                                                           {
+                                                               if (e->customer() == currentUser_)
+                                                                   result.push_back(e);
+                                                           });
+                             });
+
+    std::sort(result.begin(), result.end(),
+              [](const WaitlistEntry *a, const WaitlistEntry *b)
+              {
+                  if (a->startDate() != b->startDate())
+                      return a->startDate() < b->startDate();
+                  return a->joinOrder() < b->joinOrder();
+              });
+    return result;
+}
+
+bool RentalManager::serveWaitlist(const std::string &carName,
+                                  std::string &errorOut)
+{
+    if (!permitted(Permission::HANDLE_DELIVERIES, "waitlist.served"))
+        return false;
+
+    Car *car = searchCar(carName);
+    if (!car)
+    {
+        errorOut = "Car not found.";
+        return false;
+    }
+    if (car->status() == CarStatus::Maintenance)
+    {
+        errorOut = "Finish maintenance before serving the waitlist.";
+        return false;
+    }
+
+    WaitlistEntry *wish = car->takeBestWaitlistEntry();
+    if (!wish)
+    {
+        errorOut = "No waitlisted wish fits the car's schedule right now.";
+        return false;
+    }
+
+    Reservation *booking = bookWaitlistEntry(car, wish);
+    audit("waitlist.served", carName + " -> "
+                                 + booking->customer()->username() + " "
+                                 + Date::toISO(booking->startDate()) + ".."
+                                 + Date::toISO(booking->endDate()));
+    return true;
+}
+
+std::size_t RentalManager::totalWaitlisted() const
+{
+    std::size_t total = 0;
+    forEachCar([&](Car *car)
+               { total += car->waitlistCount(); });
+    return total;
+}
+
+Reservation *RentalManager::bookWaitlistEntry(Car *car, WaitlistEntry *entry)
+{
+    const int newId = ++reservationCounter_; // same id scheme as makeReservation
+    Reservation *booking = new Reservation(entry->customer(), car, newId, newId,
+                                           entry->startDate(), entry->endDate());
+    car->reserve(booking);
+    delete entry; // the wish is consumed
+    return booking;
+}
+
+void RentalManager::tryPromoteWaitlist(Car *car)
+{
+    if (!car || car->status() == CarStatus::Maintenance)
+        return;
+
+    WaitlistEntry *wish = car->takeBestWaitlistEntry();
+    if (!wish)
+        return;
+
+    Reservation *booking = bookWaitlistEntry(car, wish);
+    audit("waitlist.promoted",
+          car->name() + " -> " + booking->customer()->username() + " "
+              + Date::toISO(booking->startDate()) + ".."
+              + Date::toISO(booking->endDate()) + " (auto)");
+}
+
+/* ============================================================
  *  Staff operations
  * ============================================================ */
 
@@ -554,6 +750,7 @@ bool RentalManager::returnCar(const std::string &carName, int actualReturnDay,
     car->refreshStatus();
     audit("car.returned",
           carName + (penalty > 0.0 ? " (late penalty applied)" : ""));
+    tryPromoteWaitlist(car); // the freed window may satisfy a wish
     return true;
 }
 
@@ -806,6 +1003,30 @@ bool RentalManager::saveData(const std::string &dataDir) const
     /* ---- audit_log.csv (append-only trail, v2.5.0) ---- */
     auditLog_.saveCSV(dataDir + "/audit_log.csv");
 
+    /* ---- waitlist.csv (customer wishes queue, v2.6.0) ---- */
+    {
+        std::ofstream file(dataDir + "/waitlist.csv");
+        if (!file)
+            return false;
+        file << "carName,customer,startDate,endDate,joinOrder\n";
+        // Insertion order + heap order: a stable, reproducible dump.
+        carOrder_.forEach([&](const std::string &name)
+                          {
+                              const Car *const *slot = carIndex_.find(name);
+                              if (!slot)
+                                  return;
+                              (*slot)->forEachWaitlistEntry(
+                                  [&](const WaitlistEntry *e)
+                                  {
+                                      file << name << ','
+                                           << e->customer()->username() << ','
+                                           << Date::toISO(e->startDate()) << ','
+                                           << Date::toISO(e->endDate()) << ','
+                                           << e->joinOrder() << '\n';
+                                  });
+                          });
+    }
+
     return true;
 }
 
@@ -927,6 +1148,46 @@ bool RentalManager::loadData(const std::string &dataDir)
                                              *carSlot, id, std::stoi(reqStr),
                                              start, end);
             (*carSlot)->reinsertReservation(r);
+        }
+    }
+
+    /* ---- waitlist last (needs users + cars) ---- */
+    {
+        std::ifstream file(dataDir + "/waitlist.csv");
+        if (!file)
+            return true; // absent on fresh installs and pre-2.6.0 saves
+
+        std::string line;
+        std::getline(file, line); // header
+        while (std::getline(file, line))
+        {
+            if (line.empty())
+                continue;
+            std::stringstream ss(line);
+            std::string carName, customerName, startStr, endStr, orderStr;
+            std::getline(ss, carName, ',');
+            std::getline(ss, customerName, ',');
+            std::getline(ss, startStr, ',');
+            std::getline(ss, endStr, ',');
+            std::getline(ss, orderStr, ',');
+
+            Car **carSlot = carIndex_.find(carName);
+            User **userSlot = userIndex_.find(customerName);
+            if (!carSlot || !userSlot ||
+                (*userSlot)->role() != "Customer")
+                continue; // dangling wish -> drop it, don't crash
+
+            int start = 0, end = 0;
+            if (!Date::parseFlexible(startStr, start) ||
+                !Date::parseFlexible(endStr, end) || start > end)
+                continue; // corrupt row -> drop it, don't crash
+
+            const int order = std::stoi(orderStr);
+            waitlistCounter_ = std::max(waitlistCounter_, order);
+
+            WaitlistEntry *wish = new WaitlistEntry(
+                static_cast<Customer *>(*userSlot), *carSlot, order, start, end);
+            (*carSlot)->reinsertWaitlistEntry(wish);
         }
     }
     return true;

@@ -11,6 +11,7 @@
 #include "Car.h"
 #include "Permissions.h"
 #include "User.h"
+#include "WaitlistEntry.h"
 
 /**
  * ============================================================
@@ -145,6 +146,12 @@ public:
     /// keyword matches nothing, so a blank prompt never dumps the fleet.
     std::vector<Car *> searchFleet(const std::string &keyword) const;
 
+    /// Cars that can be booked for [start..end] RIGHT NOW: bookable
+    /// status AND no queued booking overlaps the range, in the
+    /// manager's insertion order. Invalid ranges match nothing —
+    /// the caller is told why the fleet looks empty.  (v2.6.0)
+    std::vector<Car *> findAvailableCars(int start, int end) const;
+
     bool sendToMaintenance(const std::string &carName);
     bool finishMaintenance(const std::string &carName);
 
@@ -169,6 +176,32 @@ public:
     double payBill();
 
     double currentCustomerBalance() const;
+
+    /* ---------------- Waitlist (v2.6.0) ---------------- */
+
+    /// File the logged-in customer into the car's waitlist for
+    /// [startDate..endDate]. Refused when the car is unknown, the
+    /// range is invalid, the car is directly bookable for the range
+    /// ("make a reservation instead") or the customer already waits
+    /// for an overlapping range on the same car.
+    bool joinWaitlist(const std::string &carName, int startDate,
+                      int endDate, std::string &errorOut);
+
+    /// Withdraw every wish the logged-in customer filed for this
+    /// car. False when there is nothing to withdraw.
+    bool leaveWaitlist(const std::string &carName, std::string &errorOut);
+
+    /// The logged-in customer's wishes across the whole fleet,
+    /// earliest desired pickup first.
+    std::vector<WaitlistEntry *> myWaitlist() const;
+
+    /// Front-desk action (HANDLE_DELIVERIES permission): book the
+    /// best-fitting waitlisted wish of a car right now. Fails when
+    /// no queued wish fits the schedule yet.
+    bool serveWaitlist(const std::string &carName, std::string &errorOut);
+
+    /// Customers currently waiting fleet-wide (stats + dashboard).
+    std::size_t totalWaitlisted() const;
 
     /* ---------------- Staff operations ---------------- */
 
@@ -240,6 +273,7 @@ private:
 
     User *currentUser_;
     int reservationCounter_;
+    int waitlistCounter_; // global join order, survives save/load
 
     // Audit writes also happen from const methods (exports, save),
     // so the trail is a mutable side-ledger.
@@ -261,6 +295,16 @@ private:
     /// seeding), otherwise checks the role matrix and records a
     /// denial in the audit trail. Returns true when allowed.
     bool permitted(Permission p, const std::string &action) const;
+
+    /// Turn a waitlisted wish into a real booking (new reservation
+    /// id, heap insert). Returns the booking so the caller can
+    /// audit it; the wish itself is consumed and freed.
+    Reservation *bookWaitlistEntry(Car *car, WaitlistEntry *entry);
+
+    /// Auto-book the best-fitting wish after a car freed up (a
+    /// return was processed, maintenance finished). Silent no-op
+    /// when nothing fits or the car is under maintenance.
+    void tryPromoteWaitlist(Car *car);
 
     // Classic polynomial rolling hash (base 31) used for username indexing.
     static std::size_t stringHash(const std::string &key);
