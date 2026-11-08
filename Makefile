@@ -13,15 +13,15 @@
 CXX      ?= g++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -O2
 SRC       = mainApp.cpp manager_system/SHA256.cpp manager_system/User.cpp \
-	    manager_system/Car.cpp manager_system/Reservation.cpp \
-	    manager_system/Date.cpp manager_system/RentalManager.cpp \
-	    manager_system/JsonExport.cpp manager_system/Analytics.cpp \
-	    manager_system/AuditLog.cpp
+            manager_system/Car.cpp manager_system/Reservation.cpp \
+            manager_system/Date.cpp manager_system/RentalManager.cpp \
+            manager_system/JsonExport.cpp manager_system/Analytics.cpp \
+            manager_system/AuditLog.cpp manager_system/WaitlistEntry.cpp
 TEST_SRC  = tests/test_main.cpp manager_system/SHA256.cpp manager_system/User.cpp \
-	    manager_system/Car.cpp manager_system/Reservation.cpp \
-	    manager_system/Date.cpp manager_system/RentalManager.cpp \
-	    manager_system/JsonExport.cpp manager_system/Analytics.cpp \
-	    manager_system/AuditLog.cpp
+            manager_system/Car.cpp manager_system/Reservation.cpp \
+            manager_system/Date.cpp manager_system/RentalManager.cpp \
+            manager_system/JsonExport.cpp manager_system/Analytics.cpp \
+            manager_system/AuditLog.cpp manager_system/WaitlistEntry.cpp
 BENCH_SRC = benchmarks/bench_containers.cpp
 
 all: car_rental unit_tests
@@ -46,13 +46,13 @@ bench: $(BENCH_SRC)
 # Full suite under AddressSanitizer + UBSan -- same job CI runs on every push.
 asan:
 	$(CXX) -std=c++17 -g -Wall -Wextra -fsanitize=address,undefined \
-	    $(TEST_SRC) -o unit_tests_asan
+            $(TEST_SRC) -o unit_tests_asan
 	./unit_tests_asan
 
 # House style lives in .clang-format; requires clang-format 14+ on PATH.
 format:
 	@command -v clang-format >/dev/null 2>&1 || \
-	    { echo "clang-format is not installed"; exit 1; }
+            { echo "clang-format is not installed"; exit 1; }
 	clang-format -i mainApp.cpp manager_system/*.cpp tests/*.cpp basic_structures/*.h
 
 clean:

@@ -6,6 +6,7 @@
 
 #include "../basic_structures/PriorityQueue.h"
 #include "Reservation.h"
+#include "WaitlistEntry.h"
 
 /**
  * ============================================================
@@ -21,9 +22,16 @@
  *    deliver()    -> front booking is being served, status RENTED
  *    complete()   -> dequeue front booking (return processed)
  *
- *  Ownership: the Car OWNS its Reservation objects (they are
- *  deleted when dequeued or when the car is destroyed), but it
- *  does NOT own the Customer objects they point to.
+ *  Since v2.6.0 every car also carries a WAITLIST — its own
+ *  PriorityQueue of WaitlistEntry wishes that could not be booked
+ *  directly. When a window frees up, takeBestWaitlistEntry()
+ *  hands the best-fitting wish back so the facade can turn it
+ *  into a real booking.
+ *
+ *  Ownership: the Car OWNS its Reservation objects and its
+ *  WaitlistEntry objects (both are deleted when dequeued or when
+ *  the car is destroyed), but it does NOT own the Customer
+ *  objects they point to.
  * ============================================================
  */
 enum class CarStatus
@@ -106,6 +114,36 @@ public:
     /// Re-insert a booking (used when restoring state from CSV).
     void reinsertReservation(Reservation *r);
 
+    /* ---------------- Waitlist (v2.6.0) ---------------- */
+
+    /// Queue a customer wish (the facade rejects direct bookings and
+    /// duplicates before calling this).
+    void enqueueWaitlistEntry(WaitlistEntry *e);
+
+    /// How many customers are waiting for this car.
+    std::size_t waitlistCount() const { return waitlist_.size(); }
+
+    /// Visit every waitlist entry in heap order (used by "my
+    /// waitlist", the CSV writer and duplicate checks).
+    void forEachWaitlistEntry(const std::function<void(WaitlistEntry *)> &fn) const
+    {
+        waitlist_.forEach([&](WaitlistEntry *e)
+                          { fn(e); });
+    }
+
+    /// Remove and RETURN the highest-priority wish whose desired
+    /// range still fits the schedule (no overlap with queued
+    /// bookings). Wishes that do not fit stay queued. nullptr when
+    /// nothing fits. Ownership of the entry moves to the caller.
+    WaitlistEntry *takeBestWaitlistEntry();
+
+    /// Remove every wish filed by `username` and hand the entries
+    /// back (caller deletes them). Empty when they wait for nothing.
+    std::vector<WaitlistEntry *> takeWaitlistEntriesFor(const std::string &username);
+
+    /// Re-insert a wish (used when restoring state from CSV).
+    void reinsertWaitlistEntry(WaitlistEntry *e) { waitlist_.insert(e); }
+
     /// Read-only visit of every queued booking (used by CSV export).
     void forEachReservation(const std::function<void(const Reservation *)> &fn) const
     {
@@ -133,6 +171,7 @@ private:
     double maintenanceCost_;
 
     PriorityQueue<Reservation *> queue_;
+    PriorityQueue<WaitlistEntry *> waitlist_;
     std::vector<MaintenanceRecord> maintenanceLog_;
 };
 

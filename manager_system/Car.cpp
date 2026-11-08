@@ -27,15 +27,21 @@ Car::Car(const std::string &name, const std::string &brand, double pricePerDay)
       maintenanceCost_(0.0),
       // Heap order: Reservation::hasHigherPriorityThan decides who is next.
       queue_([](const Reservation *a, const Reservation *b)
-             { return a->hasHigherPriorityThan(b); })
+             { return a->hasHigherPriorityThan(b); }),
+      // Same priority shape for the wish queue (v2.6.0).
+      waitlist_([](const WaitlistEntry *a, const WaitlistEntry *b)
+                { return a->hasHigherPriorityThan(b); })
 {
 }
 
 Car::~Car()
 {
-    // Free every booking still waiting in the schedule.
+    // Free every booking still waiting in the schedule and every
+    // wish still waiting for a slot.
     queue_.forEach([](Reservation *r)
                    { delete r; });
+    waitlist_.forEach([](WaitlistEntry *e)
+                      { delete e; });
 }
 
 void Car::reserve(Reservation *r)
@@ -88,6 +94,48 @@ std::vector<Reservation *> Car::reservationsOf(const std::string &username) cons
 void Car::reinsertReservation(Reservation *r)
 {
     queue_.insert(r);
+}
+
+void Car::enqueueWaitlistEntry(WaitlistEntry *e)
+{
+    waitlist_.insert(e);
+}
+
+WaitlistEntry *Car::takeBestWaitlistEntry()
+{
+    // Drain in priority order: the first wish whose range does not
+    // clash with the booked schedule wins; everything else goes
+    // back into the heap. Same O(n) rebuild trick as
+    // dropReservation() — the queue is tiny at front-desk scale.
+    std::vector<WaitlistEntry *> rest;
+    WaitlistEntry *best = nullptr;
+    while (!waitlist_.empty())
+    {
+        WaitlistEntry *e = waitlist_.extractMin();
+        if (!best && !hasOverlap(e->startDate(), e->endDate()))
+            best = e;
+        else
+            rest.push_back(e);
+    }
+    for (WaitlistEntry *e : rest)
+        waitlist_.insert(e);
+    return best;
+}
+
+std::vector<WaitlistEntry *> Car::takeWaitlistEntriesFor(const std::string &username)
+{
+    std::vector<WaitlistEntry *> removed, keep;
+    while (!waitlist_.empty())
+    {
+        WaitlistEntry *e = waitlist_.extractMin();
+        if (e->customer()->username() == username)
+            removed.push_back(e);
+        else
+            keep.push_back(e);
+    }
+    for (WaitlistEntry *e : keep)
+        waitlist_.insert(e);
+    return removed;
 }
 
 void Car::refreshStatus()
