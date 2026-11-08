@@ -7,6 +7,7 @@
 #include "../basic_structures/AVLTree.h"
 #include "../basic_structures/DoublyLinkedList.h"
 #include "../basic_structures/HashTable.h"
+#include "AuditLog.h"
 #include "Car.h"
 #include "User.h"
 
@@ -202,6 +203,14 @@ public:
     /// ordered views). Missing parent directories are created.
     bool exportBookingReport(const std::string &path) const;
 
+    /* ---------------- Audit trail (v2.5.0) ---------------- */
+
+    /// Append-only trail of privileged actions, permission denials
+    /// and login events (oldest first). The facade records the
+    /// entries itself — feature code cannot forget to log — and
+    /// the trail round-trips through data/audit_log.csv.
+    const AuditLog &auditLog() const { return auditLog_; }
+
     /* ---------------- Persistence ---------------- */
 
     /// Write users.csv / cars.csv / reservations.csv under `dataDir`.
@@ -225,11 +234,20 @@ private:
     User *currentUser_;
     int reservationCounter_;
 
+    // Audit writes also happen from const methods (exports, save),
+    // so the trail is a mutable side-ledger.
+    mutable AuditLog auditLog_;
+
     static const double PENALTY_RATE; // late-return multiplier (1.5x/day)
 
     // ---- internal helpers ----
     Customer *asCustomer() const; // logged-in user as Customer (or null)
     void clearAll();
+
+    /// Record one audit entry stamped with today's ISO date and the
+    /// logged-in username ("?" when no session is active).
+    void audit(const std::string &action, const std::string &detail,
+               bool allowed = true) const;
 
     // Classic polynomial rolling hash (base 31) used for username indexing.
     static std::size_t stringHash(const std::string &key);

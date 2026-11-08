@@ -58,6 +58,19 @@ Customer *RentalManager::asCustomer() const
     return static_cast<Customer *>(currentUser_);
 }
 
+/* ============================================================
+ *  Audit trail
+ * ============================================================ */
+
+void RentalManager::audit(const std::string &action,
+                          const std::string &detail, bool allowed) const
+{
+    auditLog_.record(Date::toISO(Date::todaySerial()),
+                     currentUser_ ? currentUser_->username()
+                                  : std::string("?"),
+                     action, detail, allowed);
+}
+
 /// Lowercased copy used by the keyword search (ASCII only — car names
 /// and brands are Latin by contract, see docs/DATA_FORMATS.md).
 static std::string toLowerCopy(const std::string &text)
@@ -84,6 +97,7 @@ bool RentalManager::registerCustomer(const std::string &username,
     Customer *user = new Customer(username);
     user->setPassword(password);
     userIndex_.insert(username, user);
+    audit("customer.registered", username);
     return true;
 }
 
@@ -102,6 +116,7 @@ bool RentalManager::registerStaffAccount(const std::string &username,
                                    : static_cast<User *>(new Manager(username));
     user->setPassword(password);
     userIndex_.insert(username, user);
+    audit("user.created", role + " " + username);
     return true;
 }
 
@@ -110,20 +125,31 @@ bool RentalManager::login(const std::string &username,
 {
     User **slot = userIndex_.find(username);
     if (!slot) // FIX: original dereferenced null here and segfaulted
+    {
+        audit("login.failed", username + " (unknown user)", false);
         return false;
+    }
 
     User *user = *slot;
     if (user->isBlocked())
+    {
+        audit("login.denied", username + " (account blocked)", false);
         return false;
+    }
 
     if (!user->verifyPassword(password))
     {
         user->registerFailedLogin(); // 3 strikes -> account blocked
+        audit("login.failed", username, false);
+        if (user->isBlocked())
+            audit("account.autoblock",
+                  username + " after 3 failed logins", false);
         return false;
     }
 
     user->resetFailedLogins();
     currentUser_ = user;
+    audit("login.ok", user->role());
     return true;
 }
 
@@ -147,6 +173,7 @@ bool RentalManager::blockUser(const std::string &username)
     if (!slot)
         return false;
     (*slot)->block();
+    audit("user.blocked", username);
     return true;
 }
 
@@ -156,6 +183,7 @@ bool RentalManager::unblockUser(const std::string &username)
     if (!slot)
         return false;
     (*slot)->unblock();
+    audit("user.unblocked", username);
     return true;
 }
 
@@ -183,6 +211,7 @@ bool RentalManager::addCar(Car *car)
     }
     carIndex_.insert(car->name(), car);
     carOrder_.pushBack(car->name());
+    audit("car.added", car->name());
     return true;
 }
 
@@ -291,6 +320,7 @@ bool RentalManager::sendToMaintenance(const std::string &carName)
         return false; // cannot service a car that is out with a customer
 
     car->setStatus(CarStatus::Maintenance);
+    audit("maintenance.sent", carName);
     return true;
 }
 
@@ -302,6 +332,7 @@ bool RentalManager::finishMaintenance(const std::string &carName)
 
     car->setStatus(CarStatus::Available);
     car->refreshStatus(); // back to Reserved if bookings are queued
+    audit("maintenance.finished", carName);
     return true;
 }
 
@@ -345,6 +376,8 @@ bool RentalManager::makeReservation(const std::string &carName, int startDate,
     Reservation *r = new Reservation(customer, car, newId, newId,
                                      startDate, endDate);
     car->reserve(r);
+    audit("reservation.made", carName + " " + Date::toISO(startDate)
+                                  + ".." + Date::toISO(endDate));
     return true;
 }
 
@@ -448,6 +481,7 @@ bool RentalManager::deliverCar(const std::string &carName, std::string &errorOut
     }
 
     car->setStatus(CarStatus::Rented);
+    audit("car.delivered", carName);
     return true;
 }
 
@@ -497,6 +531,8 @@ bool RentalManager::returnCar(const std::string &carName, int actualReturnDay,
     delete res;
 
     car->refreshStatus();
+    audit("car.returned",
+          carName + (penalty > 0.0 ? " (late penalty applied)" : ""));
     return true;
 }
 
@@ -524,6 +560,7 @@ bool RentalManager::recordMaintenance(const std::string &carName,
 
     car->addMaintenanceLog(date, description, cost);
     car->setStatus(CarStatus::Maintenance);
+    audit("maintenance.logged", carName);
     return true;
 }
 
@@ -626,6 +663,7 @@ bool RentalManager::exportFleetReport(const std::string &path) const
                               << car->maintenanceCost() << ',' << car->netRevenue()
                               << '\n';
                      });
+    audit("export.fleet", path);
     return true;
 }
 
@@ -662,6 +700,7 @@ bool RentalManager::exportBookingReport(const std::string &path) const
         file << r->id() << ',' << r->car()->name() << ','
              << r->customer()->username() << ',' << Date::toISO(r->startDate())
              << ',' << Date::toISO(r->endDate()) << ',' << r->durationDays() << '\n';
+    audit("export.bookings", path);
     return true;
 }
 
@@ -738,12 +777,17 @@ bool RentalManager::saveData(const std::string &dataDir) const
                                                           });
                           });
     }
+
+    /* ---- audit_log.csv (append-only trail, v2.5.0) ---- */
+    auditLog_.saveCSV(dataDir + "/audit_log.csv");
+
     return true;
 }
 
 bool RentalManager::loadData(const std::string &dataDir)
 {
     clearAll();
+    auditLog_.loadCSV(dataDir + "/audit_log.csv"); // absent on fresh runs
 
     /* ---- users first (reservations reference them) ---- */
     {
