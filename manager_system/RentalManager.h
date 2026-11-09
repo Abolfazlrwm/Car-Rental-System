@@ -228,6 +228,20 @@ public:
     /// Gated by VIEW_ANALYTICS, like the rest of the dashboards.
     LoyaltyOverview loyaltyOverview() const;
 
+    /// The same snapshot WITHOUT the permission gate — the pure
+    /// computation behind loyaltyOverview(). The JSON report builds
+    /// its loyalty section from this the way computeStats feeds the
+    /// stats block, so the file and the manager screen can never
+    /// drift apart. Export callers are permission-checked upstream
+    /// by the CLI menu that offers the report.        (v2.8.0)
+    LoyaltyOverview computeLoyaltyOverview() const;
+
+    /// Every customer in username order (deterministic — the
+    /// HashTable walk order is not), for the report's per-member
+    /// loyalty rows. Staff and manager sessions are skipped.
+    void forEachCustomerSorted(
+        const std::function<void(const Customer *)> &fn) const;
+
     /* ---------------- Staff operations ---------------- */
 
     /// Hand the car over to the customer holding the earliest booking.

@@ -9,6 +9,7 @@
 
 #include "Car.h"
 #include "Date.h"
+#include "Loyalty.h"
 #include "RentalManager.h"
 #include "Reservation.h"
 #include "User.h"
@@ -192,7 +193,67 @@ bool exportJsonReport(const RentalManager &manager, const std::string &path)
         file << "      \"durationDays\": " << r->durationDays() << "\n";
         file << "    }";
     }
-    file << "\n  ]\n";
+    file << "\n  ],\n";
+
+    /* ---------------- loyalty program (v2.8.0) ----------------
+     * The same snapshot the manager's loyalty screen renders,
+     * computed by the facade itself (computeLoyaltyOverview) so
+     * the file and the screen can never drift apart. The
+     * per-member rows are username-sorted, so the array is
+     * deterministic regardless of hash-table walk order. */
+    const LoyaltyOverview loyalty = manager.computeLoyaltyOverview();
+
+    file << "  \"loyalty\": {\n";
+    file << "    \"totalMembers\": " << loyalty.totalMembers << ",\n";
+    file << "    \"membersByTier\": {\n";
+    file << "      \"Bronze\": " << loyalty.membersByTier[0] << ",\n";
+    file << "      \"Silver\": " << loyalty.membersByTier[1] << ",\n";
+    file << "      \"Gold\": " << loyalty.membersByTier[2] << ",\n";
+    file << "      \"Platinum\": " << loyalty.membersByTier[3] << "\n";
+    file << "    },\n";
+    file << "    \"outstandingPoints\": " << loyalty.outstandingPoints
+         << ",\n";
+    file << "    \"pointsLiability\": " << jnum(loyalty.pointsLiability)
+         << ",\n";
+    file << "    \"topMember\": " << jstr(loyalty.topMember) << ",\n";
+    file << "    \"topMemberLifetime\": " << loyalty.topMemberLifetime
+         << ",\n";
+    file << "    \"customers\": [\n";
+    bool firstMember = true;
+    manager.forEachCustomerSorted([&](const Customer *customer)
+                                  {
+                                      if (!firstMember)
+                                          file << ",\n";
+                                      firstMember = false;
+                                      LoyaltyProfile profile;
+                                      profile.points =
+                                          customer->loyaltyPoints();
+                                      profile.lifetimePoints =
+                                          customer->lifetimePoints();
+                                      profile.completedRentals =
+                                          customer->completedRentals();
+                                      file << "      {\n";
+                                      file << "        \"username\": "
+                                           << jstr(customer->username())
+                                           << ",\n";
+                                      file << "        \"tier\": "
+                                           << jstr(toString(profile.tier()))
+                                           << ",\n";
+                                      file << "        \"points\": "
+                                           << profile.points << ",\n";
+                                      file << "        \"lifetimePoints\": "
+                                           << profile.lifetimePoints
+                                           << ",\n";
+                                      file << "        \"completedRentals\": "
+                                           << profile.completedRentals
+                                           << ",\n";
+                                      file << "        \"pointsToNextTier\": "
+                                           << profile.pointsToNextTier()
+                                           << "\n";
+                                      file << "      }";
+                                  });
+    file << "\n    ]\n";
+    file << "  }\n";
     file << "}\n";
     return true;
 }

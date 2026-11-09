@@ -706,10 +706,18 @@ double RentalManager::redeemPoints(int points, std::string &errorOut)
 
 LoyaltyOverview RentalManager::loyaltyOverview() const
 {
-    LoyaltyOverview overview;
     if (!permitted(Permission::VIEW_ANALYTICS, "loyalty.overview"))
-        return overview;
+        return LoyaltyOverview{};
+    return computeLoyaltyOverview();
+}
 
+/* The shared computation: safe for any caller because it only READS
+ * customer records. loyaltyOverview() gates it for the interactive
+ * screen; the JSON report calls it directly so the exported figures
+ * are the very same numbers the screen shows. */
+LoyaltyOverview RentalManager::computeLoyaltyOverview() const
+{
+    LoyaltyOverview overview;
     // Top member needs a deterministic winner: the HashTable walk
     // order is not, so collect and sort (points desc, name asc).
     std::vector<std::pair<std::string, int>> members;
@@ -740,6 +748,23 @@ LoyaltyOverview RentalManager::loyaltyOverview() const
         overview.topMemberLifetime = members.front().second;
     }
     return overview;
+}
+
+void RentalManager::forEachCustomerSorted(
+    const std::function<void(const Customer *)> &fn) const
+{
+    std::vector<const Customer *> customers;
+    userIndex_.forEach([&](const std::string &, User *user)
+                       {
+                           if (user->role() == "Customer")
+                               customers.push_back(
+                                   static_cast<const Customer *>(user));
+                       });
+    std::sort(customers.begin(), customers.end(),
+              [](const Customer *a, const Customer *b)
+              { return a->username() < b->username(); });
+    for (const Customer *customer : customers)
+        fn(customer);
 }
 
 Reservation *RentalManager::bookWaitlistEntry(Car *car, WaitlistEntry *entry)

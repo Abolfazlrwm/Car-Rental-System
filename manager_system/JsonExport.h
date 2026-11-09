@@ -18,6 +18,10 @@ class RentalManager;
  *                log and revenue figures
  *    bookings  — every live reservation, ordered by pickup
  *                date (id breaks ties), dates as ISO strings
+ *    loyalty   — the program snapshot (members per tier,
+ *                outstanding points, credit liability, top
+ *                member) plus every customer's standing,
+ *                username-sorted                        (v2.8.0)
  *
  *  Zero dependencies: the writer is a handful of string
  *  builders behind a strict escaper (quotes, backslashes and
