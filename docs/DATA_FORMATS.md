@@ -145,9 +145,32 @@ id,carName,customer,startDate,endDate,durationDays
 Completed (returned) bookings are not listed — the fleet report's
 `income` column is where their revenue lives.
 
+### loyalty_report.csv (since 2.9.0)
+
+One row per **customer**, username-sorted — the same standings the
+JSON report's `loyalty.customers` array carries, as a flat sheet for
+spreadsheets:
+
+```
+username,tier,points,lifetimePoints,completedRentals,pointsToNextTier
+ali,Silver,340,340,3,660
+```
+
+| Column | Meaning |
+|---|---|
+| `username` | customer login (references `users.csv`) |
+| `tier` | derived from lifetime points: Bronze / Silver / Gold / Platinum |
+| `points` | spendable points right now |
+| `lifetimePoints` | earned over all time, never spent — decides the tier |
+| `completedRentals` | returns processed for this customer |
+| `pointsToNextTier` | points missing for the next rank, `0` at Platinum |
+
+Two exports of the same state are byte-identical (username-sorted,
+like the fleet sheet and the JSON member array).
+
 ## reports/report.json (JSON)
 
-Written by manager option **8** next to the two CSV sheets — the same
+Written by manager option **10** next to the three CSV sheets — the same
 state as one JSON object:
 
 ```json

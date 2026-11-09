@@ -126,7 +126,10 @@ spent**, multiplied by the rank you already hold. Ranks grow on
 
 1. **Earn** — the moment the front desk processes your return, the
    invoice pays points (a late penalty is part of the spend). The
-   audit trail records `loyalty.earned` with the rank you land on.
+   audit trail records `loyalty.earned` with the rank you land on;
+   since v2.9.0 a return that **crosses a rank threshold** also
+   prints a "Rank up!" announcement at the desk and lands in the
+   trail as `loyalty.rankup`.
 2. **Watch the card** — option 10 shows your rank, a progress bar to
    the next one, spendable vs lifetime points and your completed
    rentals.
@@ -139,7 +142,10 @@ spent**, multiplied by the rank you already hold. Ranks grow on
    on the next one.
 
 Loyalty counters round-trip through `users.csv`; accounts created
-before v2.7.0 start at Bronze with zero points.
+before v2.7.0 start at Bronze with zero points. The manager's
+program overview lists the five newest promotions ("Recent rank-ups",
+since v2.9.0), and the export option writes the per-member
+`reports/loyalty_report.csv` next to the other report files.
 
 ## Staff menu
 
@@ -221,12 +227,15 @@ Utilization is the share of the fleet currently **rented or reserved**
 (cars under maintenance count as idle — nothing is earning while
 parked).
 
-**Export CSV & JSON reports (9)** writes the same numbers to
+**Export CSV & JSON reports (10)** writes the same numbers to
 spreadsheets — and one JSON file:
 
 - `reports/fleet_report.csv` — one row per car, name-sorted
 - `reports/bookings_report.csv` — one row per live booking, ordered by
   start date
+- `reports/loyalty_report.csv` — one row per customer, username-sorted
+  (rank, spendable vs lifetime points, completed rentals, distance to
+  the next rank) — since v2.9.0
 - `reports/report.json` — the whole state as one JSON object
   (`stats` + `fleet` + `bookings` + `loyalty`, the loyalty program
   snapshot and every member's standing since 2.8.0), dates as ISO

@@ -4,6 +4,34 @@ All notable changes to the Car Rental System are documented in this file.
 The detailed v1.0 → v2.0 story lives in
 [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md).
 
+## [2.9.0] — 2026-11-09
+
+### Added
+
+- **Loyalty CSV report** — the export option now also writes
+  `reports/loyalty_report.csv`: header + one username-sorted row per
+  customer (derived rank, spendable vs lifetime points, completed
+  rentals, points still missing for the next rank). Two exports of
+  the same state are byte-identical — the same diff-friendly rule
+  the fleet sheet and the JSON member array follow. Gated by
+  `export-reports` like every other report file.
+- **Rank-up notifications** — a return that crosses a rank threshold
+  is announced at the desk ("Rank up! parisa crossed into Silver")
+  and lands in the audit trail as `loyalty.rankup`
+  (`parisa Bronze -> Silver`). The manager's program overview grew a
+  "Recent rank-ups" section listing the five newest promotions,
+  straight from the trail.
+
+### Tests
+
+- Suite grown from 4,877 to **4,896 checks**: rank-up detection is
+  pinned on both sides (Bronze → Silver announced and audited with an
+  ISO date; Silver → Silver and Bronze → Bronze silent, the notice
+  cleared), the CSV report is byte-compared in three shapes
+  (populated, header-only for an empty program, denied for staff
+  with the refusal audited) — still zero dependencies, still
+  leak-free under ASan + UBSan.
+
 ## [2.8.0] — 2026-11-09
 
 ### Added
