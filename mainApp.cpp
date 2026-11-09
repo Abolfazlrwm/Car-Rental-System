@@ -606,7 +606,16 @@ static void staffMenu(RentalManager &system, bool &running)
         if (!readDate("  Actual return date (YYYY-MM-DD): ", day))
             return;
         if (system.returnCar(name, day, error))
+        {
             std::cout << green("  Return processed and invoiced.\n");
+            // (v2.9.0) A threshold crossed on this return is worth
+            // announcing at the desk.
+            const std::string rankUp = system.lastLoyaltyRankUp();
+            if (!rankUp.empty())
+                std::cout << yellow(
+                    "  Rank up! " + rankUp
+                    + " - the new multiplier applies from the next rental.\n");
+        }
         else
             std::cout << red("  Return failed: " + error + "\n");
         break;
@@ -898,6 +907,21 @@ static void renderLoyaltyOverview(const RentalManager &system)
     else
         std::cout << o.topMember << " (" << o.topMemberLifetime
                   << " lifetime points)\n";
+
+    // (v2.9.0) Recent promotions, straight from the audit trail —
+    // the five newest loyalty.rankup entries, still chronological.
+    std::vector<AuditEntry> rankUps;
+    for (const AuditEntry &e : system.auditLog().all())
+        if (e.action == "loyalty.rankup")
+            rankUps.push_back(e);
+    if (rankUps.size() > std::size_t(5))
+        rankUps.erase(rankUps.begin(), rankUps.end() - 5);
+    std::cout << "\n  Recent rank-ups\n";
+    if (rankUps.empty())
+        std::cout << "   none yet\n";
+    else
+        for (const AuditEntry &e : rankUps)
+            std::cout << "   " << e.date << "  " << e.detail << "\n";
 }
 
 static void managerMenu(RentalManager &system, bool &running)
@@ -982,11 +1006,14 @@ static void managerMenu(RentalManager &system, bool &running)
         const bool fleetOk = system.exportFleetReport("reports/fleet_report.csv");
         const bool bookingsOk =
             system.exportBookingReport("reports/bookings_report.csv");
+        const bool loyaltyOk =
+            system.exportLoyaltyReport("reports/loyalty_report.csv");
         const bool jsonOk = exportJsonReport(system, "reports/report.json");
-        if (fleetOk && bookingsOk && jsonOk)
+        if (fleetOk && bookingsOk && loyaltyOk && jsonOk)
             std::cout << green("  Reports written:\n"
                                "    reports/fleet_report.csv\n"
                                "    reports/bookings_report.csv\n"
+                               "    reports/loyalty_report.csv\n"
                                "    reports/report.json\n");
         else
             std::cout << red("  Could not write the report files.\n");
