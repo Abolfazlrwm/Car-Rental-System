@@ -2358,6 +2358,7 @@ static void testRentalManagerLoyalty()
     m.logout();
     CHECK(m.deliverCar("Testar", err));
     CHECK(m.returnCar("Testar", 109, err)); // on time
+    CHECK(m.lastLoyaltyRankUp().empty()); // Bronze stays Bronze (v2.9.0)
 
     m.login("parisa", "pass1234");
     CHECK_EQ(m.myLoyalty().points, 45);
@@ -2374,6 +2375,9 @@ static void testRentalManagerLoyalty()
     m.logout();
     CHECK(m.deliverCar("Testar", err));
     CHECK(m.returnCar("Testar", 166, err));
+    // The threshold crossing is announced for the front desk
+    // and lands in the trail.                      (v2.9.0)
+    CHECK(m.lastLoyaltyRankUp() == "parisa crossed into Silver");
 
     m.login("parisa", "pass1234");
     CHECK_EQ(m.myLoyalty().points, 256);
@@ -2391,6 +2395,7 @@ static void testRentalManagerLoyalty()
     m.logout();
     CHECK(m.deliverCar("Testar", err));
     CHECK(m.returnCar("Testar", 210, err)); // 1 day late
+    CHECK(m.lastLoyaltyRankUp().empty()); // Silver stays Silver (v2.9.0)
 
     m.login("parisa", "pass1234");
     CHECK_EQ(m.myLoyalty().points, 320);
@@ -2410,6 +2415,48 @@ static void testRentalManagerLoyalty()
     }
     CHECK_EQ(earnCount, 3);
     CHECK_EQ(redeemCount, 0);
+
+    // Exactly one promotion in the trail: rental 2 crossed into
+    // Silver, dated by the calendar layer.         (v2.9.0)
+    int rankUpCount = 0;
+    for (const AuditEntry &e : m.auditLog().all())
+    {
+        if (e.action != "loyalty.rankup")
+            continue;
+        ++rankUpCount;
+        CHECK(e.detail == "parisa Bronze -> Silver");
+        CHECK(e.allowed);
+        CHECK(Date::isISODate(e.date));
+    }
+    CHECK_EQ(rankUpCount, 1);
+
+    // The loyalty CSV report: header + one username-sorted row
+    // per member with the derived rank and progress. (v2.9.0)
+    CHECK(m.exportLoyaltyReport(dir + "/loyalty.csv"));
+    {
+        std::ifstream in(dir + "/loyalty.csv");
+        CHECK(in.good());
+        std::vector<std::string> rows;
+        std::string line;
+        while (std::getline(in, line))
+            rows.push_back(line);
+        CHECK_EQ(rows.size(), std::size_t(2));
+        CHECK(rows[0] == "username,tier,points,lifetimePoints,"
+                         "completedRentals,pointsToNextTier");
+        CHECK(rows[1] == "parisa,Silver,320,320,3,680");
+    }
+
+    // An empty program exports the header and nothing else.
+    {
+        RentalManager bare;
+        CHECK(bare.exportLoyaltyReport(dir + "/bare_loyalty.csv"));
+        std::ifstream in(dir + "/bare_loyalty.csv");
+        std::string header, extra;
+        CHECK(std::getline(in, header));
+        CHECK(header == "username,tier,points,lifetimePoints,"
+                        "completedRentals,pointsToNextTier");
+        CHECK(!std::getline(in, extra));
+    }
 
     // Redemption: every rule enforced, in order.
     m.login("parisa", "pass1234");
@@ -2434,7 +2481,15 @@ static void testRentalManagerLoyalty()
     CHECK(m.myLoyalty().points == 0);
     CHECK(m.myLoyalty().completedRentals == 0);
     CHECK(m.redeemPoints(50, err) == -1.0);
+    // ...and they cannot export the loyalty report either —
+    // EXPORT_REPORTS is manager-only.              (v2.9.0)
+    CHECK(!m.exportLoyaltyReport(dir + "/denied.csv"));
     m.logout();
+    bool exportDenied = false;
+    for (const AuditEntry &e : m.auditLog().all())
+        if (e.action == "export.loyalty" && !e.allowed)
+            exportDenied = true;
+    CHECK(exportDenied);
 
     // Persistence: the three counters round-trip through users.csv.
     CHECK(m.saveData(dir));
@@ -2453,6 +2508,7 @@ static void testRentalManagerLoyalty()
     reloaded.logout();
     CHECK(reloaded.deliverCar("Testar", err));
     CHECK(reloaded.returnCar("Testar", 309, err));
+    CHECK(reloaded.lastLoyaltyRankUp().empty()); // 376 lifetime: still Silver
     reloaded.login("parisa", "pass1234");
     CHECK_EQ(reloaded.myLoyalty().points, 276);
     reloaded.logout();
