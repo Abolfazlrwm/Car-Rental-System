@@ -159,6 +159,13 @@ New in v2.8.0 — the same export writes the loyalty standings into
 
 ![Car Rental System — manager exporting the reports and the loyalty section of report.json](docs/loyalty_json.png)
 
+New in v2.9.0 — a return that crosses a rank threshold is announced at
+the desk, audited, and pinned on the program overview; the same export
+writes `reports/loyalty_report.csv` (one username-sorted row per
+customer):
+
+![Car Rental System — rank-up announced at the desk, the loyalty CSV report and the program overview trail](docs/loyalty_rankup.png)
+
 Reserve the Benz → staff delivers it → customer returns it 2 days late →
 the manager sees the penalty on the books:
 
