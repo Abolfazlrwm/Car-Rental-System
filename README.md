@@ -152,6 +152,11 @@ into bill credits:
   Redemption        : 10 points = 1.00 off your bill (min 50, steps of 10)
 ```
 
+New in v2.8.0 — the same export writes the loyalty standings into
+`reports/report.json` (stats + fleet + bookings + loyalty):
+
+![Car Rental System — manager exporting the reports and the loyalty section of report.json](docs/loyalty_json.png)
+
 Reserve the Benz → staff delivers it → customer returns it 2 days late →
 the manager sees the penalty on the books:
 
