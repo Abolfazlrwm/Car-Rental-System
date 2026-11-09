@@ -1327,6 +1327,42 @@ static void testJsonExport()
         const json_check::JsonValue *at =
             json_check::member(root, "generatedAt");
         CHECK(at != nullptr && Date::isISODate(at->text));
+
+        // Loyalty section exists even for an empty program and
+        // reads as all-zero, not garbage.               (v2.8.0)
+        const json_check::JsonValue *loyalty =
+            json_check::member(root, "loyalty");
+        CHECK(loyalty != nullptr);
+        const json_check::JsonValue *members =
+            loyalty ? json_check::member(*loyalty, "totalMembers")
+                    : nullptr;
+        CHECK(members != nullptr && members->text == "0");
+        const json_check::JsonValue *tiers =
+            loyalty ? json_check::member(*loyalty, "membersByTier")
+                    : nullptr;
+        CHECK(tiers != nullptr && tiers->items.empty());
+        if (tiers != nullptr)
+        {
+            const char *tierNames[4] = {"Bronze", "Silver", "Gold",
+                                        "Platinum"};
+            for (const char *name : tierNames)
+            {
+                const json_check::JsonValue *tier =
+                    json_check::member(*tiers, name);
+                CHECK(tier != nullptr && tier->text == "0");
+            }
+        }
+        const json_check::JsonValue *held =
+            loyalty ? json_check::member(*loyalty, "outstandingPoints")
+                    : nullptr;
+        CHECK(held != nullptr && held->text == "0");
+        const json_check::JsonValue *liability =
+            loyalty ? json_check::member(*loyalty, "pointsLiability")
+                    : nullptr;
+        CHECK(liability != nullptr && liability->text == "0");
+        const json_check::JsonValue *rows =
+            loyalty ? json_check::member(*loyalty, "customers") : nullptr;
+        CHECK(rows != nullptr && rows->items.empty());
     }
 
     /* ---- seeded system: escaping, ordering, real figures ---- */
@@ -1423,7 +1459,206 @@ static void testJsonExport()
         const json_check::JsonValue *secondCust =
             json_check::member(bookings->items[1], "customer");
         CHECK(secondCust != nullptr && secondCust->text == "ali");
+
+        // Loyalty: ali is the demo's seeded Silver member holding
+        // 340 points over 3 completed rentals — the file must name
+        // the very same standing.                     (v2.8.0)
+        const json_check::JsonValue *loyalty =
+            json_check::member(root, "loyalty");
+        CHECK(loyalty != nullptr);
+        const json_check::JsonValue *members =
+            loyalty ? json_check::member(*loyalty, "totalMembers")
+                    : nullptr;
+        CHECK(members != nullptr && members->text == "1");
+        const json_check::JsonValue *tiers =
+            loyalty ? json_check::member(*loyalty, "membersByTier")
+                    : nullptr;
+        CHECK(tiers != nullptr);
+        if (tiers != nullptr)
+        {
+            const char *emptyTiers[3] = {"Bronze", "Gold", "Platinum"};
+            for (const char *name : emptyTiers)
+            {
+                const json_check::JsonValue *tier =
+                    json_check::member(*tiers, name);
+                CHECK(tier != nullptr && tier->text == "0");
+            }
+            const json_check::JsonValue *silver =
+                json_check::member(*tiers, "Silver");
+            CHECK(silver != nullptr && silver->text == "1");
+        }
+        const json_check::JsonValue *held =
+            loyalty ? json_check::member(*loyalty, "outstandingPoints")
+                    : nullptr;
+        CHECK(held != nullptr && held->text == "340");
+        const json_check::JsonValue *liability =
+            loyalty ? json_check::member(*loyalty, "pointsLiability")
+                    : nullptr;
+        CHECK(liability != nullptr && liability->text == "34");
+        const json_check::JsonValue *topName =
+            loyalty ? json_check::member(*loyalty, "topMember") : nullptr;
+        CHECK(topName != nullptr && topName->text == "ali");
+        const json_check::JsonValue *topPoints =
+            loyalty ? json_check::member(*loyalty, "topMemberLifetime")
+                    : nullptr;
+        CHECK(topPoints != nullptr && topPoints->text == "340");
+        const json_check::JsonValue *rows =
+            loyalty ? json_check::member(*loyalty, "customers") : nullptr;
+        CHECK(rows != nullptr && rows->items.size() == 1);
+        if (rows != nullptr && !rows->items.empty())
+        {
+            const json_check::JsonValue &row = rows->items[0];
+            const json_check::JsonValue *name =
+                json_check::member(row, "username");
+            CHECK(name != nullptr && name->text == "ali");
+            const json_check::JsonValue *tier =
+                json_check::member(row, "tier");
+            CHECK(tier != nullptr && tier->text == "Silver");
+            const json_check::JsonValue *pts =
+                json_check::member(row, "points");
+            CHECK(pts != nullptr && pts->text == "340");
+            const json_check::JsonValue *life =
+                json_check::member(row, "lifetimePoints");
+            CHECK(life != nullptr && life->text == "340");
+            const json_check::JsonValue *done =
+                json_check::member(row, "completedRentals");
+            CHECK(done != nullptr && done->text == "3");
+            const json_check::JsonValue *toNext =
+                json_check::member(row, "pointsToNextTier");
+            CHECK(toNext != nullptr && toNext->text == "660");
+        }
     }
+}
+
+/* ============================================================
+ *  Loyalty standings in the JSON report   (v2.8.0)
+ * ============================================================
+ *  One member earns points through the REAL accrual flow (reserve
+ *  -> deliver -> return) while two others stay fresh, so the
+ *  exported array must show three username-sorted rows whose
+ *  figures agree with the facade's own overview snapshot.
+ * ============================================================ */
+
+static void testJsonLoyaltyExport()
+{
+    const std::string dir = "/tmp/crs_test_json_loyalty";
+    std::system(("rm -rf " + dir).c_str());
+
+    RentalManager m;
+    CHECK(m.addCar(new Car("Rider", "TestCo", 40.0)));
+    CHECK(m.registerCustomer("zara", "pass1234"));
+    CHECK(m.registerCustomer("behrad", "pass1234"));
+    CHECK(m.registerCustomer("mina", "pass1234"));
+
+    // zara completes a rental through the real flow: 5 days x 40
+    // = 200.00 -> 20 points at the Bronze x1.0 multiplier.
+    std::string err;
+    int start = 0, end = 0;
+    CHECK(Date::parseISO("2026-11-01", start));
+    CHECK(Date::parseISO("2026-11-05", end));
+    CHECK(m.login("zara", "pass1234"));
+    CHECK(m.makeReservation("Rider", start, end, err));
+    m.logout();
+    CHECK(m.deliverCar("Rider", err));
+    CHECK(m.returnCar("Rider", end, err));
+
+    const std::string path = dir + "/report.json";
+    CHECK(exportJsonReport(m, path));
+    std::string body;
+    CHECK(json_check::readFile(path, body));
+    json_check::Parser p(body);
+    json_check::JsonValue root;
+    CHECK(p.parse(root));
+
+    const json_check::JsonValue *loyalty =
+        json_check::member(root, "loyalty");
+    CHECK(loyalty != nullptr);
+    const json_check::JsonValue *members =
+        loyalty ? json_check::member(*loyalty, "totalMembers") : nullptr;
+    CHECK(members != nullptr && members->text == "3");
+    const json_check::JsonValue *tiers =
+        loyalty ? json_check::member(*loyalty, "membersByTier") : nullptr;
+    CHECK(tiers != nullptr);
+    if (tiers != nullptr)
+    {
+        const json_check::JsonValue *bronze =
+            json_check::member(*tiers, "Bronze");
+        CHECK(bronze != nullptr && bronze->text == "3");
+        const json_check::JsonValue *higher[3] = {
+            json_check::member(*tiers, "Silver"),
+            json_check::member(*tiers, "Gold"),
+            json_check::member(*tiers, "Platinum")};
+        for (const json_check::JsonValue *tier : higher)
+            CHECK(tier != nullptr && tier->text == "0");
+    }
+    const json_check::JsonValue *held =
+        loyalty ? json_check::member(*loyalty, "outstandingPoints")
+                : nullptr;
+    CHECK(held != nullptr && held->text == "20");
+    const json_check::JsonValue *liability =
+        loyalty ? json_check::member(*loyalty, "pointsLiability")
+                : nullptr;
+    CHECK(liability != nullptr && liability->text == "2");
+    const json_check::JsonValue *topName =
+        loyalty ? json_check::member(*loyalty, "topMember") : nullptr;
+    CHECK(topName != nullptr && topName->text == "zara");
+    const json_check::JsonValue *topPoints =
+        loyalty ? json_check::member(*loyalty, "topMemberLifetime")
+                : nullptr;
+    CHECK(topPoints != nullptr && topPoints->text == "20");
+
+    // Three rows, username-sorted: behrad, mina, zara.
+    const json_check::JsonValue *rows =
+        loyalty ? json_check::member(*loyalty, "customers") : nullptr;
+    CHECK(rows != nullptr && rows->items.size() == 3);
+    if (rows != nullptr && rows->items.size() == 3)
+    {
+        const char *order[3] = {"behrad", "mina", "zara"};
+        for (int i = 0; i < 3; ++i)
+        {
+            const json_check::JsonValue *name =
+                json_check::member(rows->items[i], "username");
+            CHECK(name != nullptr && name->text == order[i]);
+            const json_check::JsonValue *tier =
+                json_check::member(rows->items[i], "tier");
+            CHECK(tier != nullptr && tier->text == "Bronze");
+        }
+        // The two fresh members: all-zero standings.
+        for (int i = 0; i < 2; ++i)
+        {
+            const json_check::JsonValue *pts =
+                json_check::member(rows->items[i], "points");
+            CHECK(pts != nullptr && pts->text == "0");
+            const json_check::JsonValue *done =
+                json_check::member(rows->items[i], "completedRentals");
+            CHECK(done != nullptr && done->text == "0");
+            const json_check::JsonValue *toNext =
+                json_check::member(rows->items[i], "pointsToNextTier");
+            CHECK(toNext != nullptr && toNext->text == "250");
+        }
+        // zara's earned standing rode into the file.
+        const json_check::JsonValue &zara = rows->items[2];
+        const json_check::JsonValue *pts =
+            json_check::member(zara, "points");
+        CHECK(pts != nullptr && pts->text == "20");
+        const json_check::JsonValue *life =
+            json_check::member(zara, "lifetimePoints");
+        CHECK(life != nullptr && life->text == "20");
+        const json_check::JsonValue *done =
+            json_check::member(zara, "completedRentals");
+        CHECK(done != nullptr && done->text == "1");
+        const json_check::JsonValue *toNext =
+            json_check::member(zara, "pointsToNextTier");
+        CHECK(toNext != nullptr && toNext->text == "230");
+    }
+
+    // The exported overview is the facade's own snapshot — one
+    // computation, zero drift between screen and file.
+    const LoyaltyOverview live = m.computeLoyaltyOverview();
+    CHECK_EQ(live.totalMembers, 3);
+    CHECK_EQ(live.outstandingPoints, 20);
+    CHECK(approx(live.pointsLiability, 2.0));
+    CHECK(live.topMember == "zara");
 }
 /* ============================================================
  *  Fleet analytics dashboard
@@ -2320,6 +2555,7 @@ int main()
     runSuite("RentalManager: CSV reports", testRentalManagerReports);
     runSuite("JSON escaping", testJsonEscaping);
     runSuite("JSON report export", testJsonExport);
+    runSuite("JSON report: loyalty standings", testJsonLoyaltyExport);
     runSuite("Fleet analytics dashboard", testAnalytics);
     runSuite("RentalManager: CSV persistence", testRentalManagerPersistence);
     runSuite("Role hierarchy", testRoleHierarchy);
