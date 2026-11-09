@@ -161,7 +161,16 @@ state as one JSON object:
                   "maintenanceLog": [] } ],
   "bookings": [ { "id": 1, "carName": "Benz C200", "customer": "ali",
                   "startDate": "2026-11-10", "endDate": "2026-11-12",
-                  "durationDays": 3 } ]
+                  "durationDays": 3 } ],
+  "loyalty":  { "totalMembers": 1,
+                "membersByTier": { "Bronze": 0, "Silver": 1,
+                                   "Gold": 0, "Platinum": 0 },
+                "outstandingPoints": 340, "pointsLiability": 34,
+                "topMember": "ali", "topMemberLifetime": 340,
+                "customers": [ { "username": "ali", "tier": "Silver",
+                                 "points": 340, "lifetimePoints": 340,
+                                 "completedRentals": 3,
+                                 "pointsToNextTier": 660 } ] }
 }
 ```
 
@@ -170,6 +179,12 @@ state as one JSON object:
   `maintenanceLog` carries `{date, description, cost}` records.
 - `bookings` is ordered by pickup date (id breaks ties), same as
   `bookings_report.csv`.
+- `loyalty` (since 2.8.0) mirrors the manager's program overview:
+  members per rank, outstanding points and their bill-credit
+  liability (`10 points = 1.00`), the deterministic top member
+  (points desc, name as tie-break) — and `customers`, one
+  username-sorted row per member with the rank derived from
+  lifetime points and the distance to the next rank.
 - Every string is escaped per RFC 8259 — the unit suite parses the
   exported file with its own strict JSON parser, so the format is a
   tested contract, not a best effort.

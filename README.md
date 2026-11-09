@@ -3,7 +3,7 @@
 [![CI](https://github.com/Abolfazlrwm/Car-Rental-System/actions/workflows/ci.yml/badge.svg)](https://github.com/Abolfazlrwm/Car-Rental-System/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Abolfazlrwm/Car-Rental-System)](https://github.com/Abolfazlrwm/Car-Rental-System/releases)
 ![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-4%2C804%20checks-3AAFA9)
+![Tests](https://img.shields.io/badge/tests-4%2C877%20checks-3AAFA9)
 ![Memory](https://img.shields.io/badge/AddressSanitizer-leak--free-4C6EF5)
 ![License](https://img.shields.io/badge/license-MIT-64748B)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)
@@ -100,15 +100,16 @@ tree and asserting the height stays within the theoretical bound.
   redeem against the outstanding bill at 10 points = 1.00 (min 50,
   steps of 10, never above the bill — points are spent, not cashed);
   customer loyalty card, manager program overview, counters persisted
-  in `users.csv` (pre-2.7.0 files still load)
+  in `users.csv` (pre-2.7.0 files still load), standings exported in
+  `report.json` (v2.8.0)
 - Income report per car + net revenue (income − maintenance costs)
 - **Fleet statistics snapshot**: composition, utilization %, net
   revenue and the top-earning car in one screen
 - **One-click CSV reports**: name-sorted fleet sheet + live bookings
   by start date, written to `reports/*.csv` for spreadsheets
 - **One-file JSON export**: `reports/report.json` (stats + fleet +
-  bookings) with strict RFC 8259 escaping, validated by the suite's
-  own JSON parser
+  bookings + the loyalty program) with strict RFC 8259 escaping,
+  validated by the suite's own JSON parser
 - **Fleet analytics dashboard**: ASCII bar charts — composition, rate
   buckets, bookings per car, waitlist depth per car, the next pickups
   and overdue returns
@@ -253,7 +254,7 @@ Car-Rental-System/
 │   ├── HashTable.h          # separate chaining + rehashing
 │   ├── PriorityQueue.h      # binary min-heap, auto-growing
 │   └── DoublyLinkedList.h   # O(1) pushes at both ends
-├── tests/test_main.cpp      # 4,668 checks, dependency-free framework
+├── tests/test_main.cpp      # 4,877 checks, dependency-free framework
 ├── scripts/demo.sh          # scripted end-to-end walkthrough
 ├── benchmarks/
 │   └── bench_containers.cpp # `make bench` — ours vs std, measured
@@ -310,7 +311,7 @@ The suite needs no external framework and runs in milliseconds:
   [ ok ] RentalManager: loyalty accrual & redemption
   [ ok ] Loyalty: program overview & legacy rows
 
-4804 checks, 0 failure(s)
+4877 checks, 0 failure(s)
 ALL TESTS PASSED
 ```
 
@@ -337,6 +338,8 @@ Memory safety is verified with `g++ -fsanitize=address,undefined`.
   auto-books freed slots (v2.6.0)
 - [x] Loyalty program — ranks, points and bill credits, derived
   tier with nothing to forget on save (v2.7.0)
+- [x] Loyalty standings in the JSON report — program snapshot plus
+  per-member rows in `reports/report.json` (v2.8.0)
 
 ## 📚 Documentation
 

@@ -228,9 +228,10 @@ spreadsheets — and one JSON file:
 - `reports/bookings_report.csv` — one row per live booking, ordered by
   start date
 - `reports/report.json` — the whole state as one JSON object
-  (`stats` + `fleet` + `bookings`), dates as ISO strings, all strings
-  escaped per RFC 8259 — safe to feed straight into any script,
-  spreadsheet or dashboard
+  (`stats` + `fleet` + `bookings` + `loyalty`, the loyalty program
+  snapshot and every member's standing since 2.8.0), dates as ISO
+  strings, all strings escaped per RFC 8259 — safe to feed straight
+  into any script, spreadsheet or dashboard
 
 Both CSV files are plain CSV with a header line; the JSON layout is
 sketched at the end of [DATA_FORMATS.md](DATA_FORMATS.md). The

@@ -4,6 +4,36 @@ All notable changes to the Car Rental System are documented in this file.
 The detailed v1.0 → v2.0 story lives in
 [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md).
 
+## [2.8.0] — 2026-11-09
+
+### Added
+
+- **Loyalty standings in the JSON report** — `reports/report.json`
+  now carries a `loyalty` section next to `stats`, `fleet` and
+  `bookings`: the program snapshot (members per rank, outstanding
+  points, their bill-credit liability, the deterministic top member)
+  plus one row per customer — username, derived rank, spendable and
+  lifetime points, completed rentals and the points still missing
+  for the next rank. Member rows are username-sorted, so the array
+  is stable regardless of hash-table walk order.
+- The section is built by the new facade method
+  `computeLoyaltyOverview()` — the very computation the manager's
+  program overview renders — so the file and the screen can never
+  drift apart, the same one-computation principle the stats block
+  has followed since v2.4.0. The interactive screen stays gated by
+  `view-analytics`; the export is permission-checked upstream by the
+  manager menu that offers it.
+
+### Tests
+
+- Suite grown from 4,804 to **4,877 checks** (a dedicated JSON suite
+  drives points through the REAL accrual flow — reserve → deliver →
+  return — and pins the earned standing inside the file; the empty
+  and seeded-system export tests now also verify the loyalty
+  section, all-zero for a fresh program and equal to `ali`'s seeded
+  Silver standing for the demo fleet) — still zero dependencies,
+  still leak-free under ASan + UBSan.
+
 ## [2.7.0] — 2026-11-09
 
 ### Added
