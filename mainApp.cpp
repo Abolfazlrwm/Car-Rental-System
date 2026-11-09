@@ -37,7 +37,7 @@
 #include "manager_system/Loyalty.h"
 
 /* Program version, reported by --version / --help. */
-static const char *APP_VERSION = "2.8.0";
+static const char *APP_VERSION = "2.9.0";
 
 /* ============================================================
  *  Terminal colors (no-ops when stdout is piped)
