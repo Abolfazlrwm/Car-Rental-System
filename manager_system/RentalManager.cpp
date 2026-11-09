@@ -873,6 +873,9 @@ bool RentalManager::returnCar(const std::string &carName, int actualReturnDay,
         // invoice total, at the multiplier of the tier held BEFORE
         // this return. The audit line shows the tier the customer
         // lands on afterwards, so rank-ups are visible in the trail.
+        lastRankUp_.clear();
+        const LoyaltyTier tierBefore =
+            tierForLifetimePoints(cust->lifetimePoints());
         const int earned = pointsEarnedFor(cust->lifetimePoints(), total);
         if (earned > 0)
         {
@@ -880,6 +883,19 @@ bool RentalManager::returnCar(const std::string &carName, int actualReturnDay,
             audit("loyalty.earned",
                   cust->username() + " +" + std::to_string(earned) + " -> "
                       + toString(tierForLifetimePoints(cust->lifetimePoints())));
+            // (v2.9.0) Crossing a threshold is a moment worth
+            // announcing: the trail keeps the promotion, and the
+            // notice is surfaced on the staff return screen.
+            const LoyaltyTier tierAfter =
+                tierForLifetimePoints(cust->lifetimePoints());
+            if (tierAfter != tierBefore)
+            {
+                lastRankUp_ = cust->username() + " crossed into "
+                              + toString(tierAfter);
+                audit("loyalty.rankup",
+                      cust->username() + " " + toString(tierBefore) + " -> "
+                          + toString(tierAfter));
+            }
         }
         cust->recordCompletedRental();
     }
@@ -1065,6 +1081,43 @@ bool RentalManager::exportBookingReport(const std::string &path) const
              << r->customer()->username() << ',' << Date::toISO(r->startDate())
              << ',' << Date::toISO(r->endDate()) << ',' << r->durationDays() << '\n';
     audit("export.bookings", path);
+    return true;
+}
+
+bool RentalManager::exportLoyaltyReport(const std::string &path) const
+{
+    if (!permitted(Permission::EXPORT_REPORTS, "export.loyalty"))
+        return false;
+    const std::filesystem::path parent =
+        std::filesystem::path(path).parent_path();
+    if (!parent.empty())
+        std::filesystem::create_directories(parent);
+
+    std::ofstream file(path);
+    if (!file)
+        return false;
+
+    // Username-sorted rows, so two exports of the same state are
+    // byte-identical (the same diff-friendly rule as the fleet
+    // sheet and the JSON report's member array).
+    file << "username,tier,points,lifetimePoints,"
+            "completedRentals,pointsToNextTier\n";
+    forEachCustomerSorted([&](const Customer *customer)
+                          {
+                              LoyaltyProfile profile;
+                              profile.points = customer->loyaltyPoints();
+                              profile.lifetimePoints =
+                                  customer->lifetimePoints();
+                              profile.completedRentals =
+                                  customer->completedRentals();
+                              file << customer->username() << ','
+                                   << toString(profile.tier()) << ','
+                                   << profile.points << ','
+                                   << profile.lifetimePoints << ','
+                                   << profile.completedRentals << ','
+                                   << profile.pointsToNextTier() << '\n';
+                          });
+    audit("export.loyalty", path);
     return true;
 }
 

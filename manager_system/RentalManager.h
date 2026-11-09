@@ -223,6 +223,12 @@ public:
     /// amount, or -1.0 with the reason in `errorOut`.
     double redeemPoints(int points, std::string &errorOut);
 
+    /// The rank-up notice of the MOST RECENT processed return:
+    /// "parisa crossed into Silver", empty when that return did
+    /// not cross a threshold. Promotions also land in the audit
+    /// trail as `loyalty.rankup` entries.          (v2.9.0)
+    std::string lastLoyaltyRankUp() const { return lastRankUp_; }
+
     /// Program snapshot for the manager screen: members per tier,
     /// outstanding points and their credit liability, top member.
     /// Gated by VIEW_ANALYTICS, like the rest of the dashboards.
@@ -276,6 +282,13 @@ public:
     /// ordered views). Missing parent directories are created.
     bool exportBookingReport(const std::string &path) const;
 
+    /// Write the loyalty program to `path` as CSV: header + one
+    /// username-sorted row per customer (derived tier, spendable vs
+    /// lifetime points, completed rentals, distance to the next
+    /// rank). Missing parent directories are created.
+    /// Permission: EXPORT_REPORTS.                  (v2.9.0)
+    bool exportLoyaltyReport(const std::string &path) const;
+
     /* ---------------- Audit trail (v2.5.0) ---------------- */
 
     /// Append-only trail of privileged actions, permission denials
@@ -317,6 +330,10 @@ private:
     // Audit writes also happen from const methods (exports, save),
     // so the trail is a mutable side-ledger.
     mutable AuditLog auditLog_;
+
+    // Rank-up notice of the most recent processed return, cleared
+    // on every return that does not cross a threshold. (v2.9.0)
+    std::string lastRankUp_;
 
     static const double PENALTY_RATE; // late-return multiplier (1.5x/day)
 
