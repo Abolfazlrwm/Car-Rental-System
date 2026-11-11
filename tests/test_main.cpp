@@ -585,20 +585,24 @@ static void testRentalManagerReservations()
     // REGRESSION: income was booked TWICE (on reservation AND on return).
     CHECK_EQ(benz->totalIncome(), 0.0); // nothing earned at booking time!
     CHECK(m.returnCar("Benz C200", 9, err)); // on-time return
-    // 5 days (5..9 inclusive) x 180 = 900, no penalty.
-    CHECK(approx(benz->totalIncome(), 900.0));
+    // ali is a seeded Silver member: 5 days x 180 = 900, less the
+    // 3% long-rental AND 3% Silver rates stacked -> 846.81, no
+    // penalty.                                     (v3.0.0)
+    CHECK(approx(benz->totalIncome(), 846.81));
 
     // Customer is charged and can pay.
-    CHECK(approx(m.currentCustomerBalance(), 900.0));
+    CHECK(approx(m.currentCustomerBalance(), 846.81));
     CHECK(m.myReservations().size() == 1); // the 10..12 booking remains
-    CHECK(approx(m.payBill(), 900.0));
+    CHECK(approx(m.payBill(), 846.81));
     CHECK(approx(m.currentCustomerBalance(), 0.0));
 
     // Late return: deliver next booking (10..12), return on day 15.
     CHECK(m.deliverCar("Benz C200", err));
     CHECK(m.returnCar("Benz C200", 15, err));
-    // 3 days x 180 = 540 + penalty 3 late days x 180 x 1.5 = 810 -> 1350
-    CHECK(approx(benz->totalIncome(), 900.0 + 1350.0));
+    // 3 days x 180 = 540 -> 508.09 after the 3% + 3% stack, + 3 late
+    // days x 180 x 1.5 = 810 (never discounted) -> 1318.09.
+    //                                     (v3.0.0)
+    CHECK(approx(benz->totalIncome(), 846.81 + 1318.086));
     CHECK(benz->status() == CarStatus::Available);
     CHECK(!m.isLoggedIn() || m.currentUserRole() == "Customer");
 }
@@ -755,14 +759,14 @@ static void testRentalManagerPersistence()
         CHECK(!m.login("reza", "nope"));
 
         // The invoice survived too (income + customer balance).
-        // Booking 3..5 = 3 days x 180 = 540, + 2 late days x 270 = 540
-        // -> total 1080.
+        // Booking 3..5 = 3 days x 180 = 540 -> 523.80 after the 3%
+        // long-rental rate, + 2 late days x 270 = 540 -> 1063.80.
         Car *benz = m.searchCar("Benz C200");
         CHECK(benz != nullptr);
-        CHECK(approx(benz->totalIncome(), 540.0 + 540.0));
+        CHECK(approx(benz->totalIncome(), 1063.8));
 
         m.login("reza", "pass123");
-        CHECK(approx(m.currentCustomerBalance(), 540.0 + 540.0));
+        CHECK(approx(m.currentCustomerBalance(), 1063.8));
         m.logout();
 
         // Blocked state persists.
@@ -905,12 +909,14 @@ static void testRentalManagerStats()
     CHECK_EQ(s.availableCars, std::size_t(6));
     CHECK(approx(s.maintenanceSpend, 100.0));
 
-    // Returning 2 days late bills 5x180 + 2x180x1.5 = 1440.
+    // Returning 2 days late bills 5x180 = 900 -> 846.81 after the
+    // 3% long-rental and 3% Silver rates stack, + 2x180x1.5 = 540
+    // penalty (never discounted) -> 1386.81.   (v3.0.0)
     CHECK(m.returnCar("Benz C200", 11, err));
     s = m.computeStats();
     CHECK_EQ(s.activeBookings, std::size_t(0));
-    CHECK(approx(s.grossIncome, 1440.0));
-    CHECK(approx(s.netRevenue, 1340.0));
+    CHECK(approx(s.grossIncome, 1386.81));
+    CHECK(approx(s.netRevenue, 1286.81));
     CHECK(approx(s.utilization, 0.0));
     CHECK(s.topEarner == "Benz C200");
 
@@ -918,7 +924,7 @@ static void testRentalManagerStats()
     m.searchCar("Pride 131")->addIncome(500.0);
     s = m.computeStats();
     CHECK(s.topEarner == "Benz C200");
-    CHECK(approx(s.grossIncome, 1940.0));
+    CHECK(approx(s.grossIncome, 1886.81));
 }
 
 /* ============================================================
@@ -1551,7 +1557,8 @@ static void testJsonLoyaltyExport()
     CHECK(m.registerCustomer("mina", "pass1234"));
 
     // zara completes a rental through the real flow: 5 days x 40
-    // = 200.00 -> 20 points at the Bronze x1.0 multiplier.
+    // = 200.00 -> 194.00 after the 3% long-rental rate -> 19 points
+    // at the Bronze x1.0 multiplier.
     std::string err;
     int start = 0, end = 0;
     CHECK(Date::parseISO("2026-11-01", start));
@@ -1594,18 +1601,18 @@ static void testJsonLoyaltyExport()
     const json_check::JsonValue *held =
         loyalty ? json_check::member(*loyalty, "outstandingPoints")
                 : nullptr;
-    CHECK(held != nullptr && held->text == "20");
+    CHECK(held != nullptr && held->text == "19");
     const json_check::JsonValue *liability =
         loyalty ? json_check::member(*loyalty, "pointsLiability")
                 : nullptr;
-    CHECK(liability != nullptr && liability->text == "2");
+    CHECK(liability != nullptr && liability->text == "1.9");
     const json_check::JsonValue *topName =
         loyalty ? json_check::member(*loyalty, "topMember") : nullptr;
     CHECK(topName != nullptr && topName->text == "zara");
     const json_check::JsonValue *topPoints =
         loyalty ? json_check::member(*loyalty, "topMemberLifetime")
                 : nullptr;
-    CHECK(topPoints != nullptr && topPoints->text == "20");
+    CHECK(topPoints != nullptr && topPoints->text == "19");
 
     // Three rows, username-sorted: behrad, mina, zara.
     const json_check::JsonValue *rows =
@@ -1640,24 +1647,24 @@ static void testJsonLoyaltyExport()
         const json_check::JsonValue &zara = rows->items[2];
         const json_check::JsonValue *pts =
             json_check::member(zara, "points");
-        CHECK(pts != nullptr && pts->text == "20");
+        CHECK(pts != nullptr && pts->text == "19");
         const json_check::JsonValue *life =
             json_check::member(zara, "lifetimePoints");
-        CHECK(life != nullptr && life->text == "20");
+        CHECK(life != nullptr && life->text == "19");
         const json_check::JsonValue *done =
             json_check::member(zara, "completedRentals");
         CHECK(done != nullptr && done->text == "1");
         const json_check::JsonValue *toNext =
             json_check::member(zara, "pointsToNextTier");
-        CHECK(toNext != nullptr && toNext->text == "230");
+        CHECK(toNext != nullptr && toNext->text == "231");
     }
 
     // The exported overview is the facade's own snapshot — one
     // computation, zero drift between screen and file.
     const LoyaltyOverview live = m.computeLoyaltyOverview();
     CHECK_EQ(live.totalMembers, 3);
-    CHECK_EQ(live.outstandingPoints, 20);
-    CHECK(approx(live.pointsLiability, 2.0));
+    CHECK_EQ(live.outstandingPoints, 19);
+    CHECK(approx(live.pointsLiability, 1.9));
     CHECK(live.topMember == "zara");
 }
 /* ============================================================
@@ -2352,7 +2359,8 @@ static void testRentalManagerLoyalty()
     std::string err;
     CHECK(m.redeemPoints(50, err) == -1.0);
 
-    // Rental 1: 10 days x 45 = 450 -> 45 points (Bronze x1.0).
+    // Rental 1: 10 days x 45 = 450 -> 418.50 after the 7% long-rental
+    // rate -> floor(41.85) = 41 points (Bronze x1.0).
     m.login("parisa", "pass1234");
     CHECK(m.makeReservation("Testar", 100, 109, err));
     m.logout();
@@ -2361,35 +2369,37 @@ static void testRentalManagerLoyalty()
     CHECK(m.lastLoyaltyRankUp().empty()); // Bronze stays Bronze (v2.9.0)
 
     m.login("parisa", "pass1234");
-    CHECK_EQ(m.myLoyalty().points, 45);
-    CHECK_EQ(m.myLoyalty().lifetimePoints, 45);
+    CHECK_EQ(m.myLoyalty().points, 41);
+    CHECK_EQ(m.myLoyalty().lifetimePoints, 41);
     CHECK_EQ(m.myLoyalty().completedRentals, 1);
     CHECK(m.myLoyalty().tier() == LoyaltyTier::Bronze);
-    CHECK(approx(m.currentCustomerBalance(), 450.0));
+    CHECK(approx(m.currentCustomerBalance(), 418.5));
     m.logout();
 
-    // Rental 2: 47 days x 45 = 2115 -> floor(211.5) = 211, still
-    // Bronze at return time. Lifetime 45 + 211 = 256 -> Silver.
+    // Rental 2: 60 days x 45 = 2700 -> 2214.00 after the 18%
+    // long-rental rate -> floor(221.4) = 221, still Bronze at return
+    // time. Lifetime 41 + 221 = 262 -> Silver.
     m.login("parisa", "pass1234");
-    CHECK(m.makeReservation("Testar", 120, 166, err));
+    CHECK(m.makeReservation("Testar", 120, 179, err));
     m.logout();
     CHECK(m.deliverCar("Testar", err));
-    CHECK(m.returnCar("Testar", 166, err));
+    CHECK(m.returnCar("Testar", 179, err));
     // The threshold crossing is announced for the front desk
     // and lands in the trail.                      (v2.9.0)
     CHECK(m.lastLoyaltyRankUp() == "parisa crossed into Silver");
 
     m.login("parisa", "pass1234");
-    CHECK_EQ(m.myLoyalty().points, 256);
-    CHECK_EQ(m.myLoyalty().lifetimePoints, 256);
+    CHECK_EQ(m.myLoyalty().points, 262);
+    CHECK_EQ(m.myLoyalty().lifetimePoints, 262);
     CHECK_EQ(m.myLoyalty().completedRentals, 2);
     CHECK(m.myLoyalty().tier() == LoyaltyTier::Silver);
-    CHECK(approx(m.currentCustomerBalance(), 450.0 + 2115.0));
+    CHECK(approx(m.currentCustomerBalance(), 418.5 + 2214.0));
     m.logout();
 
     // Rental 3: a late return still earns, now at the Silver rate.
-    // 10 days x 45 = 450 + 1 late day x 45 x 1.5 = 517.50
-    // -> floor(517.5 x 0.1 x 1.25) = 64 points.
+    // 10 days x 45 = 450 -> 405.945 after the 7% + 3% Silver stack,
+    // + 1 late day x 45 x 1.5 = 67.50 -> 473.445
+    // -> floor(473.445 x 0.1 x 1.25) = 59 points.
     m.login("parisa", "pass1234");
     CHECK(m.makeReservation("Testar", 200, 209, err));
     m.logout();
@@ -2398,10 +2408,10 @@ static void testRentalManagerLoyalty()
     CHECK(m.lastLoyaltyRankUp().empty()); // Silver stays Silver (v2.9.0)
 
     m.login("parisa", "pass1234");
-    CHECK_EQ(m.myLoyalty().points, 320);
-    CHECK_EQ(m.myLoyalty().lifetimePoints, 320);
+    CHECK_EQ(m.myLoyalty().points, 321);
+    CHECK_EQ(m.myLoyalty().lifetimePoints, 321);
     CHECK_EQ(m.myLoyalty().completedRentals, 3);
-    CHECK(approx(m.currentCustomerBalance(), 450.0 + 2115.0 + 517.5));
+    CHECK(approx(m.currentCustomerBalance(), 418.5 + 2214.0 + 473.445));
     m.logout();
 
     // The trail logged every earn (and no redemption yet).
@@ -2443,7 +2453,7 @@ static void testRentalManagerLoyalty()
         CHECK_EQ(rows.size(), std::size_t(2));
         CHECK(rows[0] == "username,tier,points,lifetimePoints,"
                          "completedRentals,pointsToNextTier");
-        CHECK(rows[1] == "parisa,Silver,320,320,3,680");
+        CHECK(rows[1] == "parisa,Silver,321,321,3,679");
     }
 
     // An empty program exports the header and nothing else.
@@ -2465,13 +2475,13 @@ static void testRentalManagerLoyalty()
     CHECK(m.redeemPoints(3200, err) == -1.0); // not a step of 10
     const double credited = m.redeemPoints(100, err);
     CHECK(approx(credited, 10.0));
-    CHECK(approx(m.currentCustomerBalance(), 3082.5 - 10.0));
-    CHECK_EQ(m.myLoyalty().points, 220);
-    CHECK_EQ(m.myLoyalty().lifetimePoints, 320); // lifetime never spent
+    CHECK(approx(m.currentCustomerBalance(), 3105.945 - 10.0));
+    CHECK_EQ(m.myLoyalty().points, 221);
+    CHECK_EQ(m.myLoyalty().lifetimePoints, 321); // lifetime never spent
     CHECK(m.myLoyalty().tier() == LoyaltyTier::Silver);
 
     // A cleared bill leaves nothing to redeem against.
-    CHECK(approx(m.payBill(), 3072.5));
+    CHECK(approx(m.payBill(), 3095.945));
     CHECK(m.redeemPoints(50, err) == -1.0);
     m.logout();
 
@@ -2496,21 +2506,22 @@ static void testRentalManagerLoyalty()
     RentalManager reloaded;
     CHECK(reloaded.loadData(dir));
     CHECK(reloaded.login("parisa", "pass1234"));
-    CHECK_EQ(reloaded.myLoyalty().points, 220);
-    CHECK_EQ(reloaded.myLoyalty().lifetimePoints, 320);
+    CHECK_EQ(reloaded.myLoyalty().points, 221);
+    CHECK_EQ(reloaded.myLoyalty().lifetimePoints, 321);
     CHECK_EQ(reloaded.myLoyalty().completedRentals, 3);
     CHECK(reloaded.myLoyalty().tier() == LoyaltyTier::Silver);
     CHECK(approx(reloaded.currentCustomerBalance(), 0.0));
 
-    // Earning continues seamlessly on the reloaded state: 450 spent
-    // at the Silver rate -> floor(45 x 1.25) = 56 more points.
+    // Earning continues seamlessly on the reloaded state: 405.945
+    // invoiced at the Silver rate -> floor(40.5945 x 1.25) = 50 more
+    // points.
     CHECK(reloaded.makeReservation("Testar", 300, 309, err));
     reloaded.logout();
     CHECK(reloaded.deliverCar("Testar", err));
     CHECK(reloaded.returnCar("Testar", 309, err));
-    CHECK(reloaded.lastLoyaltyRankUp().empty()); // 376 lifetime: still Silver
+    CHECK(reloaded.lastLoyaltyRankUp().empty()); // 371 lifetime: still Silver
     reloaded.login("parisa", "pass1234");
-    CHECK_EQ(reloaded.myLoyalty().points, 276);
+    CHECK_EQ(reloaded.myLoyalty().points, 271);
     reloaded.logout();
 }
 
@@ -2848,6 +2859,136 @@ static void testRecurringFacade()
 }
 
 
+/* ============================================================
+ *  Pricing: dynamic discount maths   (v3.0.0)
+ * ============================================================ */
+
+static void testPricingMaths()
+{
+    // Long-rental thresholds (inclusive day counts).
+    CHECK(approx(durationDiscount(0), 0.0));
+    CHECK(approx(durationDiscount(2), 0.0));
+    CHECK(approx(durationDiscount(3), 0.03));
+    CHECK(approx(durationDiscount(6), 0.03));
+    CHECK(approx(durationDiscount(7), 0.07));
+    CHECK(approx(durationDiscount(13), 0.07));
+    CHECK(approx(durationDiscount(14), 0.12));
+    CHECK(approx(durationDiscount(29), 0.12));
+    CHECK(approx(durationDiscount(30), 0.18));
+    CHECK(approx(durationDiscount(90), 0.18));
+
+    // Rank rates.
+    CHECK(approx(tierDiscount(LoyaltyTier::Bronze), 0.0));
+    CHECK(approx(tierDiscount(LoyaltyTier::Silver), 0.03));
+    CHECK(approx(tierDiscount(LoyaltyTier::Gold), 0.06));
+    CHECK(approx(tierDiscount(LoyaltyTier::Platinum), 0.10));
+
+    // One invoice, every number: 5 x 180 at Bronze, on time.
+    const PriceBreakdown a = quoteRental(5, 180.0, LoyaltyTier::Bronze);
+    CHECK(approx(a.base, 900.0));
+    CHECK(approx(a.durationRate, 0.03));
+    CHECK(approx(a.tierRate, 0.0));
+    CHECK(approx(a.discount, 27.0));
+    CHECK(approx(a.penalty, 0.0));
+    CHECK(approx(a.total, 873.0));
+    CHECK(a.tier == LoyaltyTier::Bronze);
+    CHECK(discountNote(a) == "27.00 off (3% long rental)");
+
+    // The rates stack MULTIPLICATIVELY: 7% + 3% takes 9.79% off,
+    // never a naive 10%.
+    const PriceBreakdown stack = quoteRental(10, 45.0, LoyaltyTier::Silver);
+    CHECK(approx(stack.base, 450.0));
+    CHECK(approx(stack.effectiveRate(), 1.0 - 0.93 * 0.97));
+    CHECK(approx(stack.discount, 450.0 * (1.0 - 0.93 * 0.97)));
+    CHECK(discountNote(stack) == "44.06 off (7% long rental, 3% Silver)");
+
+    // Late days stay at the RAW daily rate, untouched by discounts:
+    // 3 x 180 = 540 -> 523.80 at Bronze, + 3 late days x 180 x 1.5
+    // = 810.
+    const PriceBreakdown late =
+        quoteRental(3, 180.0, LoyaltyTier::Bronze, 3);
+    CHECK(approx(late.discount, 16.2));
+    CHECK(approx(late.penalty, 810.0));
+    CHECK(approx(late.total, 1333.8));
+    CHECK(approx(late.total, 540.0 * 0.97 + 810.0));
+
+    // Platinum on a month-long booking: 18% + 10%.
+    const PriceBreakdown top =
+        quoteRental(30, 10.0, LoyaltyTier::Platinum);
+    CHECK(approx(top.total, 300.0 * 0.82 * 0.90));
+    CHECK(discountNote(top) == "78.60 off (18% long rental, 10% Platinum)");
+
+    // Degenerate requests price to zero instead of inventing money.
+    const PriceBreakdown empty = quoteRental(0, 180.0, LoyaltyTier::Gold);
+    CHECK(approx(empty.base, 0.0));
+    CHECK(approx(empty.total, 0.0));
+    CHECK(discountNote(empty).empty());
+    const PriceBreakdown bad = quoteRental(5, -1.0, LoyaltyTier::Gold);
+    CHECK(approx(bad.base, 0.0));
+}
+
+/// Invoices actually charged through the REAL deliver/return flow,
+/// with the desk note and audit entry the discount leaves behind.
+static void testDiscountedInvoices()
+{
+    RentalManager m;
+    CHECK(m.addCar(new Car("Boxer", "TestCo", 100.0)));
+    CHECK(m.registerCustomer("kamran", "pass1234"));
+    CHECK(m.registerCustomer("aillar", "pass1234"));
+    std::string err;
+
+    // A 2-day Bronze rental earns no discount: nothing announced,
+    // nothing audited, full price invoiced.
+    m.login("kamran", "pass1234");
+    CHECK(m.makeReservation("Boxer", 10, 11, err));
+    m.logout();
+    CHECK(m.deliverCar("Boxer", err));
+    CHECK(m.returnCar("Boxer", 11, err));
+    CHECK(m.lastDiscountNote().empty());
+    CHECK(approx(m.searchCar("Boxer")->totalIncome(), 200.0));
+    m.login("kamran", "pass1234");
+    CHECK(approx(m.currentCustomerBalance(), 200.0));
+    int discountAudits = 0;
+    for (const AuditEntry &e : m.auditLog().all())
+        if (e.action == "discount.applied")
+            ++discountAudits;
+    CHECK_EQ(discountAudits, 0);
+    m.logout();
+
+    // 5 days at Bronze: 500 -> 485, note on the desk and in the trail.
+    m.login("kamran", "pass1234");
+    CHECK(m.makeReservation("Boxer", 20, 24, err));
+    m.logout();
+    CHECK(m.deliverCar("Boxer", err));
+    CHECK(m.returnCar("Boxer", 24, err));
+    CHECK(m.lastDiscountNote() == "15.00 off (3% long rental)");
+    CHECK(approx(m.searchCar("Boxer")->totalIncome(), 200.0 + 485.0));
+    m.login("kamran", "pass1234");
+    CHECK(approx(m.currentCustomerBalance(), 200.0 + 485.0));
+    // Points ride the DISCOUNTED invoice: 20 from the 2-day return
+    // + floor(48.5) = 48 from this one -> 68.
+    CHECK_EQ(m.myLoyalty().points, 68);
+    m.logout();
+
+    // A late return still earns the long-rental rate, but the
+    // penalty never softens — 3 x 100 = 300 -> 291 after 3%,
+    // + 2 late days x 100 x 1.5 = 300 -> 591.
+    m.login("kamran", "pass1234"); // 48 points: still Bronze
+    CHECK(m.makeReservation("Boxer", 30, 32, err));
+    m.logout();
+    CHECK(m.deliverCar("Boxer", err));
+    CHECK(m.returnCar("Boxer", 34, err)); // 2 days late
+    CHECK(m.lastDiscountNote() == "9.00 off (3% long rental)");
+    CHECK(approx(m.searchCar("Boxer")->totalIncome(),
+                 200.0 + 485.0 + 591.0));
+    discountAudits = 0;
+    for (const AuditEntry &e : m.auditLog().all())
+        if (e.action == "discount.applied")
+            ++discountAudits;
+    CHECK_EQ(discountAudits, 2); // the 5-day and the late 3-day return
+}
+
+
 int main()
 {
     std::cout << "==== Car Rental System — unit tests ====\n";
@@ -2883,6 +3024,8 @@ int main()
     runSuite("Loyalty: program overview & legacy rows", testLoyaltyOverview);
     runSuite("Recurring series: plan maths", testRecurringMaths);
     runSuite("RentalManager: recurring series", testRecurringFacade);
+    runSuite("Pricing: dynamic discount maths", testPricingMaths);
+    runSuite("RentalManager: discounted invoices", testDiscountedInvoices);
 
     std::cout << "\n" << g_checks << " checks, " << g_failures << " failure(s)\n";
     if (g_failures == 0)
