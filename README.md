@@ -89,9 +89,24 @@ tree and asserting the height stays within the theoretical bound.
   in `data/waitlist.csv`
 - Rental renewal with queue discipline (blocked when others wait)
 - Case-insensitive **keyword search** across car names and brands
+- **Recurring reservations** (v3.0.0): book once and repeat — weekly,
+  biweekly or monthly plans for 2–8 occurrences of the same car and
+  duration, created atomically (a mid-series clash books nothing and
+  names the offending occurrence); monthly pickups stay anchored to
+  the first day of month with clamping (Jan 31 → Feb 28, Mar 31…);
+  cancel the still-queued occurrences in one step from My
+  reservations; series tags persist in `reservations.csv`
+  (pre-3.0.0 files still load)
 
 **Money & reporting**
-- Automatic invoicing: duration × daily price
+- Automatic invoicing with **dynamic discounts** (v3.0.0): the booked
+  duration earns a long-rental rate (3+ days 3%, 7+ days 7%, 14+ days
+  12%, 30+ days 18%) and the loyalty rank earns another (Silver 3%,
+  Gold 6%, Platinum 10%) — the two stack multiplicatively, late fees
+  stay at the raw daily rate and are never discounted; the booking
+  screen quotes the same engine before you owe anything, and a
+  discounted return announces the amount at the desk (`discount.applied`
+  in the trail); points accrue on the invoiced (discounted) total
 - **Late-return penalty**: 1.5 × daily rate per late day
 - Customer balances with one-tap bill payment
 - **Loyalty program** (v2.7.0): Bronze → Silver → Gold → Platinum
@@ -112,6 +127,12 @@ tree and asserting the height stays within the theoretical bound.
 - **One-file JSON export**: `reports/report.json` (stats + fleet +
   bookings + the loyalty program) with strict RFC 8259 escaping,
   validated by the suite's own JSON parser
+- **Rental history ledger + monthly report** (v3.0.0): every processed
+  return lands in `data/rental_history.csv` with its full invoice
+  breakdown; manager option 17 turns it into the month at a glance —
+  rentals completed, revenue booked with the discounts/late-fee split,
+  distinct customers, revenue by car and returns per day as ASCII
+  bars, the busiest day — and writes `reports/monthly_YYYY-MM.csv`
 - **Fleet analytics dashboard**: ASCII bar charts — composition, rate
   buckets, bookings per car, waitlist depth per car, the next pickups
   and overdue returns
@@ -254,6 +275,10 @@ Car-Rental-System/
 ├── manager_system/          # business layer
 │   ├── RentalManager.{h,cpp}# facade: rules, invoicing, persistence
 │   ├── Analytics.{h,cpp}    # dashboard maths (pure, unit-tested)
+│   ├── Pricing.h            # dynamic discount engine (pure, unit-tested)
+│   ├── Recurring.h          # repeat-booking plans (pure, unit-tested)
+│   ├── RentalHistory.{h,cpp}# completed-rentals ledger + CSV round-trip
+│   ├── MonthlyReport.{h,cpp}# month aggregation (pure, unit-tested)
 │   ├── JsonExport.{h,cpp}   # RFC 8259 report writer + escaper
 │   ├── AuditLog.{h,cpp}     # append-only trail + CSV round-trip
 │   ├── Permissions.h        # the 7-permission role matrix
@@ -268,7 +293,7 @@ Car-Rental-System/
 │   ├── HashTable.h          # separate chaining + rehashing
 │   ├── PriorityQueue.h      # binary min-heap, auto-growing
 │   └── DoublyLinkedList.h   # O(1) pushes at both ends
-├── tests/test_main.cpp      # 4,896 checks, dependency-free framework
+├── tests/test_main.cpp      # 5,179 checks, dependency-free framework
 ├── scripts/demo.sh          # scripted end-to-end walkthrough
 ├── benchmarks/
 │   └── bench_containers.cpp # `make bench` — ours vs std, measured
@@ -325,8 +350,15 @@ The suite needs no external framework and runs in milliseconds:
   [ ok ] Loyalty: tiers & maths
   [ ok ] RentalManager: loyalty accrual & redemption
   [ ok ] Loyalty: program overview & legacy rows
+  [ ok ] Recurring series: plan maths
+  [ ok ] RentalManager: recurring series
+  [ ok ] Pricing: dynamic discount maths
+  [ ok ] RentalManager: discounted invoices
+  [ ok ] RentalHistory: ledger & CSV round-trip
+  [ ok ] Monthly report: builder maths
+  [ ok ] RentalManager: monthly report flow
 
-4896 checks, 0 failure(s)
+5179 checks, 0 failure(s)
 ALL TESTS PASSED
 ```
 
@@ -357,6 +389,12 @@ Memory safety is verified with `g++ -fsanitize=address,undefined`.
   per-member rows in `reports/report.json` (v2.8.0)
 - [x] Loyalty CSV report + rank-up notifications — desk announcement,
   audited promotions, recent rank-ups on the overview (v2.9.0)
+- [x] Recurring reservations — weekly / biweekly / monthly series,
+  atomic booking, one-step cancellation (v3.0.0)
+- [x] Dynamic discounts — long-rental × rank rates stacked on every
+  invoice, quoted at booking, announced at the desk (v3.0.0)
+- [x] Rental history ledger + monthly report — revenue, discounts,
+  per-car bars and the busiest day, on screen and as CSV (v3.0.0)
 
 ## 📚 Documentation
 

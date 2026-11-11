@@ -4,6 +4,70 @@ All notable changes to the Car Rental System are documented in this file.
 The detailed v1.0 → v2.0 story lives in
 [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md).
 
+## [3.0.0] — 2026-11-11
+
+### Added
+
+- **Recurring reservations** — when booking, choose a plan
+  (weekly / biweekly / monthly) and how many times (2–8): the same
+  car and duration are booked again one plan step later, as many
+  times as requested. The whole series is created ATOMICALLY — a
+  mid-series clash with an existing booking leaves nothing behind
+  and names the offending occurrence. Monthly pickups re-derive
+  from the first start with day-of-month clamping (Jan 31 lands on
+  Feb 28, Mar 31, Apr 30…). Every occurrence carries the shared
+  series tag (a new column in `reservations.csv`, loaded tolerantly
+  from pre-3.0.0 files); "My reservations" lists each occurrence
+  with its `[series #id]` and cancels the still-queued ones in one
+  step — the occurrence already handed over stays, because you
+  cannot un-drive a car. Audited as `recurring.created` /
+  `recurring.cancelled`.
+- **Dynamic discounts** — invoices are priced by one pure engine
+  (`Pricing.h`): a LONG-RENTAL rate from the booked days (3+ days
+  3%, 7+ days 7%, 14+ days 12%, 30+ days 18%) and a RANK rate from
+  the tier held at return (Silver 3%, Gold 6%, Platinum 10%),
+  stacked multiplicatively so discounts never compound past 100%.
+  Late days stay at the raw daily rate — a discount never softens a
+  penalty. A confirmed booking prints the estimate from the very
+  same engine; a discounted return announces the amount at the desk
+  and lands in the trail as `discount.applied`; loyalty points
+  accrue on the invoiced (discounted) total.
+- **Rental history + monthly report** — every processed return now
+  enters an append-only ledger, `data/rental_history.csv`, with the
+  full invoice breakdown. The manager menu grows option 17 (after
+  exit, so no scripted flow re-numbers): rentals completed, revenue
+  booked with the discounts-given and late-fee split, distinct
+  customers, revenue by car as ASCII bars, returns per day and the
+  busiest day — plus the same numbers as
+  `reports/monthly_YYYY-MM.csv`. The screen is gated by
+  `view-analytics`, the export by `export-reports`, both audited.
+  The demo walkthrough now ends with the manager reading the
+  current month.
+
+### Changed
+
+- **Invoice totals carry discounts now** — every pinned invoice in
+  the suite was re-derived from the rate tables (a 5-day Benz
+  booking bills 846.81 instead of 900.00 for a seeded Silver
+  member); the parisa loyalty story books a 60-day rental so it
+  still crosses into Silver mid-history.
+
+### Fixed
+
+- `Car::dropReservation()` freed a booking BEFORE draining its
+  heap, so `extractMin()` re-heapified through freed memory — a
+  latent use-after-free surfaced by the series-cancellation flow
+  under AddressSanitizer, fixed by draining first and freeing last.
+
+### Tests
+
+- Suite grown from 4,896 to **5,179 checks** (+283) across seven new
+  suites: recurring plan maths, recurring series end to end,
+  discount maths, discounted invoices, the history ledger and its
+  CSV round-trip, the monthly builder, and the monthly report flow
+  (gating, byte-checked CSV export, persistence). Still zero
+  dependencies, still leak-free under ASan + UBSan.
+
 ## [2.9.0] — 2026-11-09
 
 ### Added

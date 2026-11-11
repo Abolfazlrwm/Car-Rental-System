@@ -58,8 +58,8 @@ older versions (bare day numbers) still load.
 |---|---|
 | 1. View fleet | table of all cars: name, brand, price/day, status |
 | 2. Search car by name | O(log n) lookup in the AVL index |
-| 3. My reservations | your bookings and their status |
-| 4. Make a reservation | pick a car + start/end date; overlap checks apply |
+| 3. My reservations | your bookings and their status; a recurring series can be cancelled here in one step |
+| 4. Make a reservation | pick a car + start/end date; then optionally repeat it weekly / biweekly / monthly (2–8 times) — a series books atomically and is priced with a discount estimate; overlap checks apply |
 | 5. Find cars free for a date range | fleet table of cars bookable for an exact range |
 | 6. Join a waitlist | wait for a booked/serviced car to free up |
 | 7. My waitlist (leave) | list your wishes, withdraw one |
@@ -77,13 +77,39 @@ A typical session:
   Car name: Benz C200
   Start date (YYYY-MM-DD): 2026-11-05
   End date   (YYYY-MM-DD): 2026-11-09
+  Repeat: 0 none, 1 weekly, 2 biweekly, 3 monthly: 0
   Reservation confirmed! Pay on delivery.
+  Estimate: 5 day(s) x 180.00 = 900.00  (27.00 off (3% long rental))
+  Pay on delivery about 873.00 — late fees are never discounted.
 ```
 
 Reservations that overlap an existing booking for the same car are
 rejected by the double-booking guard. Renewing is refused when another
 customer is already waiting in that car's queue — first come, first
 served.
+
+### Recurring series (v3.0.0)
+
+Option 4 can book the same car and duration again on a plan:
+
+1. **Book** — enter the car, the first range, then a plan
+   (`1` weekly, `2` biweekly, `3` monthly) and how many times (2–8).
+   The whole series is created atomically: if ANY occurrence would
+   clash with an existing booking — or the duration is longer than
+   the plan step, so the series would collide with itself — nothing
+   is booked and the screen names the offending occurrence.
+2. **See the schedule** — every pickup is printed with its dates and
+   the shared series id; "My reservations" shows each occurrence
+   with its `[series #id]`.
+3. **Cancel** — the cancellation offer appears under "My
+   reservations" only when you actually hold a series: give its
+   `#id` and every still-queued occurrence is removed in one audit
+   entry (`recurring.cancelled`). The occurrence the desk already
+   handed over stays — you cannot un-drive a car.
+
+Monthly pickups stay anchored to the first start's day of month,
+clamped to each month's length: a Jan-31 anchor lands on Feb 28,
+Mar 31, Apr 30 — never on a phantom date.
 
 ### The waitlist (v2.6.0)
 
@@ -147,6 +173,24 @@ program overview lists the five newest promotions ("Recent rank-ups",
 since v2.9.0), and the export option writes the per-member
 `reports/loyalty_report.csv` next to the other report files.
 
+### Dynamic discounts (v3.0.0)
+
+Invoices are priced by one engine the moment a return is processed:
+
+| Rate | Applied when | Value |
+|---|---|---|
+| Long rental | booked duration is 3+ / 7+ / 14+ / 30+ days | 3% / 7% / 12% / 18% |
+| Rank | the tier held at return: Silver / Gold / Platinum | 3% / 6% / 10% |
+
+The two rates **stack multiplicatively** — a 7% long-rental plus a
+3% Silver rank takes 9.79% off the base, never a naive 10%. Late
+days are charged at the **raw daily rate × 1.5** — a discount never
+softens a penalty. A confirmed booking quotes the estimate from the
+same engine ("Estimate: 5 day(s) × 180.00 = 900.00 (27.00 off (3%
+long rental))"), a discounted return announces the amount at the
+desk, and the pricing decision is audited as `discount.applied`.
+Loyalty points accrue on the invoiced (discounted) total.
+
 ## Staff menu
 
 | Option | What it does |
@@ -154,7 +198,7 @@ since v2.9.0), and the export option writes the per-member
 | 1. View fleet | fleet table |
 | 2. Search car by name | quick lookup |
 | 3. Deliver car to customer | hand a RESERVED car over → status `RENTED` |
-| 4. Process car return (with penalty) | invoice + late fees, car returns to the fleet; a waiting wish is auto-booked and the customer's loyalty points are credited |
+| 4. Process car return (with penalty) | invoice priced by the discount engine + late fees at the raw rate, car returns to the fleet; the discount and any rank-up are announced at the desk, a waiting wish is auto-booked and the customer's loyalty points are credited |
 | 5. Send car to maintenance | take an idle car out of service |
 | 6. Finish maintenance | put the car back into `AVAILABLE`; a waiting wish is auto-booked |
 | 7. Show maintenance history | full log: date, description, cost |
@@ -189,6 +233,7 @@ wish should jump the queue right now. Serving the waitlist requires the
 | 14. Save data to disk | flush state without leaving |
 | 15. Save & logout | save and return to the main menu |
 | 16. Exit program | save everything and quit |
+| 17. Monthly report (v3.0.0) | pick a year + month: rentals completed, revenue booked with the discounts/late-fee split, distinct customers, revenue by car and returns per day as bars, the busiest day — and the same numbers as `reports/monthly_YYYY-MM.csv` |
 
 Every row above is also enforced inside the facade by the v2.5.0
 permission matrix: managing accounts and exporting reports is

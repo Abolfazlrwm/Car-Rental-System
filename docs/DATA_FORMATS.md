@@ -60,7 +60,7 @@ and is preserved across runs.
 ## reservations.csv
 
 ```
-id,carName,customer,requestTime,startDate,endDate
+id,carName,customer,requestTime,startDate,endDate,seriesId
 ```
 
 | Column | Meaning |
@@ -70,11 +70,37 @@ id,carName,customer,requestTime,startDate,endDate
 | `customer` | username, matches `users.csv` |
 | `requestTime` | booking creation order (monotonic counter, not a date) |
 | `startDate` / `endDate` | rental window as ISO dates, `YYYY-MM-DD` (inclusive). Files written before v2.3.0 used bare day numbers — both load. |
+| `seriesId` | recurring-series tag since v3.0.0 — every occurrence of one series shares it, `0` = one-off. Absent on pre-3.0.0 rows, which load as `0`; the series counter continues at `max(seriesId) + 1`. |
 
 Within a car, the booking queue serves the earliest `startDate` first
 (binary min-heap); ties are broken by `requestTime` (FIFO). Live
 reservations survive restarts because the queues are rebuilt from this
 file on load.
+
+## rental_history.csv (data/)   — since v3.0.0
+
+The append-only ledger of COMPLETED rentals: every processed return
+appends one row with the exact invoice breakdown, in completion order
+(oldest first). This is the raw data the manager's monthly report
+aggregates:
+
+```
+carName,customer,startDate,endDate,returnDate,base,discount,penalty,total
+Benz C200,ali,2027-03-01,2027-03-05,2027-03-07,900,53.19,540,1386.81
+```
+
+| Column | Meaning |
+|---|---|
+| `startDate` / `endDate` | the BOOKED window, ISO `YYYY-MM-DD` (inclusive) |
+| `returnDate` | the ACTUAL return day — the monthly report buckets by this month, not the booked one |
+| `base` | booked duration × daily rate, before discounts |
+| `discount` | what the v3.0.0 rate stack took off the base (0 for a short Bronze rental) |
+| `penalty` | late fees at the raw daily rate × 1.5, never discounted |
+| `total` | `base − discount + penalty` — what the customer was actually charged |
+
+A missing file is a fresh install (the ledger loads empty); corrupt
+rows are dropped instead of crashing the loader. Legacy data folders
+without this file load as before — the ledger simply starts empty.
 
 ## waitlist.csv (data/)   — since v2.6.0
 
@@ -167,6 +193,31 @@ ali,Silver,340,340,3,660
 
 Two exports of the same state are byte-identical (username-sorted,
 like the fleet sheet and the JSON member array).
+
+### monthly_YYYY-MM.csv (since 3.0.0)
+
+Written by manager option **17** right after the on-screen report —
+three sections in one file, in the order the screen shows them:
+
+```
+month,rentals,revenue,discounts,lateFees
+2027-03,1,1386.81,53.19,540
+car,rentals,revenue
+Benz C200,1,1386.81
+day,rentals
+07,1
+```
+
+- **summary row** — rentals completed (by ACTUAL return month),
+  revenue booked, discounts given and late fees charged;
+- **per-car rows** — ordered by revenue (desc, name breaks ties);
+- **per-day rows** — ascending, one line per day that saw at least
+  one return; the busiest day is the earliest among ties.
+
+The screen is gated by `view-analytics`, the export by
+`export-reports`; both refusals are audited (`report.monthly` /
+`export.monthly`). An empty month writes nothing — the screen says
+so instead.
 
 ## reports/report.json (JSON)
 
