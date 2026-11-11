@@ -2860,6 +2860,253 @@ static void testRecurringFacade()
 
 
 /* ============================================================
+ *  RentalHistory + MonthlyReport   (v3.0.0)
+ * ============================================================ */
+
+static void testRentalHistoryLedger()
+{
+    const std::string dir = "/tmp/crs_rental_history";
+    std::system(("rm -rf " + dir).c_str());
+    std::filesystem::create_directories(dir);
+
+    // Append-only: records come back in completion order.
+    RentalHistory h;
+    CHECK(h.empty());
+    h.add(RentalRecord("Benz C200", "ali", "2026-11-01", "2026-11-05",
+                       "2026-11-05", 900.0, 53.19, 540.0, 1386.81));
+    h.add(RentalRecord("Pride 131", "mina", "2026-11-02", "2026-11-04",
+                       "2026-11-05", 150.0, 4.5, 0.0, 145.5));
+    CHECK_EQ(h.size(), std::size_t(2));
+
+    std::vector<std::string> order;
+    h.forEach([&](const RentalRecord &r)
+              { order.push_back(r.carName + "/" + r.customer); });
+    CHECK(order.size() == 2 && order[0] == "Benz C200/ali" &&
+          order[1] == "Pride 131/mina");
+
+    // Round-trip: every field survives, including the money split.
+    CHECK(h.saveCSV(dir + "/history.csv"));
+    RentalHistory reloaded;
+    CHECK(reloaded.loadCSV(dir + "/history.csv"));
+    CHECK_EQ(reloaded.size(), std::size_t(2));
+    RentalRecord first;
+    reloaded.forEach([&](const RentalRecord &r)
+                     {
+                         if (first.carName.empty())
+                             first = r;
+                     });
+    CHECK(first.carName == "Benz C200" && first.customer == "ali");
+    CHECK(first.startISO == "2026-11-01" && first.endISO == "2026-11-05" &&
+          first.returnISO == "2026-11-05");
+    CHECK(approx(first.base, 900.0) && approx(first.discount, 53.19));
+    CHECK(approx(first.penalty, 540.0) && approx(first.total, 1386.81));
+
+    // A missing file is a fresh install, not an error.
+    RentalHistory fresh;
+    CHECK(fresh.loadCSV(dir + "/nothing_here.csv"));
+    CHECK(fresh.empty());
+
+    // A corrupt row is dropped, the rest loads.
+    {
+        std::ofstream bad(dir + "/bad.csv");
+        bad << "carName,customer,startDate,endDate,returnDate,"
+               "base,discount,penalty,total\n";
+        bad << "Benz C200,ali,2026-11-01,2026-11-05,2026-11-05,"
+               "900,53.19,540,1386.81\n";
+        bad << "Ghost,x,not,a,date,row,zzz,0,0,0\n";
+        bad << "Pride 131,mina,2026-11-02,2026-11-04,2026-11-05,"
+               "150,4.5,0,145.5\n";
+    }
+    RentalHistory partial;
+    CHECK(partial.loadCSV(dir + "/bad.csv"));
+    CHECK_EQ(partial.size(), std::size_t(2));
+
+    // Clear empties the ledger (state reload).
+    h.clear();
+    CHECK(h.empty());
+}
+
+static void testMonthlyReportBuilder()
+{
+    RentalHistory h;
+    h.add(RentalRecord("Benz C200", "ali", "2026-11-01", "2026-11-05",
+                       "2026-11-05", 900.0, 53.19, 540.0, 1386.81));
+    h.add(RentalRecord("Pride 131", "mina", "2026-11-02", "2026-11-04",
+                       "2026-11-05", 150.0, 4.5, 0.0, 145.5));
+    h.add(RentalRecord("Benz C200", "nima", "2026-11-15", "2026-11-17",
+                       "2026-11-17", 540.0, 16.2, 0.0, 523.8));
+    h.add(RentalRecord("Pride 131", "ali", "2026-11-16", "2026-11-17",
+                       "2026-11-17", 150.0, 4.5, 0.0, 145.5));
+    h.add(RentalRecord("Tucson 2023", "mina", "2026-11-10", "2026-11-20",
+                       "2026-11-20", 1200.0, 0.0, 360.0, 1560.0));
+    h.add(RentalRecord("Benz C200", "ali", "2026-10-25", "2026-10-31",
+                       "2026-10-31", 900.0, 0.0, 0.0, 900.0));
+
+    const MonthlyReport nov = buildMonthlyReport(h, 2026, 11);
+    CHECK(nov.month == "2026-11");
+    CHECK_EQ(nov.rentalsCompleted, 5);
+    CHECK(approx(nov.revenue, 1386.81 + 145.5 + 523.8 + 145.5 + 1560.0));
+    CHECK(approx(nov.discountGiven, 53.19 + 4.5 + 16.2 + 4.5));
+    CHECK(approx(nov.lateFees, 540.0 + 360.0));
+    CHECK_EQ(nov.distinctCustomers, 3); // ali, mina, nima
+
+    // Revenue order (desc), name breaks ties — rentals count does
+    // NOT decide the order.
+    CHECK_EQ(nov.perCar.size(), std::size_t(3));
+    if (nov.perCar.size() == 3)
+    {
+        CHECK(nov.perCar[0].name == "Benz C200" &&
+              nov.perCar[0].rentals == 2 &&
+              approx(nov.perCar[0].revenue, 1910.61));
+        CHECK(nov.perCar[1].name == "Tucson 2023" &&
+              approx(nov.perCar[1].revenue, 1560.0));
+        CHECK(nov.perCar[2].name == "Pride 131" &&
+              approx(nov.perCar[2].revenue, 291.0));
+    }
+
+    // Only days that saw a return appear, ascending; the tie on two
+    // 2-return days goes to the earlier one.
+    CHECK_EQ(nov.perDay.size(), std::size_t(3));
+    if (nov.perDay.size() == 3)
+    {
+        CHECK(nov.perDay[0].label == "05" && nov.perDay[0].count == 2);
+        CHECK(nov.perDay[1].label == "17" && nov.perDay[1].count == 2);
+        CHECK(nov.perDay[2].label == "20" && nov.perDay[2].count == 1);
+    }
+    CHECK_EQ(nov.topDay, 5);
+    CHECK_EQ(nov.topDayRentals, 2);
+
+    // The October rental stays out of November — and vice versa.
+    const MonthlyReport oct = buildMonthlyReport(h, 2026, 10);
+    CHECK(oct.month == "2026-10");
+    CHECK_EQ(oct.rentalsCompleted, 1);
+    CHECK(approx(oct.revenue, 900.0));
+    CHECK_EQ(oct.perDay.size(), std::size_t(1));
+    CHECK_EQ(oct.topDay, 31);
+
+    // An empty month reads as zero, not garbage.
+    const MonthlyReport none = buildMonthlyReport(h, 2027, 11);
+    CHECK(none.month == "2027-11");
+    CHECK_EQ(none.rentalsCompleted, 0);
+    CHECK(none.perCar.empty() && none.perDay.empty());
+    CHECK_EQ(none.topDay, 0);
+
+    // An invalid month yields an EMPTY label, never a fake one.
+    const MonthlyReport invalid = buildMonthlyReport(h, 2026, 13);
+    CHECK(invalid.month.empty());
+    CHECK_EQ(invalid.rentalsCompleted, 0);
+}
+
+/// The real flow: returns feed the ledger, the ledger feeds the
+/// report, permissions gate both, and everything round-trips.
+static void testRentalManagerMonthly()
+{
+    const std::string dir = "/tmp/crs_monthly";
+    std::system(("rm -rf " + dir).c_str());
+    std::filesystem::create_directories(dir);
+
+    RentalManager m;
+    m.seedDemoData();
+    std::string err;
+    int start = 0, end = 0;
+
+    // ali (seeded Silver) books the Benz for March and returns it
+    // two days late: 900 -> 846.81 after the 3% + 3% stack, + 540
+    // penalty -> 1386.81, completed on 2027-03-07.
+    CHECK(Date::parseISO("2027-03-01", start));
+    CHECK(Date::parseISO("2027-03-05", end));
+    m.login("ali", "customer123");
+    CHECK(m.makeReservation("Benz C200", start, end, err));
+    m.logout();
+    CHECK(m.deliverCar("Benz C200", err));
+    int actual = 0;
+    CHECK(Date::parseISO("2027-03-07", actual));
+    CHECK(m.returnCar("Benz C200", actual, err));
+
+    // The ledger holds the full invoice breakdown.
+    CHECK_EQ(m.history().size(), std::size_t(1));
+    RentalRecord rec;
+    m.history().forEach([&](const RentalRecord &r)
+                        { rec = r; });
+    CHECK(rec.carName == "Benz C200" && rec.customer == "ali");
+    CHECK(rec.startISO == "2027-03-01" && rec.endISO == "2027-03-05" &&
+          rec.returnISO == "2027-03-07");
+    CHECK(approx(rec.base, 900.0) && approx(rec.discount, 53.19));
+    CHECK(approx(rec.penalty, 540.0) && approx(rec.total, 1386.81));
+
+    // A manager session reads the month at a glance.
+    m.login("admin", "manager123");
+    const MonthlyReport march = m.monthlyReport(2027, 3);
+    CHECK(march.month == "2027-03");
+    CHECK_EQ(march.rentalsCompleted, 1);
+    CHECK(approx(march.revenue, 1386.81));
+    CHECK(approx(march.discountGiven, 53.19));
+    CHECK(approx(march.lateFees, 540.0));
+    CHECK_EQ(march.topDay, 7);
+    CHECK_EQ(march.perCar.size(), std::size_t(1));
+    if (march.perCar.size() == 1)
+        CHECK(march.perCar[0].name == "Benz C200");
+
+    // The same numbers as a CSV, next to the other reports.
+    CHECK(m.exportMonthlyReport(2027, 3, dir + "/monthly.csv", err));
+    {
+        std::ifstream in(dir + "/monthly.csv");
+        CHECK(in.good());
+        std::vector<std::string> lines;
+        std::string line;
+        while (std::getline(in, line))
+            lines.push_back(line);
+        CHECK_EQ(lines.size(), std::size_t(6)); // summary + car + day sections
+        CHECK(lines[0] == "month,rentals,revenue,discounts,lateFees");
+        CHECK(lines[1] == "2027-03,1,1386.81,53.19,540");
+        CHECK(lines[2] == "car,rentals,revenue");
+        CHECK(lines[3] == "Benz C200,1,1386.81");
+        CHECK(lines[4] == "day,rentals");
+        CHECK(lines[5] == "07,1");
+    }
+
+    // An invalid month is refused with a reason.
+    CHECK(!m.exportMonthlyReport(2027, 13, dir + "/bad.csv", err));
+    CHECK(err.find("1..12") != std::string::npos);
+    m.logout();
+
+    // Staff are shut out of the screen AND the export, and both
+    // refusals land in the trail.
+    m.login("sara", "staff123");
+    const MonthlyReport denied = m.monthlyReport(2027, 3);
+    CHECK_EQ(denied.rentalsCompleted, 0);
+    CHECK(!m.exportMonthlyReport(2027, 3, dir + "/denied.csv", err));
+    m.logout();
+    bool viewDenied = false, exportDenied = false;
+    for (const AuditEntry &e : m.auditLog().all())
+    {
+        if (e.action == "report.monthly" && !e.allowed)
+            viewDenied = true;
+        if (e.action == "export.monthly" && !e.allowed)
+            exportDenied = true;
+    }
+    CHECK(viewDenied && exportDenied);
+
+    // Persistence: the ledger round-trips and the report survives.
+    CHECK(m.saveData(dir));
+    RentalManager reloaded;
+    CHECK(reloaded.loadData(dir));
+    CHECK_EQ(reloaded.history().size(), std::size_t(1));
+    reloaded.login("admin", "manager123");
+    const MonthlyReport again = reloaded.monthlyReport(2027, 3);
+    CHECK_EQ(again.rentalsCompleted, 1);
+    CHECK(approx(again.revenue, 1386.81));
+
+    // April stays empty until a return books there — month buckets
+    // are by ACTUAL return, not booking overlap.
+    const MonthlyReport april = reloaded.monthlyReport(2027, 4);
+    CHECK_EQ(april.rentalsCompleted, 0);
+    CHECK(april.month == "2027-04");
+    reloaded.logout();
+}
+
+
+/* ============================================================
  *  Pricing: dynamic discount maths   (v3.0.0)
  * ============================================================ */
 
@@ -3026,6 +3273,9 @@ int main()
     runSuite("RentalManager: recurring series", testRecurringFacade);
     runSuite("Pricing: dynamic discount maths", testPricingMaths);
     runSuite("RentalManager: discounted invoices", testDiscountedInvoices);
+    runSuite("RentalHistory: ledger & CSV round-trip", testRentalHistoryLedger);
+    runSuite("Monthly report: builder maths", testMonthlyReportBuilder);
+    runSuite("RentalManager: monthly report flow", testRentalManagerMonthly);
 
     std::cout << "\n" << g_checks << " checks, " << g_failures << " failure(s)\n";
     if (g_failures == 0)
