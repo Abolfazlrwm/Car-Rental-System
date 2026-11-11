@@ -33,6 +33,7 @@ void RentalManager::clearAll()
     carIndex_.clear();
     userIndex_.clear();
     carOrder_.clear();
+    history_.clear();
     currentUser_ = nullptr;
 }
 
@@ -1014,8 +1015,16 @@ bool RentalManager::returnCar(const std::string &carName, int actualReturnDay,
     // Ledger: income is recorded EXACTLY ONCE (at return time).
     car->addIncome(total);
 
-    // The customer owes the money until they pay their bill.
+    // (v3.0.0) The completed rental enters the history ledger with
+    // its full invoice breakdown — the monthly report's raw data.
     Customer *cust = res->customer();
+    history_.add(RentalRecord(
+        carName, cust ? cust->username() : std::string("?"),
+        Date::toISO(res->startDate()), Date::toISO(res->endDate()),
+        Date::toISO(actualReturnDay), quote.base, quote.discount,
+        quote.penalty, quote.total));
+
+    // The customer owes the money until they pay their bill.
     if (cust)
     {
         cust->charge(total);
@@ -1087,6 +1096,56 @@ bool RentalManager::recordMaintenance(const std::string &carName,
     car->addMaintenanceLog(date, description, cost);
     car->setStatus(CarStatus::Maintenance);
     audit("maintenance.logged", carName);
+    return true;
+}
+
+MonthlyReport RentalManager::monthlyReport(int year, int month) const
+{
+    if (!permitted(Permission::VIEW_ANALYTICS, "report.monthly"))
+        return MonthlyReport{};
+    return buildMonthlyReport(history_, year, month);
+}
+
+bool RentalManager::exportMonthlyReport(int year, int month,
+                                        const std::string &path,
+                                        std::string &errorOut) const
+{
+    if (month < 1 || month > 12)
+    {
+        errorOut = "Month must be 1..12.";
+        return false;
+    }
+    if (!permitted(Permission::EXPORT_REPORTS, "export.monthly"))
+        return false;
+    const std::filesystem::path parent =
+        std::filesystem::path(path).parent_path();
+    if (!parent.empty())
+        std::filesystem::create_directories(parent);
+
+    const MonthlyReport report = buildMonthlyReport(history_, year, month);
+
+    std::ofstream file(path);
+    if (!file)
+    {
+        errorOut = "Could not open " + path + " for writing.";
+        return false;
+    }
+
+    // Three sections, in the order the screen shows them. Same
+    // default double formatting as every other CSV report.
+    file << "month,rentals,revenue,discounts,lateFees\n"
+         << report.month << ',' << report.rentalsCompleted << ','
+         << report.revenue << ',' << report.discountGiven << ','
+         << report.lateFees << '\n';
+    file << "car,rentals,revenue\n";
+    for (const CarRevenue &car : report.perCar)
+        file << car.name << ',' << car.rentals << ',' << car.revenue
+             << '\n';
+    file << "day,rentals\n";
+    for (const NamedCount &day : report.perDay)
+        file << day.label << ',' << day.count << '\n';
+
+    audit("export.monthly", path + " (" + report.month + ")");
     return true;
 }
 
@@ -1360,6 +1419,9 @@ bool RentalManager::saveData(const std::string &dataDir) const
     /* ---- audit_log.csv (append-only trail, v2.5.0) ---- */
     auditLog_.saveCSV(dataDir + "/audit_log.csv");
 
+    /* ---- rental_history.csv (completed rentals, v3.0.0) ---- */
+    history_.saveCSV(dataDir + "/rental_history.csv");
+
     /* ---- waitlist.csv (customer wishes queue, v2.6.0) ---- */
     {
         std::ofstream file(dataDir + "/waitlist.csv");
@@ -1391,6 +1453,7 @@ bool RentalManager::loadData(const std::string &dataDir)
 {
     clearAll();
     auditLog_.loadCSV(dataDir + "/audit_log.csv"); // absent on fresh runs
+    history_.loadCSV(dataDir + "/rental_history.csv"); // absent on pre-3.0.0 saves
 
     /* ---- users first (reservations reference them) ---- */
     {

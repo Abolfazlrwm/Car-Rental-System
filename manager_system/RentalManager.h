@@ -10,9 +10,11 @@
 #include "AuditLog.h"
 #include "Car.h"
 #include "Loyalty.h"
+#include "MonthlyReport.h"
 #include "Permissions.h"
 #include "Pricing.h"
 #include "Recurring.h"
+#include "RentalHistory.h"
 #include "User.h"
 #include "WaitlistEntry.h"
 
@@ -258,6 +260,25 @@ public:
     ///                                     (v3.0.0)
     std::string lastDiscountNote() const { return lastDiscountNote_; }
 
+    /// The append-only ledger of completed rentals — every
+    /// processed return appends one record with the full invoice
+    /// breakdown. Round-trips through data/rental_history.csv.
+    ///                                     (v3.0.0)
+    const RentalHistory &history() const { return history_; }
+
+    /// The manager's monthly report for `year`-`month` (1..12):
+    /// rentals completed, revenue booked, discounts and late fees,
+    /// per-car revenue, returns per day. Gated by VIEW_ANALYTICS
+    /// like the rest of the dashboards; an invalid month reads as
+    /// all-zero.                              (v3.0.0)
+    MonthlyReport monthlyReport(int year, int month) const;
+
+    /// Write the monthly report to `path` as CSV (summary, per-car
+    /// and per-day sections). Missing parent directories are
+    /// created. Permission: EXPORT_REPORTS.  (v3.0.0)
+    bool exportMonthlyReport(int year, int month, const std::string &path,
+                             std::string &errorOut) const;
+
     /// Program snapshot for the manager screen: members per tier,
     /// outstanding points and their credit liability, top member.
     /// Gated by VIEW_ANALYTICS, like the rest of the dashboards.
@@ -368,6 +389,11 @@ private:
     // Discount note of the most recent processed return, cleared
     // on every return that earns no discount.      (v3.0.0)
     std::string lastDiscountNote_;
+
+    // Append-only ledger of completed rentals (v3.0.0). Feeds the
+    // manager's monthly report; round-trips through
+    // data/rental_history.csv.
+    RentalHistory history_;
 
     // ---- internal helpers ----
     Customer *asCustomer() const; // logged-in user as Customer (or null)
