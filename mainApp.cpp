@@ -35,6 +35,7 @@
 #include "manager_system/Date.h"
 #include "manager_system/JsonExport.h"
 #include "manager_system/Loyalty.h"
+#include "manager_system/Pricing.h"
 #include "manager_system/Recurring.h"
 
 /* Program version, reported by --version / --help. */
@@ -329,6 +330,25 @@ static std::string money(double amount)
     return oss.str();
 }
 
+/// (v3.0.0) The booking-time money preview: base, discount from
+/// duration + the customer's CURRENT rank, and the estimated
+/// total. The return invoice re-prices with the rank held that
+/// day — the estimate says so, and late fees are never included.
+static void printBookingEstimate(const Car *car, int start, int end,
+                                 LoyaltyTier tier)
+{
+    const int days = end - start + 1;
+    const PriceBreakdown q = quoteRental(days, car->pricePerDay(), tier);
+    const std::string note = discountNote(q);
+    std::cout << "  Estimate: " << days << " day(s) x "
+              << money(car->pricePerDay()) << " = " << money(q.base);
+    if (!note.empty())
+        std::cout << yellow("  (" + note + ")");
+    std::cout << "\n"
+                 "  Pay on delivery about " << bold(money(q.total))
+              << " — late fees are never discounted.\n";
+}
+
 /* ============================================================
  *  Loyalty card (customer option 10) and redeem flow (option 11)
  * ============================================================
@@ -468,7 +488,13 @@ static void customerMenu(RentalManager &system, bool &running)
         if (repeat == 0)
         {
             if (system.makeReservation(name, start, end, error))
+            {
                 std::cout << green("  Reservation confirmed! Pay on delivery.\n");
+                // (v3.0.0) Money preview with the CURRENT rank.
+                if (Car *booked = system.searchCar(name))
+                    printBookingEstimate(booked, start, end,
+                                         system.myLoyalty().tier());
+            }
             else
             {
                 std::cout << red("  Reservation failed: " + error + "\n");
@@ -504,6 +530,24 @@ static void customerMenu(RentalManager &system, bool &running)
                 std::cout << "    pickup " << (i + 1) << ": "
                           << Date::toISO(s) << " -> "
                           << Date::toISO(s + durationDays - 1) << "\n";
+            }
+            // (v3.0.0) Per-occurrence money preview + series total.
+            if (Car *booked = system.searchCar(name))
+            {
+                const PriceBreakdown q = quoteRental(
+                    durationDays, booked->pricePerDay(),
+                    system.myLoyalty().tier());
+                std::cout << "  Estimate per pickup: " << durationDays
+                          << " day(s) x " << money(booked->pricePerDay())
+                          << " = " << money(q.base);
+                if (q.discount > 0.0)
+                    std::cout << yellow(" -> " + money(q.total) + " after "
+                                        + discountNote(q).substr(
+                                            discountNote(q).find('(')));
+                std::cout << "\n"
+                             "  Series total about "
+                          << bold(money(q.total * times))
+                          << " (late fees are never discounted).\n";
             }
             std::cout << yellow(
                 "  The whole series is cancelled at once from\n"
@@ -698,6 +742,10 @@ static void staffMenu(RentalManager &system, bool &running)
         if (system.returnCar(name, day, error))
         {
             std::cout << green("  Return processed and invoiced.\n");
+            // (v3.0.0) The discount the return earned, if any.
+            const std::string discount = system.lastDiscountNote();
+            if (!discount.empty())
+                std::cout << green("  Discount applied: " + discount + "\n");
             // (v2.9.0) A threshold crossed on this return is worth
             // announcing at the desk.
             const std::string rankUp = system.lastLoyaltyRankUp();
