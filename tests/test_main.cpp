@@ -2591,6 +2591,263 @@ static void testLoyaltyOverview()
     CHECK(none.topMember.empty());
 }
 
+/* ============================================================
+ *  Recurring series: plan maths   (v3.0.0)
+ * ============================================================ */
+
+static int iso(const std::string &text)
+{
+    int serial = 0;
+    CHECK(Date::parseISO(text, serial));
+    return serial;
+}
+
+static void testRecurringMaths()
+{
+    // Plan names and CLI choices.
+    CHECK(std::string(toString(RecurrencePlan::Weekly)) == "weekly");
+    CHECK(std::string(toString(RecurrencePlan::Biweekly)) == "biweekly");
+    CHECK(std::string(toString(RecurrencePlan::Monthly)) == "monthly");
+    RecurrencePlan plan = RecurrencePlan::Monthly;
+    CHECK(planFromChoice(1, plan) && plan == RecurrencePlan::Weekly);
+    CHECK(planFromChoice(2, plan) && plan == RecurrencePlan::Biweekly);
+    CHECK(planFromChoice(3, plan) && plan == RecurrencePlan::Monthly);
+    CHECK(!planFromChoice(0, plan));
+    CHECK(!planFromChoice(4, plan));
+
+    // Date::addMonths: clamp, leap years, year carry, identity.
+    CHECK_EQ(Date::toISO(Date::addMonths(iso("2026-01-31"), 1)),
+             std::string("2026-02-28")); // clamp past February's end
+    CHECK_EQ(Date::toISO(Date::addMonths(iso("2026-02-28"), 1)),
+             std::string("2026-03-28"));
+    CHECK_EQ(Date::toISO(Date::addMonths(iso("2024-01-31"), 1)),
+             std::string("2024-02-29")); // leap year keeps the 29th
+    CHECK_EQ(Date::toISO(Date::addMonths(iso("2026-11-15"), 3)),
+             std::string("2027-02-15")); // carries across the year
+    CHECK_EQ(Date::addMonths(iso("2026-11-11"), 0), iso("2026-11-11"));
+
+    // buildSeriesStarts: weekly spacing.
+    std::vector<int> starts;
+    CHECK(buildSeriesStarts(RecurrencePlan::Weekly, iso("2026-12-01"), 3, 3,
+                            starts));
+    CHECK_EQ(starts.size(), std::size_t(3));
+    CHECK_EQ(starts[0], iso("2026-12-01"));
+    CHECK_EQ(starts[1], iso("2026-12-08"));
+    CHECK_EQ(starts[2], iso("2026-12-15"));
+
+    // Biweekly.
+    CHECK(buildSeriesStarts(RecurrencePlan::Biweekly, iso("2026-12-01"), 5, 2,
+                            starts));
+    CHECK_EQ(starts.size(), std::size_t(2));
+    CHECK_EQ(starts[1], iso("2026-12-15"));
+
+    // Monthly: the clamped Feb pickup keeps the series alive.
+    CHECK(buildSeriesStarts(RecurrencePlan::Monthly, iso("2026-01-31"), 1, 3,
+                            starts));
+    CHECK_EQ(starts.size(), std::size_t(3));
+    CHECK_EQ(starts[0], iso("2026-01-31"));
+    CHECK_EQ(starts[1], iso("2026-02-28"));
+    CHECK_EQ(starts[2], iso("2026-03-31"));
+
+    // Self-overlap: a 10-day rental repeats weekly -> occurrence 2
+    // starts while occurrence 1 is still out.
+    CHECK(!buildSeriesStarts(RecurrencePlan::Weekly, iso("2027-01-01"), 10, 3,
+                             starts));
+    // Exactly one step of duration fits.
+    CHECK(buildSeriesStarts(RecurrencePlan::Weekly, iso("2026-12-01"), 7, 2,
+                            starts));
+    CHECK_EQ(starts[1], iso("2026-12-08"));
+
+    // Bounds and garbage.
+    CHECK(!buildSeriesStarts(RecurrencePlan::Weekly, iso("2026-12-01"), 3, 1,
+                             starts)); // a "series" of one is a plain booking
+    CHECK(!buildSeriesStarts(RecurrencePlan::Weekly, iso("2026-12-01"), 3,
+                             MAX_SERIES_OCCURRENCES + 1, starts));
+    CHECK(!buildSeriesStarts(RecurrencePlan::Weekly, iso("2026-12-01"), 0, 3,
+                             starts)); // empty range
+    CHECK(!buildSeriesStarts(RecurrencePlan::Weekly, -5, 3, 3, starts));
+}
+
+/* ============================================================
+ *  RentalManager: recurring series   (v3.0.0)
+ * ============================================================ */
+
+static void testRecurringFacade()
+{
+    const std::string dir = "/tmp/crs_recurring";
+    std::system(("rm -rf " + dir).c_str());
+    std::filesystem::create_directories(dir);
+
+    RentalManager m;
+    m.addCar(new Car("Cruiser", "TestBrand", 40.0));
+    CHECK(m.registerCustomer("nima", "pass1234"));
+    CHECK(m.registerCustomer("mina", "pass1234"));
+
+    // ---- a weekly series of three 3-day bookings ----------------------
+    m.login("nima", "pass1234");
+    std::string err;
+    int seriesId = 0;
+    CHECK(m.makeRecurringReservation("Cruiser", iso("2026-12-01"),
+                                     iso("2026-12-03"),
+                                     RecurrencePlan::Weekly, 3, seriesId,
+                                     err));
+    CHECK_EQ(seriesId, 1);
+
+    std::vector<Reservation *> mine = m.myReservations();
+    CHECK_EQ(mine.size(), std::size_t(3));
+    CHECK_EQ(mine[0]->startDate(), iso("2026-12-01"));
+    CHECK_EQ(mine[1]->startDate(), iso("2026-12-08"));
+    CHECK_EQ(mine[2]->startDate(), iso("2026-12-15"));
+    CHECK_EQ(mine[0]->endDate(), iso("2026-12-03"));
+    for (const Reservation *r : mine)
+        CHECK_EQ(r->seriesId(), 1); // one tag across the whole series
+
+    Car *car = m.searchCar("Cruiser");
+    CHECK(car->status() == CarStatus::Reserved);
+    CHECK_EQ(car->reservationCount(), std::size_t(3));
+
+    // The trail keeps one atomic creation entry with the series tag.
+    bool created = false;
+    for (const AuditEntry &e : m.auditLog().all())
+        if (e.action == "recurring.created")
+            created = e.detail.find("series #1") != std::string::npos;
+    CHECK(created);
+
+    // ---- the gap booking fits BETWEEN the occurrences -----------------
+    m.logout();
+    m.login("mina", "pass1234");
+    CHECK(m.makeReservation("Cruiser", iso("2026-12-04"), iso("2026-12-06"),
+                            err));
+    // ...and one that collides with nima's OWN series (occurrence 3
+    // runs 12-15..12-17) kills the whole NEW series atomically: the
+    // clash is reported for occurrence 1, nothing is booked.
+    CHECK(!m.makeRecurringReservation("Cruiser", iso("2026-12-14"),
+                                      iso("2026-12-16"),
+                                      RecurrencePlan::Weekly, 2, seriesId,
+                                      err));
+    CHECK(err.find("Occurrence 1") != std::string::npos);
+    CHECK_EQ(seriesId, 0); // nothing was booked, no tag was minted
+    m.logout();
+    m.login("nima", "pass1234");
+    CHECK_EQ(m.myReservations().size(), std::size_t(3));
+    m.logout();
+
+    // ---- validation: bounds, self-overlap, garbage ---------------------
+    m.login("nima", "pass1234");
+    CHECK(!m.makeRecurringReservation("Cruiser", iso("2027-02-01"),
+                                      iso("2027-02-03"),
+                                      RecurrencePlan::Weekly, 1, seriesId,
+                                      err));
+    CHECK(err.find("not bookable") != std::string::npos);
+    CHECK(!m.makeRecurringReservation("Cruiser", iso("2027-02-01"),
+                                      iso("2027-02-03"),
+                                      RecurrencePlan::Weekly, 9, seriesId,
+                                      err));
+    // 10-day rentals cannot repeat weekly without colliding with
+    // themselves.
+    CHECK(!m.makeRecurringReservation("Cruiser", iso("2027-01-01"),
+                                      iso("2027-01-10"),
+                                      RecurrencePlan::Weekly, 3, seriesId,
+                                      err));
+    // Unknown car, invalid range.
+    CHECK(!m.makeRecurringReservation("Ghost", iso("2027-02-01"),
+                                      iso("2027-02-03"),
+                                      RecurrencePlan::Weekly, 2, seriesId,
+                                      err));
+    CHECK(!m.makeRecurringReservation("Cruiser", iso("2027-02-03"),
+                                      iso("2027-02-01"),
+                                      RecurrencePlan::Weekly, 2, seriesId,
+                                      err));
+
+    // ---- monthly across February --------------------------------------
+    CHECK(m.makeRecurringReservation("Cruiser", iso("2027-01-31"),
+                                     iso("2027-01-31"),
+                                     RecurrencePlan::Monthly, 2, seriesId,
+                                     err));
+    CHECK_EQ(seriesId, 2);
+    mine = m.myReservations();
+    CHECK_EQ(mine.size(), std::size_t(5)); // 3 weekly + 2 monthly
+    CHECK_EQ(mine[3]->startDate(), iso("2027-01-31"));
+    CHECK_EQ(mine[4]->startDate(), iso("2027-02-28")); // clamped pickup
+
+    // ---- deliver the first occurrence, then cancel the rest -----------
+    m.logout();
+    CHECK(m.deliverCar("Cruiser", err)); // earliest pickup: 2026-12-01
+    CHECK(car->status() == CarStatus::Rented);
+
+    m.login("nima", "pass1234");
+    CHECK_EQ(m.cancelRecurringSeries(1, err), 2); // the queued ones only
+    mine = m.myReservations();
+    CHECK_EQ(mine.size(), std::size_t(3)); // rented occ + 2 monthly
+    bool rentedSurvives = false;
+    for (const Reservation *r : mine)
+        if (r->startDate() == iso("2026-12-01"))
+            rentedSurvives = r->seriesId() == 1;
+    CHECK(rentedSurvives); // you cannot un-drive a car
+    CHECK_EQ(car->reservationCount(), std::size_t(4)); // occ1 + mina's + 2 monthly
+
+    // Nothing left to cancel; the trail kept the cancellation.
+    CHECK_EQ(m.cancelRecurringSeries(1, err), 0);
+    CHECK(err.find("No upcoming bookings") != std::string::npos);
+    int cancelCount = 0;
+    for (const AuditEntry &e : m.auditLog().all())
+        if (e.action == "recurring.cancelled")
+            ++cancelCount;
+    CHECK_EQ(cancelCount, 1);
+
+    // ---- ownership: the other customer holds no such series ----------
+    m.logout();
+    m.login("mina", "pass1234");
+    CHECK_EQ(m.cancelRecurringSeries(2, err), 0);
+    m.logout();
+
+    // ---- staff sessions cannot cancel either --------------------------
+    CHECK(m.registerStaffAccount("recst", "recst123", "Staff"));
+    m.login("recst", "recst123");
+    CHECK_EQ(m.cancelRecurringSeries(2, err), 0);
+    CHECK(err.find("Only logged-in customers") != std::string::npos);
+    m.logout();
+
+    // ---- persistence: series tags and the counter survive -------------
+    m.login("nima", "pass1234");
+    CHECK(m.makeRecurringReservation("Cruiser", iso("2028-03-01"),
+                                     iso("2028-03-03"),
+                                     RecurrencePlan::Biweekly, 2, seriesId,
+                                     err));
+    CHECK_EQ(seriesId, 3);
+    m.logout();
+    CHECK(m.saveData(dir));
+
+    RentalManager reloaded;
+    CHECK(reloaded.loadData(dir));
+    Car *reCar = reloaded.searchCar("Cruiser");
+    CHECK(reCar && reCar->status() == CarStatus::Rented);
+    CHECK_EQ(reCar->reservationCount(), std::size_t(6)); // nima 5 + mina 1
+    CHECK(reloaded.login("nima", "pass1234"));
+    mine = reloaded.myReservations();
+    CHECK_EQ(mine.size(), std::size_t(5));
+    int seriesOne = 0, seriesThree = 0;
+    for (const Reservation *r : mine)
+    {
+        if (r->seriesId() == 1)
+            ++seriesOne;
+        if (r->seriesId() == 3)
+            ++seriesThree;
+    }
+    CHECK_EQ(seriesOne, 1); // the rented occurrence
+    CHECK_EQ(seriesThree, 2);
+
+    // The counter advanced past every loaded tag: the next series is #4.
+    int nextSeries = 0;
+    CHECK(reloaded.makeRecurringReservation("Cruiser", iso("2029-06-01"),
+                                            iso("2029-06-02"),
+                                            RecurrencePlan::Weekly, 2,
+                                            nextSeries, err));
+    CHECK_EQ(nextSeries, 4);
+    reloaded.logout();
+}
+
+
 int main()
 {
     std::cout << "==== Car Rental System — unit tests ====\n";
@@ -2624,6 +2881,8 @@ int main()
     runSuite("Loyalty: tiers & maths", testLoyaltyMaths);
     runSuite("RentalManager: loyalty accrual & redemption", testRentalManagerLoyalty);
     runSuite("Loyalty: program overview & legacy rows", testLoyaltyOverview);
+    runSuite("Recurring series: plan maths", testRecurringMaths);
+    runSuite("RentalManager: recurring series", testRecurringFacade);
 
     std::cout << "\n" << g_checks << " checks, " << g_failures << " failure(s)\n";
     if (g_failures == 0)
