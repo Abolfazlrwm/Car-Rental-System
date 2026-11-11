@@ -20,6 +20,11 @@ class Car;
  *  Priority rule (used by the per-car PriorityQueue):
  *    1. Earlier startDate wins  (soonest pickup is served first)
  *    2. Tie -> earlier requestTime wins (first-come-first-served)
+ *
+ *  Since v3.0.0 a booking may carry a seriesId > 0: it is one
+ *  occurrence of a recurring series (see Recurring.h). Zero means
+ *  a one-off booking; every occurrence of the same series shares
+ *  the id, which is what "cancel the whole series" walks over.
  * ============================================================
  */
 class Reservation
@@ -34,6 +39,10 @@ public:
     int endDate() const { return endDate_; }
     Customer *customer() const { return customer_; }
     Car *car() const { return car_; }
+
+    /// Occurrence series tag (v3.0.0). 0 = one-off booking.
+    int seriesId() const { return seriesId_; }
+    void setSeriesId(int seriesId) { seriesId_ = seriesId; }
 
     /// Used by "renew rental": push the return date further out.
     void extendEndDate(int extraDays) { endDate_ += extraDays; }
@@ -58,6 +67,7 @@ private:
     int requestTime_;
     int startDate_;
     int endDate_;
+    int seriesId_ = 0; // recurring series tag, 0 = one-off (v3.0.0)
 };
 
 #endif // RESERVATION_H

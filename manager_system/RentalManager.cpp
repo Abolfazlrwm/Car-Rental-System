@@ -19,10 +19,8 @@ const double RentalManager::PENALTY_RATE = 1.5;
 
 RentalManager::RentalManager()
     : userIndex_(&RentalManager::stringHash, /*ownsValues=*/true),
-      carIndex_(/*ownsValues=*/true),
-      currentUser_(nullptr),
-      reservationCounter_(0),
-      waitlistCounter_(0) {}
+      carIndex_(/*ownsValues=*/true), currentUser_(nullptr),
+      reservationCounter_(0), waitlistCounter_(0), seriesCounter_(0) {}
 
 RentalManager::~RentalManager()
 {
@@ -378,6 +376,16 @@ bool RentalManager::finishMaintenance(const std::string &carName)
  *  Customer operations
  * ============================================================ */
 
+Reservation *RentalManager::createBooking(Customer *customer, Car *car,
+                                          int startDate, int endDate)
+{
+    const int newId = ++reservationCounter_; // unique id == arrival order
+    Reservation *r = new Reservation(customer, car, newId, newId,
+                                     startDate, endDate);
+    car->reserve(r);
+    return r;
+}
+
 bool RentalManager::makeReservation(const std::string &carName, int startDate,
                                     int endDate, std::string &errorOut)
 {
@@ -410,13 +418,147 @@ bool RentalManager::makeReservation(const std::string &carName, int startDate,
         return false;
     }
 
-    const int newId = ++reservationCounter_; // unique id == arrival order
-    Reservation *r = new Reservation(customer, car, newId, newId,
-                                     startDate, endDate);
-    car->reserve(r);
+    createBooking(customer, car, startDate, endDate);
     audit("reservation.made", carName + " " + Date::toISO(startDate)
                                   + ".." + Date::toISO(endDate));
     return true;
+}
+
+/* ============================================================
+ *  Recurring series (v3.0.0)
+ * ============================================================ */
+
+bool RentalManager::makeRecurringReservation(const std::string &carName,
+                                             int startDate, int endDate,
+                                             RecurrencePlan plan, int times,
+                                             int &seriesIdOut,
+                                             std::string &errorOut)
+{
+    seriesIdOut = 0;
+    Customer *customer = asCustomer();
+    if (!customer)
+    {
+        errorOut = "Only logged-in customers can reserve.";
+        return false;
+    }
+
+    Car *car = searchCar(carName);
+    if (!car)
+    {
+        errorOut = "Car not found.";
+        return false;
+    }
+    if (car->status() == CarStatus::Maintenance)
+    {
+        errorOut = "Car is under maintenance.";
+        return false;
+    }
+    if (startDate < Date::MIN_SERIAL || startDate > endDate)
+    {
+        errorOut = "Invalid date range (need start >= 1970-01-01 and start <= end).";
+        return false;
+    }
+
+    // Every pickup day of the series — also rejects a series that
+    // would collide with itself (duration longer than the plan step).
+    std::vector<int> starts;
+    if (!buildSeriesStarts(plan, startDate, endDate - startDate + 1, times,
+                           starts))
+    {
+        errorOut = "Series is not bookable: need "
+                   + std::to_string(MIN_SERIES_OCCURRENCES) + ".."
+                   + std::to_string(MAX_SERIES_OCCURRENCES)
+                   + " bookings and each occurrence must fit inside the "
+                     "plan step.";
+        return false;
+    }
+
+    // Atomic creation: every occurrence must clear the schedule
+    // BEFORE the first booking is made.
+    const int durationDays = endDate - startDate + 1;
+    for (std::size_t i = 0; i < starts.size(); ++i)
+    {
+        const int end = starts[i] + durationDays - 1;
+        if (car->hasOverlap(starts[i], end))
+        {
+            errorOut = "Occurrence " + std::to_string(static_cast<int>(i) + 1)
+                       + " (" + Date::toISO(starts[i]) + ".."
+                       + Date::toISO(end)
+                       + ") overlaps an existing reservation - nothing booked.";
+            return false;
+        }
+    }
+
+    const int seriesId = ++seriesCounter_;
+    for (const int start : starts)
+    {
+        Reservation *r = createBooking(customer, car, start,
+                                       start + durationDays - 1);
+        r->setSeriesId(seriesId);
+    }
+
+    audit("recurring.created",
+          carName + " " + toString(plan) + " x" + std::to_string(times) + " "
+              + Date::toISO(startDate) + ".." + Date::toISO(endDate)
+              + " series #" + std::to_string(seriesId));
+    seriesIdOut = seriesId;
+    return true;
+}
+
+int RentalManager::cancelRecurringSeries(int seriesId, std::string &errorOut)
+{
+    Customer *customer = asCustomer();
+    if (!customer)
+    {
+        errorOut = "Only logged-in customers can cancel a series.";
+        return 0;
+    }
+    if (seriesId < 1)
+    {
+        errorOut = "Invalid series id.";
+        return 0;
+    }
+
+    // Walk the whole fleet: an occurrence is any queued booking that
+    // carries this series tag AND belongs to the caller. The one
+    // exception: on a RENTED car the current reservation is already
+    // being served — cancelling it would strand a car that is out
+    // with the customer, so it stays (and keeps its series tag).
+    int removed = 0;
+    forEachCar([&](Car *car)
+               {
+                   Reservation *served =
+                       (car->status() == CarStatus::Rented)
+                           ? car->currentReservation()
+                           : nullptr;
+                   const std::vector<Reservation *> mine =
+                       car->reservationsOf(customer->username());
+                   for (Reservation *r : mine)
+                   {
+                       if (r == served)
+                           continue;
+                       if (r->seriesId() == seriesId)
+                       {
+                           // dropReservation removes it from the heap
+                           // AND frees it — do not delete again.
+                           car->dropReservation(r);
+                           ++removed;
+                       }
+                   }
+               });
+
+    if (removed == 0)
+    {
+        errorOut = "No upcoming bookings from series #"
+                   + std::to_string(seriesId)
+                   + " - already served, already cancelled, or not yours.";
+        return 0;
+    }
+
+    audit("recurring.cancelled", "series #" + std::to_string(seriesId)
+                                     + ": " + std::to_string(removed)
+                                     + " booking(s) removed");
+    return removed;
 }
 
 std::vector<Reservation *> RentalManager::myReservations() const
@@ -769,10 +911,9 @@ void RentalManager::forEachCustomerSorted(
 
 Reservation *RentalManager::bookWaitlistEntry(Car *car, WaitlistEntry *entry)
 {
-    const int newId = ++reservationCounter_; // same id scheme as makeReservation
-    Reservation *booking = new Reservation(entry->customer(), car, newId, newId,
-                                           entry->startDate(), entry->endDate());
-    car->reserve(booking);
+    Reservation *booking = createBooking(entry->customer(), car,
+                                         entry->startDate(),
+                                         entry->endDate());
     delete entry; // the wish is consumed
     return booking;
 }
@@ -1189,7 +1330,7 @@ bool RentalManager::saveData(const std::string &dataDir) const
         std::ofstream file(dataDir + "/reservations.csv");
         if (!file)
             return false;
-        file << "id,carName,customer,requestTime,startDate,endDate\n";
+        file << "id,carName,customer,requestTime,startDate,endDate,seriesId\n";
         carOrder_.forEach([&](const std::string &name)
                           {
                               const Car *const *slot = carIndex_.find(name);
@@ -1201,7 +1342,8 @@ bool RentalManager::saveData(const std::string &dataDir) const
                                                                    << r->customer()->username() << ','
                                                                    << r->requestTime() << ','
                                                                    << Date::toISO(r->startDate()) << ','
-                                                                   << Date::toISO(r->endDate()) << '\n';
+                                                                   << Date::toISO(r->endDate()) << ','
+                                                                   << r->seriesId() << '\n';
                                                           });
                           });
     }
@@ -1354,6 +1496,10 @@ bool RentalManager::loadData(const std::string &dataDir)
             std::getline(ss, reqStr, ',');
             std::getline(ss, startStr, ',');
             std::getline(ss, endStr, ',');
+            // Series tag since v3.0.0 — absent on pre-3.0.0 rows,
+            // which load as 0 (a one-off booking).
+            std::string seriesStr;
+            std::getline(ss, seriesStr, ',');
 
             Car **carSlot = carIndex_.find(carName);
             User **userSlot = userIndex_.find(customerName);
@@ -1373,6 +1519,9 @@ bool RentalManager::loadData(const std::string &dataDir)
             Reservation *r = new Reservation(static_cast<Customer *>(*userSlot),
                                              *carSlot, id, std::stoi(reqStr),
                                              start, end);
+            const int seriesId = seriesStr.empty() ? 0 : std::stoi(seriesStr);
+            r->setSeriesId(seriesId);
+            seriesCounter_ = std::max(seriesCounter_, seriesId);
             (*carSlot)->reinsertReservation(r);
         }
     }

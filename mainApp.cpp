@@ -35,6 +35,7 @@
 #include "manager_system/Date.h"
 #include "manager_system/JsonExport.h"
 #include "manager_system/Loyalty.h"
+#include "manager_system/Recurring.h"
 
 /* Program version, reported by --version / --help. */
 static const char *APP_VERSION = "2.9.0";
@@ -246,7 +247,13 @@ static void printReservations(const std::vector<Reservation *> &list)
                   << " | " << std::left << std::setw(16) << r->car()->name()
                   << " | " << Date::toISO(r->startDate()) << " -> "
                   << Date::toISO(r->endDate())
-                  << " (" << r->durationDays() << " day(s))\n";
+                  << " (" << r->durationDays() << " day(s))";
+        // (v3.0.0) Occurrences of a recurring series carry the shared
+        // series tag, so the customer can cancel the rest in one step.
+        if (r->seriesId() > 0)
+            std::cout << yellow("  [series #"
+                                + std::to_string(r->seriesId()) + "]");
+        std::cout << "\n";
     }
 }
 
@@ -399,8 +406,46 @@ static void customerMenu(RentalManager &system, bool &running)
         break;
     }
     case 3:
-        printReservations(system.myReservations());
+    {
+        const std::vector<Reservation *> mine = system.myReservations();
+        printReservations(mine);
+
+        // (v3.0.0) The recurring-series escape hatch: only offered
+        // when the list actually contains a series, so scripted
+        // one-off flows see no extra prompt.
+        bool hasSeries = false;
+        for (const Reservation *r : mine)
+            if (r->seriesId() > 0)
+                hasSeries = true;
+        if (hasSeries)
+        {
+            std::string answer;
+            if (!readLine(
+                    "  Cancel a whole series? enter its #id (empty = stay): ",
+                    answer) ||
+                answer.empty())
+                break;
+            int seriesId = 0;
+            try
+            {
+                seriesId = std::stoi(answer);
+            }
+            catch (...)
+            {
+                std::cout << red("  Not a series id.\n");
+                break;
+            }
+            std::string error;
+            const int removed = system.cancelRecurringSeries(seriesId, error);
+            if (removed > 0)
+                std::cout << green("  Series #" + std::to_string(seriesId)
+                                   + ": " + std::to_string(removed)
+                                   + " upcoming booking(s) cancelled.\n");
+            else
+                std::cout << red("  " + error + "\n");
+        }
         break;
+    }
     case 4:
     {
         std::string name, error;
@@ -411,16 +456,61 @@ static void customerMenu(RentalManager &system, bool &running)
             return;
         if (!readDate("  End date   (YYYY-MM-DD): ", end))
             return;
-        if (system.makeReservation(name, start, end, error))
-            std::cout << green("  Reservation confirmed! Pay on delivery.\n");
-        else
+
+        // (v3.0.0) Optional recurrence: a series books the same car
+        // and duration again one plan step later, as many times as
+        // requested — atomically, or not at all.
+        int repeat = 0;
+        if (!readInt("  Repeat: 0 none, 1 weekly, 2 biweekly, 3 monthly: ",
+                     repeat))
+            return;
+
+        if (repeat == 0)
         {
-            std::cout << red("  Reservation failed: " + error + "\n");
-            if (error.find("overlap") != std::string::npos)
-                std::cout << yellow(
-                    "  Tip: join the waitlist (option 6) and we book you\n"
-                    "       automatically when the range frees up.\n");
+            if (system.makeReservation(name, start, end, error))
+                std::cout << green("  Reservation confirmed! Pay on delivery.\n");
+            else
+            {
+                std::cout << red("  Reservation failed: " + error + "\n");
+                if (error.find("overlap") != std::string::npos)
+                    std::cout << yellow(
+                        "  Tip: join the waitlist (option 6) and we book you\n"
+                        "       automatically when the range frees up.\n");
+            }
+            break;
         }
+
+        RecurrencePlan plan;
+        if (!planFromChoice(repeat, plan))
+        {
+            std::cout << red("  Choice must be between 0 and 3.\n");
+            break;
+        }
+        int times;
+        if (!readInt("  Book it how many times (2-8): ", times))
+            return;
+
+        int seriesId = 0;
+        if (system.makeRecurringReservation(name, start, end, plan, times,
+                                            seriesId, error))
+        {
+            std::cout << green("  Series #" + std::to_string(seriesId)
+                               + " booked: " + std::to_string(times) + " x "
+                               + toString(plan) + " on " + name + "\n");
+            const int durationDays = end - start + 1;
+            for (int i = 0; i < times; ++i)
+            {
+                const int s = occurrenceStart(plan, start, i);
+                std::cout << "    pickup " << (i + 1) << ": "
+                          << Date::toISO(s) << " -> "
+                          << Date::toISO(s + durationDays - 1) << "\n";
+            }
+            std::cout << yellow(
+                "  The whole series is cancelled at once from\n"
+                "       My reservations (option 3) — just give its #id.\n");
+        }
+        else
+            std::cout << red("  Series booking failed: " + error + "\n");
         break;
     }
     case 5:

@@ -41,7 +41,8 @@ LATE=$(plus_days 6)
 # the pipeline die with SIGPIPE once sed finishes with the input.
 # The heredoc tag is unquoted so $START/$END/$LATE expand, and the
 # pressed numbers match the CURRENT menus (customer logout = 12,
-# manager income report = 9, exit = 16).
+# manager income report = 9, exit = 16). The 0 after $END answers the
+# v3.0.0 recurrence prompt (one-off booking, no series).
 ./car_rental <<INPUT | sed 's/\x1b\[[0-9;]*m//g'
 2
 ali
@@ -50,6 +51,7 @@ customer123
 Benz C200
 $START
 $END
+0
 3
 12
 2

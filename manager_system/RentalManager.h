@@ -11,6 +11,7 @@
 #include "Car.h"
 #include "Loyalty.h"
 #include "Permissions.h"
+#include "Recurring.h"
 #include "User.h"
 #include "WaitlistEntry.h"
 
@@ -165,6 +166,26 @@ public:
     /// range is invalid, or the dates overlap another booking.
     bool makeReservation(const std::string &carName, int startDate,
                          int endDate, std::string &errorOut);
+
+    /// Book a RECURRING series (v3.0.0): `times` occurrences of the
+    /// same car and duration, pickups spaced by `plan` (weekly /
+    /// biweekly / monthly). The whole series is created atomically —
+    /// when ANY occurrence would overlap an existing booking (or the
+    /// series would collide with itself), nothing is booked and
+    /// errorOut says why. On success `seriesIdOut` carries the series
+    /// tag every occurrence shares (also stamped on the audit trail),
+    /// so the customer can cancel the rest in one action.
+    bool makeRecurringReservation(const std::string &carName, int startDate,
+                                  int endDate, RecurrencePlan plan, int times,
+                                  int &seriesIdOut, std::string &errorOut);
+
+    /// Cancel every still-queued booking the LOGGED-IN customer holds
+    /// in series `seriesId`, across the whole fleet (v3.0.0). An
+    /// occurrence already handed over (rented) or already returned
+    /// is untouched — you cannot un-drive a car. Returns the number
+    /// of bookings removed; zero means there was nothing to cancel
+    /// (unknown series, nothing left queued, or not the caller's).
+    int cancelRecurringSeries(int seriesId, std::string &errorOut);
 
     /// All bookings of the logged-in customer across the whole fleet.
     std::vector<Reservation *> myReservations() const;
@@ -326,6 +347,7 @@ private:
     User *currentUser_;
     int reservationCounter_;
     int waitlistCounter_; // global join order, survives save/load
+    int seriesCounter_;   // recurring series tag, survives save/load (v3.0.0)
 
     // Audit writes also happen from const methods (exports, save),
     // so the trail is a mutable side-ledger.
@@ -356,6 +378,12 @@ private:
     /// id, heap insert). Returns the booking so the caller can
     /// audit it; the wish itself is consumed and freed.
     Reservation *bookWaitlistEntry(Car *car, WaitlistEntry *entry);
+
+    /// Create ONE validated booking (id, heap insert) — the shared
+    /// tail of makeReservation() and makeRecurringReservation(),
+    /// so both paths audit and schedule identically.
+    Reservation *createBooking(Customer *customer, Car *car, int startDate,
+                               int endDate);
 
     /// Auto-book the best-fitting wish after a car freed up (a
     /// return was processed, maintenance finished). Silent no-op

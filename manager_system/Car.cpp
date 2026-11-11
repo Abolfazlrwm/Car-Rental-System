@@ -72,11 +72,14 @@ void Car::dropReservation(Reservation *r)
                        if (cur != r)
                            keep.push_back(cur);
                    });
-    delete r;
 
-    // Drain and re-insert to restore the heap invariant.
+    // Drain FIRST, free LAST: extractMin() re-heapifies and would
+    // still touch `r` — deleting before draining was a use-after-free
+    // (found by the v3.0.0 series-cancellation flow under ASan).
     while (!queue_.empty())
         (void)queue_.extractMin();
+    delete r;
+
     for (Reservation *cur : keep)
         queue_.insert(cur);
 }
