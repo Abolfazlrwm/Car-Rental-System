@@ -187,6 +187,14 @@ customer):
 
 ![Car Rental System — rank-up announced at the desk, the loyalty CSV report and the program overview trail](docs/loyalty_rankup.png)
 
+New in v3.0.0 — recurring reservations, dynamic discounts and the monthly
+report: book a weekly series in one go (atomic, with a per-pickup estimate
+and a series total), watch the long-rental × rank discount stack at booking
+and again at the desk, and read the month's revenue, per-car bars and the
+busiest day on one manager screen:
+
+![Car Rental System — a weekly recurring series booking with its estimate, the discount announced at the desk and the manager monthly report with revenue bars](docs/v3_highlights.png)
+
 Reserve the Benz → staff delivers it → customer returns it 2 days late →
 the manager sees the penalty on the books:
 
@@ -304,6 +312,7 @@ Car-Rental-System/
 │   ├── IMPROVEMENTS.md      # the v1.0 → v2.0 rebuild story
 │   ├── architecture.png     # diagram used above
 │   ├── manager_dashboard.png# screenshot used above
+│   ├── v3_highlights.png    # screenshot used above
 │   └── landing.png          # landing-page screenshot used above
 ├── docs-site/               # GitHub Pages landing page (auto-deployed)
 ├── .devcontainer/           # one-click contributor container (v2.5.0)
