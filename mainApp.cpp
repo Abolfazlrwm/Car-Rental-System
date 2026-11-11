@@ -16,6 +16,7 @@
  * ============================================================
  */
 
+#include <cstdio>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -35,6 +36,7 @@
 #include "manager_system/Date.h"
 #include "manager_system/JsonExport.h"
 #include "manager_system/Loyalty.h"
+#include "manager_system/MonthlyReport.h"
 #include "manager_system/Pricing.h"
 #include "manager_system/Recurring.h"
 
@@ -1062,6 +1064,55 @@ static void renderLoyaltyOverview(const RentalManager &system)
             std::cout << "   " << e.date << "  " << e.detail << "\n";
 }
 
+/* ============================================================
+ *  Monthly report (manager option 17, v3.0.0)
+ * ============================================================
+ *  Renders the MonthlyReport as the same labelled ASCII bars the
+ *  analytics dashboard uses. All the aggregation lives in
+ *  MonthlyReport.cpp — this function only draws, and it never
+ *  mutates state.
+ * ============================================================ */
+static void renderMonthlyReport(const MonthlyReport &r)
+{
+    std::cout << bold(cyan("\n===== MONTHLY REPORT | " + r.month + " =====\n"));
+    if (r.rentalsCompleted == 0)
+    {
+        std::cout << yellow("\n  No rentals were completed in " + r.month
+                            + ".\n");
+        return;
+    }
+
+    std::cout << "\n  Rentals completed : " << r.rentalsCompleted << "\n"
+                 "  Revenue booked    : " << money(r.revenue)
+              << "   (discounts given: " << money(r.discountGiven)
+              << " | late fees: " << money(r.lateFees) << ")\n"
+                 "  Distinct customers: " << r.distinctCustomers << "\n";
+
+    int maxCarRentals = 0;
+    for (const CarRevenue &car : r.perCar)
+        maxCarRentals = std::max(maxCarRentals, car.rentals);
+    std::cout << "\n  " << bold("Revenue by car") << "\n";
+    for (const CarRevenue &car : r.perCar)
+        std::cout << "   " << analyticsPad(car.name, 16) << "  "
+                  << analyticsBar(car.rentals, maxCarRentals, 16) << " "
+                  << car.rentals << " rental(s), " << money(car.revenue)
+                  << "\n";
+
+    int maxDayReturns = 0;
+    for (const NamedCount &day : r.perDay)
+        maxDayReturns = std::max(maxDayReturns, day.count);
+    std::cout << "\n  " << bold("Returns per day") << "\n";
+    for (const NamedCount &day : r.perDay)
+        std::cout << "   " << analyticsPad(day.label, 4) << "  "
+                  << analyticsBar(day.count, maxDayReturns, 16) << " "
+                  << day.count << "\n";
+
+    char day[4];
+    std::snprintf(day, sizeof day, "%02d", r.topDay);
+    std::cout << "\n  Busiest day: " << day << " ("
+              << r.topDayRentals << " return(s))\n";
+}
+
 static void managerMenu(RentalManager &system, bool &running)
 {
     std::cout << bold(cyan("\n===== MANAGER MENU | " + system.currentUsername() + " =====\n"));
@@ -1080,9 +1131,10 @@ static void managerMenu(RentalManager &system, bool &running)
                  " 13. Create staff account\n"
                  " 14. Save data to disk\n"
                  " 15. Save & logout\n"
-                 " 16. Exit program\n";
+                 " 16. Exit program\n"
+                 " 17. Monthly report (revenue & bookings)\n";
 
-    switch (readMenuChoice("  Choice: ", 1, 16))
+    switch (readMenuChoice("  Choice: ", 1, 17))
     {
     case 1:
     {
@@ -1209,6 +1261,30 @@ static void managerMenu(RentalManager &system, bool &running)
         std::cout << yellow("  Data saved. Goodbye!\n");
         running = false;
         break;
+    case 17:
+    {
+        // (v3.0.0) One month at a glance, then the same numbers as
+        // a CSV next to the other reports.
+        int year;
+        if (!readInt("  Year (e.g. 2026): ", year))
+            return;
+        const int month = readMenuChoice("  Month (1-12): ", 1, 12);
+
+        const MonthlyReport r = system.monthlyReport(year, month);
+        renderMonthlyReport(r);
+        if (r.rentalsCompleted > 0)
+        {
+            std::ostringstream name;
+            name << "reports/monthly_" << r.month << ".csv";
+            std::string error;
+            if (system.exportMonthlyReport(year, month, name.str(), error))
+                std::cout << green("  Saved to " + name.str() + "\n");
+            else
+                std::cout << red("  Could not write " + name.str()
+                                 + ": " + error + "\n");
+        }
+        break;
+    }
     default:
         break;
     }
