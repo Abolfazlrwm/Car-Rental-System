@@ -56,6 +56,13 @@ public:
     /// (which stored day numbers) still load.
     static bool parseFlexible(const std::string &text, int &serialOut);
 
+    /// `months` calendar months after `serial` (months >= 0), keeping
+    /// the day-of-month. A day past the target month's length clamps
+    /// to its last day (2026-01-31 + 1 month = 2026-02-28), so a
+    /// monthly recurrence never lands on a phantom date. Pure
+    /// arithmetic — the caller validates the booking floor.
+    static int addMonths(int serial, int months);
+
     /// Today's serial day, read from the system clock (local
     /// timezone). Powers the "generatedAt" stamp of the JSON
     /// report and the analytics dashboard's "days away" math.

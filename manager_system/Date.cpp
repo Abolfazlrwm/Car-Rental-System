@@ -129,6 +129,25 @@ bool Date::parseFlexible(const std::string &text, int &serialOut)
     return true;
 }
 
+int Date::addMonths(int serial, int months)
+{
+    int y = 0;
+    unsigned m = 0, d = 0;
+    civilFromDays(serial, y, m, d);
+
+    // Shift the (year, month) pair by `months`, carrying across years.
+    const int total = (y * 12 + static_cast<int>(m) - 1) + months;
+    y = total / 12;
+    m = static_cast<unsigned>(total % 12) + 1;
+
+    // Clamp the day-of-month: a Jan-31 recurrence lands on Feb-28,
+    // never on a phantom date.
+    if (d > daysInMonth(y, m))
+        d = daysInMonth(y, m);
+
+    return daysFromCivil(y, m, d);
+}
+
 int Date::todaySerial()
 {
     const std::time_t now = std::time(nullptr);
