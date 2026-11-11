@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(CarRentalSystem
-        VERSION 2.6.0
+        VERSION 3.0.0
         DESCRIPTION "Car Rental Management System — modern C++17 with hand-built data structures"
         LANGUAGES CXX)
 

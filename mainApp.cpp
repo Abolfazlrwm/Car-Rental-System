@@ -41,7 +41,7 @@
 #include "manager_system/Recurring.h"
 
 /* Program version, reported by --version / --help. */
-static const char *APP_VERSION = "2.9.0";
+static const char *APP_VERSION = "3.0.0";
 
 /* ============================================================
  *  Terminal colors (no-ops when stdout is piped)
