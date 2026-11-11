@@ -11,6 +11,7 @@
 #include "Car.h"
 #include "Loyalty.h"
 #include "Permissions.h"
+#include "Pricing.h"
 #include "Recurring.h"
 #include "User.h"
 #include "WaitlistEntry.h"
@@ -250,6 +251,13 @@ public:
     /// trail as `loyalty.rankup` entries.          (v2.9.0)
     std::string lastLoyaltyRankUp() const { return lastRankUp_; }
 
+    /// The discount note of the MOST RECENT processed return:
+    /// "27.00 off (3% long rental)", empty when nothing was
+    /// discounted (short one-off rental at Bronze). The amount
+    /// also lands in the audit trail as `discount.applied`.
+    ///                                     (v3.0.0)
+    std::string lastDiscountNote() const { return lastDiscountNote_; }
+
     /// Program snapshot for the manager screen: members per tier,
     /// outstanding points and their credit liability, top member.
     /// Gated by VIEW_ANALYTICS, like the rest of the dashboards.
@@ -357,7 +365,9 @@ private:
     // on every return that does not cross a threshold. (v2.9.0)
     std::string lastRankUp_;
 
-    static const double PENALTY_RATE; // late-return multiplier (1.5x/day)
+    // Discount note of the most recent processed return, cleared
+    // on every return that earns no discount.      (v3.0.0)
+    std::string lastDiscountNote_;
 
     // ---- internal helpers ----
     Customer *asCustomer() const; // logged-in user as Customer (or null)

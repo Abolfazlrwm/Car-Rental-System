@@ -11,8 +11,6 @@
 #include <iostream>
 #include <sstream>
 
-const double RentalManager::PENALTY_RATE = 1.5;
-
 /* ============================================================
  *  Construction / destruction
  * ============================================================ */
@@ -987,19 +985,31 @@ bool RentalManager::returnCar(const std::string &carName, int actualReturnDay,
     }
 
     // ---- invoice -----------------------------------------------------
-    // Base charge: full booked duration at the daily price.
-    double baseCharge = res->durationDays() * car->pricePerDay();
-    double penalty = 0.0;
+    // (v3.0.0) Priced by the ONE computation in Pricing.h: base =
+    // booked duration x daily rate, the long-rental rate from the
+    // booked days, the rank rate from the tier held BEFORE this
+    // return, stacked multiplicatively. Late days stay at the raw
+    // daily rate — a discount never softens a penalty. Income is
+    // still recorded EXACTLY ONCE, on the discounted total.
+    const Customer *invoicee = res->customer();
+    const LoyaltyTier tierBefore =
+        invoicee ? tierForLifetimePoints(invoicee->lifetimePoints())
+                 : LoyaltyTier::Bronze;
+    int lateDays = 0;
+    if (actualReturnDay > res->endDate())
+        lateDays = actualReturnDay - res->endDate();
 
-    int scheduledEnd = res->endDate();
-    if (actualReturnDay > scheduledEnd)
+    const PriceBreakdown quote =
+        quoteRental(res->durationDays(), car->pricePerDay(), tierBefore,
+                    lateDays);
+    const double total = quote.total;
+
+    lastDiscountNote_.clear();
+    if (quote.discount > 0.0)
     {
-        int delayDays = actualReturnDay - scheduledEnd;
-        // Late days cost 1.5x the daily rate.
-        penalty = delayDays * car->pricePerDay() * PENALTY_RATE;
+        lastDiscountNote_ = discountNote(quote);
+        audit("discount.applied", carName + " " + lastDiscountNote_);
     }
-
-    double total = baseCharge + penalty;
 
     // Ledger: income is recorded EXACTLY ONCE (at return time).
     car->addIncome(total);
@@ -1011,12 +1021,11 @@ bool RentalManager::returnCar(const std::string &carName, int actualReturnDay,
         cust->charge(total);
 
         // Loyalty (v2.7.0): the completed rental pays points on the
-        // invoice total, at the multiplier of the tier held BEFORE
-        // this return. The audit line shows the tier the customer
-        // lands on afterwards, so rank-ups are visible in the trail.
+        // invoiced total (now the discounted one), at the multiplier
+        // of the tier held BEFORE this return. The audit line shows
+        // the tier the customer lands on afterwards, so rank-ups are
+        // visible in the trail.
         lastRankUp_.clear();
-        const LoyaltyTier tierBefore =
-            tierForLifetimePoints(cust->lifetimePoints());
         const int earned = pointsEarnedFor(cust->lifetimePoints(), total);
         if (earned > 0)
         {
@@ -1048,7 +1057,7 @@ bool RentalManager::returnCar(const std::string &carName, int actualReturnDay,
 
     car->refreshStatus();
     audit("car.returned",
-          carName + (penalty > 0.0 ? " (late penalty applied)" : ""));
+          carName + (lateDays > 0 ? " (late penalty applied)" : ""));
     tryPromoteWaitlist(car); // the freed window may satisfy a wish
     return true;
 }
