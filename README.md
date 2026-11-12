@@ -28,6 +28,9 @@ There is also a live landing page, deployed automatically on every push:
 
 ![Car Rental System — GitHub Pages landing page: dark hero with the project stats](docs/landing.png)
 
+<p align="center"><img src="assets/demo.gif" alt="demo" width="100%"></p>
+
+
 ---
 
 ## 🏗 Architecture
