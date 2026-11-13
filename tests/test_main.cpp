@@ -2899,6 +2899,121 @@ static void testRecurringFacade()
     reloaded.logout();
 }
 
+/* ============================================================
+ *  RentalManager: pickup reminders   (v3.1.0)
+ * ============================================================ */
+
+static void testRentalManagerReminders()
+{
+    const std::string dir = "/tmp/crs_reminders";
+    std::system(("rm -rf " + dir).c_str());
+    std::filesystem::create_directories(dir);
+
+    RentalManager m;
+    m.addCar(new Car("Alpha", "TestBrand", 40.0));
+    m.addCar(new Car("Beta", "TestBrand", 50.0));
+    CHECK(m.registerCustomer("nima", "pass1234"));
+    m.login("nima", "pass1234");
+
+    const int today = iso("2026-11-13");
+    std::string err;
+    int seriesId = 0;
+
+    // A weekly series on Alpha picking up in 3 days (two further
+    // occurrences outside the horizon), a Beta one-off due TODAY,
+    // a Beta one-off tomorrow, and one far beyond every horizon.
+    CHECK(m.makeRecurringReservation("Alpha", iso("2026-11-16"),
+                                     iso("2026-11-18"),
+                                     RecurrencePlan::Weekly, 3, seriesId,
+                                     err));
+    CHECK(m.makeReservation("Beta", iso("2026-11-13"), iso("2026-11-13"),
+                            err));
+    CHECK(m.makeReservation("Beta", iso("2026-11-14"), iso("2026-11-15"),
+                            err));
+    CHECK(m.makeReservation("Beta", iso("2027-03-01"), iso("2027-03-03"),
+                            err));
+
+    // Inside the horizon: Beta today, Beta tomorrow, Alpha in 3 —
+    // the later Alpha occurrences (10 and 17 days out) stay quiet.
+    std::vector<PickupReminder> up = m.upcomingPickups(
+        REMINDER_HORIZON_DAYS, today);
+    CHECK_EQ(up.size(), std::size_t(3));
+    CHECK(up[0].carName == "Beta");            // soonest first
+    CHECK_EQ(up[0].daysAway, 0);               // due today still reminds
+    CHECK_EQ(up[0].seriesId, 0);               // a one-off has no tag
+    CHECK_EQ(up[0].start, iso("2026-11-13"));
+    CHECK(up[1].carName == "Beta");
+    CHECK_EQ(up[1].daysAway, 1);
+    CHECK(up[2].carName == "Alpha");
+    CHECK_EQ(up[2].daysAway, 3);
+    CHECK_EQ(up[2].seriesId, seriesId);        // the series tag rides along
+    CHECK_EQ(up[2].start, iso("2026-11-16"));
+
+    // A wide horizon pulls every queued pickup in, still ordered:
+    // the two Beta one-offs and all three Alpha occurrences. The
+    // far one-off sits beyond it.
+    up = m.upcomingPickups(100, today);
+    CHECK_EQ(up.size(), std::size_t(5));
+    CHECK_EQ(up[3].start, iso("2026-11-23"));
+    CHECK_EQ(up[4].start, iso("2026-11-30")); // the farthest inside
+
+    // A zero horizon is pickups due today — exactly one.
+    up = m.upcomingPickups(0, today);
+    CHECK_EQ(up.size(), std::size_t(1));
+    CHECK_EQ(up[0].start, iso("2026-11-13"));
+
+    // The booking that is OUT right now never reminds: the staff
+    // desk hands Beta over (earliest pickup first), then Alpha.
+    m.logout();
+    m.login("sara", "staff123");
+    CHECK(m.deliverCar("Beta", err));
+    CHECK(m.deliverCar("Alpha", err)); // the 2026-11-16 occurrence
+
+    // Reminders are a customer screen — staff holds none.
+    CHECK(m.upcomingPickups(REMINDER_HORIZON_DAYS, today).empty());
+
+    m.logout();
+    m.login("nima", "pass1234");
+    up = m.upcomingPickups(REMINDER_HORIZON_DAYS, today);
+    CHECK_EQ(up.size(), std::size_t(1)); // only the second Beta one-off
+    CHECK_EQ(up[0].start, iso("2026-11-14"));
+
+    // The second Beta hand-over silences the screen entirely — but
+    // a car with a rental out cannot be handed over again, so the
+    // desk first RETURNS the first rental, then serves the next.
+    m.logout();
+    m.login("sara", "staff123");
+    CHECK(m.returnCar("Beta", iso("2026-11-14"), err)); // closes 11-13
+    CHECK(m.deliverCar("Beta", err));                   // serves 11-14
+    m.logout();
+    m.login("nima", "pass1234");
+    CHECK(m.upcomingPickups(REMINDER_HORIZON_DAYS, today).empty());
+    CHECK_EQ(m.upcomingPickups(100, today).size(), std::size_t(2));
+
+    // Returns put nothing back (a pickup already happened), and
+    // cancelling the series clears its reminders in one step.
+    m.logout();
+    m.login("sara", "staff123");
+    CHECK(m.returnCar("Beta", iso("2026-11-16"), err));  // closes 11-14
+    CHECK(m.returnCar("Alpha", iso("2026-11-18"), err)); // closes 11-16
+    m.logout();
+    m.login("nima", "pass1234");
+    CHECK_EQ(m.cancelRecurringSeries(seriesId, err), 2); // the queued ones
+    CHECK(m.upcomingPickups(100, today).empty());
+
+    // A horizon past the far one-off finds exactly that: untagged,
+    // daysAway computed straight off the serial days.
+    up = m.upcomingPickups(150, today);
+    CHECK_EQ(up.size(), std::size_t(1));
+    CHECK(up[0].carName == "Beta");
+    CHECK_EQ(up[0].seriesId, 0);
+    CHECK_EQ(up[0].start, iso("2027-03-01"));
+    CHECK_EQ(up[0].daysAway, iso("2027-03-01") - today);
+
+    // An unknown series id is a no-op.
+    CHECK_EQ(m.cancelRecurringSeries(999, err), 0);
+}
+
 
 /* ============================================================
  *  RentalHistory + MonthlyReport   (v3.0.0)
@@ -3313,6 +3428,7 @@ int main()
     runSuite("Recurring series: plan maths", testRecurringMaths);
     runSuite("Recurring series: reminder maths", testReminderMaths);
     runSuite("RentalManager: recurring series", testRecurringFacade);
+    runSuite("RentalManager: pickup reminders", testRentalManagerReminders);
     runSuite("Pricing: dynamic discount maths", testPricingMaths);
     runSuite("RentalManager: discounted invoices", testDiscountedInvoices);
     runSuite("RentalHistory: ledger & CSV round-trip", testRentalHistoryLedger);
