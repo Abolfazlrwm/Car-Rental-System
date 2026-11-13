@@ -111,6 +111,19 @@ Monthly pickups stay anchored to the first start's day of month,
 clamped to each month's length: a Jan-31 anchor lands on Feb 28,
 Mar 31, Apr 30 — never on a phantom date.
 
+### Pickup reminders (v3.1.0)
+
+You never have to dig through your bookings to see what is coming:
+signing in and opening "My reservations" both print a
+`PICKUP REMINDERS | next 7 days` block when pickups are due.
+Soonest first, one line per booking — its id, the car, the pickup
+day and how far out it sits (`today`, `tomorrow`, `in N days`),
+with the `[series #id]` tag on series occurrences. A pickup due
+today still reminds (the car is due back before it goes out
+again); the booking that is out right now never does. Cancelling a
+series clears its reminders in one step, and a quiet week prints
+nothing at all.
+
 ### The waitlist (v2.6.0)
 
 When the car you want is not free for your dates, you do not have to

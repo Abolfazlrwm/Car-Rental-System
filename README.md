@@ -100,6 +100,13 @@ tree and asserting the height stays within the theoretical bound.
   cancel the still-queued occurrences in one step from My
   reservations; series tags persist in `reservations.csv`
   (pre-3.0.0 files still load)
+- **Pickup reminders** (v3.1.0): signing in and opening My
+  reservations both print a `PICKUP REMINDERS | next 7 days` block
+  when pickups are due — soonest first, phrased the way the desk
+  would say it (`today`, `tomorrow`, `in N days`), each line with
+  the booking id, the car, the pickup day and the `[series #id]`
+  tag; the rental that is out right now never reminds, and
+  cancelling a series clears its reminders in one step
 
 **Money & reporting**
 - Automatic invoicing with **dynamic discounts** (v3.0.0): the booked
@@ -304,7 +311,7 @@ Car-Rental-System/
 │   ├── HashTable.h          # separate chaining + rehashing
 │   ├── PriorityQueue.h      # binary min-heap, auto-growing
 │   └── DoublyLinkedList.h   # O(1) pushes at both ends
-├── tests/test_main.cpp      # 5,179 checks, dependency-free framework
+├── tests/test_main.cpp      # 5,258 checks, dependency-free framework
 ├── scripts/demo.sh          # scripted end-to-end walkthrough
 ├── benchmarks/
 │   └── bench_containers.cpp # `make bench` — ours vs std, measured
@@ -363,14 +370,16 @@ The suite needs no external framework and runs in milliseconds:
   [ ok ] RentalManager: loyalty accrual & redemption
   [ ok ] Loyalty: program overview & legacy rows
   [ ok ] Recurring series: plan maths
+  [ ok ] Recurring series: reminder maths
   [ ok ] RentalManager: recurring series
+  [ ok ] RentalManager: pickup reminders
   [ ok ] Pricing: dynamic discount maths
   [ ok ] RentalManager: discounted invoices
   [ ok ] RentalHistory: ledger & CSV round-trip
   [ ok ] Monthly report: builder maths
   [ ok ] RentalManager: monthly report flow
 
-5179 checks, 0 failure(s)
+5258 checks, 0 failure(s)
 ALL TESTS PASSED
 ```
 

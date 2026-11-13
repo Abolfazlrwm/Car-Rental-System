@@ -4,6 +4,36 @@ All notable changes to the Car Rental System are documented in this file.
 The detailed v1.0 → v2.0 story lives in
 [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md).
 
+## [3.1.0] — 2026-11-13
+
+### Added
+
+- **Pickup reminders** — the customer hears about everything due
+  this week without asking. Signing in and opening "My reservations"
+  both print a `PICKUP REMINDERS | next 7 days` block when pickups
+  are due: soonest first, one line per booking — its id, the car,
+  the pickup day and how far out it sits (`today`, `tomorrow`,
+  `in N days`), with the `[series #id]` tag on series occurrences.
+  The rules live in the pure layer (`Recurring.h`, same layering as
+  the plan maths): a pickup reminds from the moment it is bookable
+  until it is served — `today` still reminds (the car is due back
+  before it goes out again), the past never does, and the booking
+  that is OUT right now never reminds — it was already handed over;
+  its later series occurrences do. Cancelling a series clears its
+  reminders in one step, and non-customers hold no reminders at
+  all. No file format changes — reminders are a read-only view
+  over the bookings that already exist.
+
+### Tests
+
+- Suite grown from 5,179 to **5,258 checks** (+79) across two new
+  suites: "Recurring series: reminder maths" (horizon filter, desk
+  phrasing, ordering) and "RentalManager: pickup reminders" (a
+  pickup due today, series tags riding along, hand-overs silencing
+  the screen, returns, one-step cancellation, and the far one-off
+  only a wide horizon can see). Still zero dependencies, still
+  leak-free under ASan + UBSan.
+
 ## [3.0.0] — 2026-11-11
 
 ### Added
