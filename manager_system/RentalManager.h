@@ -193,6 +193,14 @@ public:
     /// All bookings of the logged-in customer across the whole fleet.
     std::vector<Reservation *> myReservations() const;
 
+    /// (v3.1.0) The logged-in customer's queued pickups that land
+    /// within `horizonDays` of `today`, soonest first — the raw
+    /// material of the reminder screens. The booking that is out
+    /// right now (delivered, not yet returned) never reminds; its
+    /// later series occurrences do. Non-customers hold no pickups.
+    std::vector<PickupReminder> upcomingPickups(int horizonDays,
+                                                int today) const;
+
     /// Extend the customer's active rental. Fails when the car is not
     /// currently rented by them or later bookings would be pushed.
     bool renewRental(const std::string &carName, int extraDays,

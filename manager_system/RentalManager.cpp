@@ -579,6 +579,41 @@ std::vector<Reservation *> RentalManager::myReservations() const
     return result;
 }
 
+std::vector<PickupReminder> RentalManager::upcomingPickups(int horizonDays,
+                                                           int today) const
+{
+    std::vector<PickupReminder> result;
+    if (!asCustomer())
+        return result; // reminders are a customer screen
+
+    // The AVL in-order walk gives a stable, name-sorted walk; the
+    // pure ordering in Recurring.h re-sorts by pickup day anyway.
+    carIndex_.inOrderForEach([&](const std::string &name, Car *car)
+    {
+        for (Reservation *r : car->reservationsOf(currentUser_->username()))
+        {
+            // The booking that is out right now was already handed
+            // over — it is not "upcoming". Its later series
+            // occurrences still remind.
+            if (car->status() == CarStatus::Rented &&
+                car->currentReservation() == r)
+                continue;
+            if (!isUpcomingPickup(r->startDate(), today, horizonDays))
+                continue;
+            PickupReminder rem;
+            rem.carName = name;
+            rem.reservationId = r->id();
+            rem.seriesId = r->seriesId();
+            rem.start = r->startDate();
+            rem.daysAway = r->startDate() - today;
+            result.push_back(rem);
+        }
+    });
+
+    sortReminders(result);
+    return result;
+}
+
 bool RentalManager::renewRental(const std::string &carName, int extraDays,
                                 std::string &errorOut)
 {
