@@ -235,6 +235,38 @@ static void printFleet(RentalManager &system, bool sorted)
         system.forEachCar(printRow);
 }
 
+/* ============================================================
+ *  Pickup reminders (v3.1.0)
+ * ============================================================
+ *  The customer-facing half of the reminder maths: everything due
+ *  this week, soonest first, phrased the way the desk would say
+ *  it. Purely read-only — an empty week prints nothing at all, so
+ *  scripted flows and one-off screens stay untouched.
+ * ============================================================ */
+static void printPickupReminders(const RentalManager &system)
+{
+    const std::vector<PickupReminder> pickups = system.upcomingPickups(
+        REMINDER_HORIZON_DAYS, Date::todaySerial());
+    if (pickups.empty())
+        return;
+
+    std::cout << bold(cyan("\n===== PICKUP REMINDERS | next "
+                           + std::to_string(REMINDER_HORIZON_DAYS)
+                           + " days =====\n"));
+    for (const PickupReminder &p : pickups)
+    {
+        std::cout << "  #" << p.reservationId
+                  << " | " << analyticsPad(p.carName, 16)
+                  << " | " << Date::toISO(p.start) << "  "
+                  << yellow(reminderPhrase(p.daysAway));
+        if (p.seriesId > 0)
+            std::cout << yellow("  [series #"
+                                + std::to_string(p.seriesId) + "]");
+        std::cout << "\n";
+    }
+    std::cout << yellow("  Review or cancel them in My reservations.\n");
+}
+
 static void printReservations(const std::vector<Reservation *> &list)
 {
     if (list.empty())
@@ -310,8 +342,14 @@ static void loginScreen(RentalManager &system)
         return;
 
     if (system.login(username, password))
+    {
         std::cout << green("  Welcome, " + username + " ("
                            + system.currentUserRole() + ")!\n");
+        // (v3.1.0) A customer with pickups due this week hears
+        // about them the moment they sign in. Non-customers hold
+        // no pickups, so the screen stays quiet for staff.
+        printPickupReminders(system);
+    }
     else if (system.userExists(username) && system.isUserBlocked(username))
         std::cout << red("  This account is blocked. Contact the manager.\n");
     else if (system.userExists(username))
@@ -429,6 +467,10 @@ static void customerMenu(RentalManager &system, bool &running)
     }
     case 3:
     {
+        // (v3.1.0) The reminders ride above the list, so a customer
+        // mid-session still sees what is due this week.
+        printPickupReminders(system);
+
         const std::vector<Reservation *> mine = system.myReservations();
         printReservations(mine);
 
