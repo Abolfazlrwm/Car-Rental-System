@@ -1,6 +1,7 @@
 #ifndef RECURRING_H
 #define RECURRING_H
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -135,6 +136,58 @@ inline bool buildSeriesStarts(RecurrencePlan plan, int firstStart,
 
     startsOut.swap(starts);
     return true;
+}
+
+/* ---------------- Pickup reminders (v3.1.0) ---------------- */
+
+/// How far ahead the reminder screens look: one weekly plan step,
+/// so the next occurrence of a weekly series can never sneak up on
+/// its customer unannounced.
+constexpr int REMINDER_HORIZON_DAYS = 7;
+
+/// One upcoming pickup, ready for the reminder screens: which car,
+/// which booking (series tag 0 = one-off), the pickup day and how
+/// far out it sits. The facade builds these from the queued
+/// bookings; the helpers below filter, order and phrase them.
+struct PickupReminder
+{
+    std::string carName;
+    int reservationId = 0;
+    int seriesId = 0;   // 0 = one-off booking
+    int start = 0;      // pickup day (serial)
+    int daysAway = 0;   // start - today (0 = picks up today)
+};
+
+/// True when a pickup belongs on the reminder screen: it has not
+/// been picked up yet (start >= today — a pickup due TODAY still
+/// reminds, the car is due back before it goes out again) and it
+/// lands within the horizon. The past never reminds.
+inline bool isUpcomingPickup(int start, int today, int horizonDays)
+{
+    return start >= today && start - today <= horizonDays;
+}
+
+/// The desk phrasing for a pickup `daysAway` days out.
+inline std::string reminderPhrase(int daysAway)
+{
+    if (daysAway <= 0)
+        return "today";
+    if (daysAway == 1)
+        return "tomorrow";
+    return "in " + std::to_string(daysAway) + " days";
+}
+
+/// Reminder order: soonest pickup first, ties broken by car name —
+/// the same bookings read in the same order on every screen.
+inline void sortReminders(std::vector<PickupReminder> &reminders)
+{
+    std::sort(reminders.begin(), reminders.end(),
+              [](const PickupReminder &a, const PickupReminder &b)
+              {
+                  if (a.start != b.start)
+                      return a.start < b.start;
+                  return a.carName < b.carName;
+              });
 }
 
 #endif // RECURRING_H
