@@ -2680,6 +2680,47 @@ static void testRecurringMaths()
 }
 
 /* ============================================================
+ *  Recurring series: reminder maths   (v3.1.0)
+ * ============================================================ */
+
+static void testReminderMaths()
+{
+    // The horizon filter: today still reminds (the car is due back
+    // before it goes out again), the edge lands, one past it does
+    // not, and the past never reminds.
+    CHECK(isUpcomingPickup(1000, 1000, REMINDER_HORIZON_DAYS)); // today
+    CHECK(isUpcomingPickup(1007, 1000, REMINDER_HORIZON_DAYS)); // edge
+    CHECK(!isUpcomingPickup(1008, 1000, REMINDER_HORIZON_DAYS));
+    CHECK(!isUpcomingPickup(999, 1000, REMINDER_HORIZON_DAYS)); // the past
+    CHECK(isUpcomingPickup(1000, 1000, 0)); // a zero horizon is today only
+    CHECK(!isUpcomingPickup(1001, 1000, 0));
+
+    // The desk phrasing.
+    CHECK(reminderPhrase(0) == "today");
+    CHECK(reminderPhrase(1) == "tomorrow");
+    CHECK(reminderPhrase(3) == "in 3 days");
+    CHECK(reminderPhrase(REMINDER_HORIZON_DAYS) == "in 7 days");
+
+    // Ordering: soonest pickup first, ties broken by car name —
+    // and every field rides along untouched.
+    std::vector<PickupReminder> rs = {
+        {"Zeta", 3, 0, 1200, 5},   // later start, sorts last
+        {"Beta", 2, 7, 1100, 0},   // same start as Alpha, sorts second
+        {"Alpha", 1, 0, 1100, 0},  // soonest, sorts first
+    };
+    sortReminders(rs);
+    CHECK_EQ(rs.size(), std::size_t(3));
+    CHECK(rs[0].carName == "Alpha");
+    CHECK_EQ(rs[0].reservationId, 1);
+    CHECK_EQ(rs[0].seriesId, 0);
+    CHECK_EQ(rs[0].daysAway, 0);
+    CHECK(rs[1].carName == "Beta");
+    CHECK_EQ(rs[1].seriesId, 7); // the series tag rides along
+    CHECK(rs[2].carName == "Zeta");
+    CHECK_EQ(rs[2].start, 1200);
+}
+
+/* ============================================================
  *  RentalManager: recurring series   (v3.0.0)
  * ============================================================ */
 
@@ -3270,6 +3311,7 @@ int main()
     runSuite("RentalManager: loyalty accrual & redemption", testRentalManagerLoyalty);
     runSuite("Loyalty: program overview & legacy rows", testLoyaltyOverview);
     runSuite("Recurring series: plan maths", testRecurringMaths);
+    runSuite("Recurring series: reminder maths", testReminderMaths);
     runSuite("RentalManager: recurring series", testRecurringFacade);
     runSuite("Pricing: dynamic discount maths", testPricingMaths);
     runSuite("RentalManager: discounted invoices", testDiscountedInvoices);
