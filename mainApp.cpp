@@ -443,9 +443,10 @@ static void customerMenu(RentalManager &system, bool &running)
                  "  9. Pay my bill\n"
                  " 10. My loyalty card\n"
                  " 11. Redeem points on my bill\n"
-                 " 12. Logout\n";
+                 " 12. Logout\n"
+                 " 13. Change a booking (move dates)\n";
 
-    switch (readMenuChoice("  Choice: ", 1, 12))
+    switch (readMenuChoice("  Choice: ", 1, 13))
     {
     case 1:
         printFleet(system, false);
@@ -721,6 +722,91 @@ static void customerMenu(RentalManager &system, bool &running)
         system.logout();
         std::cout << yellow("  Logged out.\n");
         break;
+    case 13:
+    {
+        // (v3.2.0) Change of plans: move ONE booking to new dates or
+        // shift a whole series. The facade lifts the booking out of
+        // the schedule first, so its old slot never stands in the
+        // way of its own new dates; a refusal leaves everything
+        // untouched. Reminders (v3.1.0) are a read-only view, so
+        // they follow the new dates automatically.
+        std::cout << bold(cyan("\n--- CHANGE A BOOKING ---\n"));
+        std::string mode, error;
+        if (!readToken("  Move a single booking (1) or a whole series (2): ",
+                       mode))
+            return;
+        if (mode == "1")
+        {
+            std::string idText;
+            if (!readToken("  Booking #id: ", idText))
+                return;
+            int id = 0;
+            try
+            {
+                id = std::stoi(idText);
+            }
+            catch (...)
+            {
+                std::cout << red("  Not a booking id.\n");
+                break;
+            }
+            int newStart, newEnd;
+            if (!readDate("  New start (YYYY-MM-DD): ", newStart))
+                return;
+            if (!readDate("  New end   (YYYY-MM-DD): ", newEnd))
+                return;
+            const std::vector<Reservation *> mine = system.myReservations();
+            Reservation *target = nullptr;
+            for (Reservation *r : mine)
+                if (r->id() == id)
+                    target = r;
+            if (system.rescheduleReservation(id, newStart, newEnd,
+                                             Date::todaySerial(), error))
+            {
+                std::cout << green("  Booking #" + std::to_string(id)
+                                   + " moved to " + Date::toISO(newStart)
+                                   + " -> " + Date::toISO(newEnd) + ".\n");
+                if (target) // money preview with the CURRENT rank
+                    printBookingEstimate(target->car(), newStart, newEnd,
+                                         system.myLoyalty().tier());
+            }
+            else
+                std::cout << red("  Move failed: " + error + "\n");
+        }
+        else if (mode == "2")
+        {
+            std::string idText;
+            if (!readToken("  Series #id: ", idText))
+                return;
+            int seriesId = 0;
+            try
+            {
+                seriesId = std::stoi(idText);
+            }
+            catch (...)
+            {
+                std::cout << red("  Not a series id.\n");
+                break;
+            }
+            int newNext;
+            if (!readDate("  New date for the next pickup (YYYY-MM-DD): ",
+                          newNext))
+                return;
+            const int moved = system.rescheduleSeries(seriesId, newNext,
+                                                      Date::todaySerial(),
+                                                      error);
+            if (moved > 0)
+                std::cout << green("  Series #" + std::to_string(seriesId)
+                                   + ": " + std::to_string(moved)
+                                   + " upcoming booking(s) moved - reminders "
+                                     "follow the new dates.\n");
+            else
+                std::cout << red("  Move failed: " + error + "\n");
+        }
+        else
+            std::cout << red("  Choose 1 (single booking) or 2 (series).\n");
+        break;
+    }
     default:
         break;
     }
