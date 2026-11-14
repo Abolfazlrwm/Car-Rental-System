@@ -3016,6 +3016,257 @@ static void testRentalManagerReminders()
 
 
 /* ============================================================
+ *  Reschedule: change-of-plans move rules   (v3.2.0)
+ * ============================================================ */
+
+static void testRescheduleMoveRules()
+{
+    const int today = iso("2026-11-14");
+
+    // A pickup can move while it has not happened: today still can
+    // (the desk has not served it), the past never can.
+    CHECK(isMovablePickup(today, today));
+    CHECK(isMovablePickup(iso("2026-11-15"), today));
+    CHECK(!isMovablePickup(iso("2026-11-13"), today));
+    CHECK(!isMovablePickup(0, today));
+
+    // The new window: sane range, pickup today or later.
+    CHECK(isValidMoveRange(today, today, today)); // one-day rental today
+    CHECK(isValidMoveRange(iso("2026-11-20"), iso("2026-11-22"), today));
+    CHECK(!isValidMoveRange(iso("2026-11-22"), iso("2026-11-20"), today));
+    CHECK(!isValidMoveRange(iso("2026-11-13"), iso("2026-11-15"), today));
+    CHECK(!isValidMoveRange(iso("2026-11-13"), iso("2026-11-13"), today));
+}
+
+
+/* ============================================================
+ *  RentalManager: change-a-booking flow   (v3.2.0)
+ * ============================================================ */
+
+static void testRentalManagerReschedule()
+{
+    const std::string dir = "/tmp/crs_reschedule";
+    std::system(("rm -rf " + dir).c_str());
+    std::filesystem::create_directories(dir);
+
+    RentalManager m;
+    m.addCar(new Car("Alpha", "TestBrand", 40.0));
+    m.addCar(new Car("Beta", "TestBrand", 50.0));
+    CHECK(m.registerStaffAccount("desk", "staff1234", "Staff"));
+    CHECK(m.registerCustomer("nima", "pass1234"));
+    CHECK(m.registerCustomer("parisa", "pass1234"));
+
+    const int today = iso("2026-11-14");
+    auto findBooking = [&](int id) -> Reservation *
+    {
+        for (Reservation *r : m.myReservations())
+            if (r->id() == id)
+                return r;
+        return nullptr;
+    };
+    auto hasAudit = [&](const std::string &action, const std::string &needle)
+    {
+        for (const AuditEntry &e : m.auditLog().all())
+            if (e.action == action &&
+                e.detail.find(needle) != std::string::npos)
+                return true;
+        return false;
+    };
+
+    std::string err;
+    m.login("nima", "pass1234");
+    CHECK(m.makeReservation("Beta", iso("2026-11-20"), iso("2026-11-22"),
+                            err)); // #1 nima
+    CHECK(m.makeReservation("Alpha", iso("2026-11-25"), iso("2026-11-27"),
+                            err)); // #2 nima
+    m.logout();
+    m.login("parisa", "pass1234");
+    CHECK(m.makeReservation("Alpha", iso("2026-11-28"), iso("2026-11-30"),
+                            err)); // #3 parisa
+    m.logout();
+
+    /* ---- moving ONE booking ---- */
+    m.login("nima", "pass1234");
+    CHECK(m.rescheduleReservation(1, iso("2026-11-18"), iso("2026-11-20"),
+                                  today, err));
+    Reservation *beta = findBooking(1);
+    CHECK(beta != nullptr);
+    CHECK_EQ(beta->startDate(), iso("2026-11-18"));
+    CHECK_EQ(beta->endDate(), iso("2026-11-20"));
+    CHECK_EQ(beta->durationDays(), 3); // length kept, id kept
+    CHECK_EQ(beta->id(), 1);
+
+    // Reminders (v3.1.0) are a read-only view: the moved pickup
+    // reminds for its NEW date, soonest first.
+    std::vector<PickupReminder> up = m.upcomingPickups(100, today);
+    CHECK_EQ(up.size(), std::size_t(2));
+    CHECK_EQ(up[0].start, iso("2026-11-18"));
+    CHECK_EQ(up[0].reservationId, 1);
+
+    // A same-range "move" succeeds — the booking's OLD slot must
+    // not stand in the way of its own new dates.
+    CHECK(m.rescheduleReservation(2, iso("2026-11-25"), iso("2026-11-27"),
+                                  today, err));
+
+    // Unknown ids, other people's bookings, clashing new dates.
+    CHECK(!m.rescheduleReservation(999, iso("2026-11-18"), iso("2026-11-19"),
+                                   today, err));
+    CHECK(err.find("No queued booking") != std::string::npos);
+    m.logout();
+    m.login("parisa", "pass1234");
+    CHECK(!m.rescheduleReservation(1, iso("2026-11-18"), iso("2026-11-19"),
+                                   today, err));
+    CHECK(err.find("No queued booking") != std::string::npos);
+    m.logout();
+    m.login("nima", "pass1234");
+    CHECK(!m.rescheduleReservation(2, iso("2026-11-28"), iso("2026-11-30"),
+                                   today, err));
+    CHECK(err.find("overlap") != std::string::npos);
+    CHECK_EQ(findBooking(2)->startDate(),
+             iso("2026-11-25")); // refused -> untouched
+
+    // A move into the past is refused before the schedule is touched.
+    CHECK(!m.rescheduleReservation(2, iso("2026-11-01"), iso("2026-11-03"),
+                                   today, err));
+    CHECK(err.find("Invalid new dates") != std::string::npos);
+    CHECK(!m.rescheduleReservation(2, iso("2026-11-24"), iso("2026-11-23"),
+                                   today, err));
+
+    // A pickup due TODAY can still change plans.
+    CHECK(m.rescheduleReservation(2, iso("2026-11-14"), iso("2026-11-15"),
+                                  today, err));
+    CHECK(m.rescheduleReservation(2, iso("2026-11-25"), iso("2026-11-27"),
+                                  today, err));
+    CHECK(hasAudit("reservation.moved", "2026-11-25..2026-11-27 -> "
+                                        "2026-11-14..2026-11-15"));
+
+    /* ---- the booking that is OUT ---- */
+    CHECK(m.makeReservation("Beta", iso("2026-11-14"), iso("2026-11-15"),
+                            err)); // #4, due today — the desk serves it
+    m.logout();
+    m.login("desk", "staff1234");
+    CHECK(m.deliverCar("Beta", err)); // serves #4
+    m.logout();
+    m.login("nima", "pass1234");
+
+    // The handed-over booking cannot move — you cannot un-drive it.
+    CHECK(!m.rescheduleReservation(4, iso("2026-11-21"), iso("2026-11-22"),
+                                   today, err));
+    CHECK(err.find("No queued booking") != std::string::npos);
+    // ...and its served window blocks every move onto it...
+    CHECK(!m.rescheduleReservation(1, iso("2026-11-14"), iso("2026-11-15"),
+                                   today, err));
+    CHECK(err.find("overlap") != std::string::npos);
+    // ...while a later booking on the rented car still moves.
+    CHECK(m.rescheduleReservation(1, iso("2026-11-21"), iso("2026-11-23"),
+                                  today, err));
+    CHECK_EQ(findBooking(1)->startDate(), iso("2026-11-21"));
+
+    // A stale past pickup still queued (booked late, never served)
+    // is the desk's business, not a move — parked on Alpha so Beta's
+    // served booking stays the one the heap front points at.
+    CHECK(m.makeReservation("Alpha", iso("2026-11-10"), iso("2026-11-12"),
+                            err)); // #5, past-dated
+    CHECK(!m.rescheduleReservation(5, iso("2026-11-21"), iso("2026-11-22"),
+                                   today, err));
+    CHECK(err.find("pickup day has passed") != std::string::npos);
+
+    /* ---- moving a WHOLE series ---- */
+    int S = 0;
+    CHECK(m.makeRecurringReservation("Alpha", iso("2026-12-01"),
+                                     iso("2026-12-03"),
+                                     RecurrencePlan::Weekly, 3, S, err));
+    CHECK(S > 0);
+    auto findSeries = [&](int seriesId)
+    {
+        std::vector<Reservation *> v;
+        for (Reservation *r : m.myReservations())
+            if (r->seriesId() == seriesId)
+                v.push_back(r);
+        std::sort(v.begin(), v.end(),
+                  [](const Reservation *a, const Reservation *b)
+                  { return a->startDate() < b->startDate(); });
+        return v;
+    };
+    std::vector<Reservation *> occ = findSeries(S);
+    CHECK_EQ(occ.size(), std::size_t(3));
+    CHECK_EQ(occ[0]->startDate(), iso("2026-12-01"));
+
+    CHECK_EQ(m.rescheduleSeries(S, iso("2026-12-05"), today, err), 3);
+    occ = findSeries(S);
+    CHECK_EQ(occ.size(), std::size_t(3));
+    CHECK_EQ(occ[0]->startDate(), iso("2026-12-05"));
+    CHECK_EQ(occ[0]->endDate(), iso("2026-12-07")); // length kept
+    CHECK_EQ(occ[1]->startDate(), iso("2026-12-12")); // spacing kept
+    CHECK_EQ(occ[2]->startDate(), iso("2026-12-19"));
+    CHECK(hasAudit("recurring.moved", "series #" + std::to_string(S)
+                                          + ": 3 booking(s) shifted +4"));
+
+    // Reminders follow the series to its new dates.
+    up = m.upcomingPickups(100, today);
+    int seriesSeen = 0;
+    for (const PickupReminder &r : up)
+        if (r.seriesId == S)
+            ++seriesSeen;
+    CHECK_EQ(seriesSeen, 3);
+    CHECK_EQ(up.front().start, iso("2026-11-21")); // ordering intact
+
+    // Zero shift is refused instead of writing a no-op audit entry.
+    CHECK_EQ(m.rescheduleSeries(S, iso("2026-12-05"), today, err), 0);
+    CHECK(err.find("already sits on that date") != std::string::npos);
+
+    // Atomic series move: one clashing occurrence moves NOTHING.
+    // Parisa takes 12-17..18 — free against the UNMOVED series, but
+    // after a shift to 12-04 occurrence 3 lands on 12-18..20.
+    m.logout();
+    m.login("parisa", "pass1234");
+    CHECK(m.makeReservation("Alpha", iso("2026-12-17"), iso("2026-12-18"),
+                            err));
+    m.logout();
+    m.login("nima", "pass1234");
+    CHECK_EQ(m.rescheduleSeries(S, iso("2026-12-04"), today, err), 0);
+    CHECK(err.find("Occurrence 3") != std::string::npos);
+    occ = findSeries(S);
+    CHECK_EQ(occ[0]->startDate(), iso("2026-12-05")); // untouched
+    CHECK_EQ(occ[1]->startDate(), iso("2026-12-12"));
+    CHECK_EQ(occ[2]->startDate(), iso("2026-12-19"));
+
+    // Ownership and the customer gate close the screen off.
+    m.logout();
+    m.login("parisa", "pass1234");
+    CHECK_EQ(m.rescheduleSeries(S, iso("2026-12-06"), today, err), 0);
+    CHECK(err.find("not yours") != std::string::npos);
+    m.logout();
+    m.login("desk", "staff1234");
+    CHECK(!m.rescheduleReservation(1, iso("2026-11-21"), iso("2026-11-22"),
+                                   today, err));
+    CHECK(err.find("Only logged-in customers") != std::string::npos);
+    CHECK_EQ(m.rescheduleSeries(S, iso("2026-12-06"), today, err), 0);
+    m.logout();
+    m.login("nima", "pass1234");
+
+    /* ---- the move survives save / load ---- */
+    CHECK(m.saveData(dir));
+    RentalManager m2;
+    CHECK(m2.loadData(dir));
+    m2.login("nima", "pass1234");
+    bool sawMovedBeta = false, sawMovedSeries = false;
+    for (const Reservation *r : m2.myReservations())
+    {
+        if (r->id() == 1)
+            sawMovedBeta = r->startDate() == iso("2026-11-21");
+        if (r->seriesId() == S && r->startDate() == iso("2026-12-05"))
+            sawMovedSeries = true;
+    }
+    CHECK(sawMovedBeta);
+    CHECK(sawMovedSeries);
+
+    // An unknown series id is a no-op.
+    CHECK_EQ(m.rescheduleSeries(999, iso("2026-12-06"), today, err), 0);
+}
+
+
+/* ============================================================
  *  RentalHistory + MonthlyReport   (v3.0.0)
  * ============================================================ */
 
@@ -3429,6 +3680,8 @@ int main()
     runSuite("Recurring series: reminder maths", testReminderMaths);
     runSuite("RentalManager: recurring series", testRecurringFacade);
     runSuite("RentalManager: pickup reminders", testRentalManagerReminders);
+    runSuite("Reschedule: change-of-plans move rules", testRescheduleMoveRules);
+    runSuite("RentalManager: change-a-booking flow", testRentalManagerReschedule);
     runSuite("Pricing: dynamic discount maths", testPricingMaths);
     runSuite("RentalManager: discounted invoices", testDiscountedInvoices);
     runSuite("RentalHistory: ledger & CSV round-trip", testRentalHistoryLedger);
