@@ -284,10 +284,13 @@ date,actor,action,result,detail
 - `action` — dotted id: `login.ok`, `login.failed`, `login.denied`,
   `account.autoblock`, `customer.registered`, `user.created`,
   `user.blocked`, `user.unblocked`, `car.added`, `car.delivered`,
-  `car.returned`, `reservation.made`, `maintenance.sent`,
-  `maintenance.finished`, `maintenance.logged`, `export.fleet`,
-  `export.bookings`, `waitlist.joined`, `waitlist.left`,
-  `waitlist.served`, `waitlist.promoted`
+  `car.returned`, `reservation.made`, `reservation.moved` (v3.2.0),
+  `recurring.created`, `recurring.cancelled`, `recurring.moved`
+  (v3.2.0), `discount.applied`, `loyalty.earned`, `loyalty.rankup`,
+  `loyalty.redeemed`, `maintenance.sent`, `maintenance.finished`,
+  `maintenance.logged`, `export.fleet`, `export.bookings`,
+  `export.loyalty`, `export.monthly`, `waitlist.joined`,
+  `waitlist.left`, `waitlist.served`, `waitlist.promoted`
 - `result` — `ok` or `denied` (failed logins count as denied)
 - `detail` — full free-text context (the on-screen table truncates
   it to 30 characters; the file never does)

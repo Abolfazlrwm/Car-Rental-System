@@ -107,6 +107,15 @@ tree and asserting the height stays within the theoretical bound.
   the booking id, the car, the pickup day and the `[series #id]`
   tag; the rental that is out right now never reminds, and
   cancelling a series clears its reminders in one step
+- **Change a booking** (v3.2.0): option 13 moves plans instead of
+  cancelling them — one booking to a new window, or a whole series
+  shifted in one step with its plan spacing kept; the schedule is
+  re-checked with the booking lifted out first (its old slot never
+  blocks its own new dates), a series move is atomic and names the
+  clashing occurrence, the rental that is out right now cannot
+  move, and a refusal leaves everything untouched; the price is
+  re-quoted with the current rank and the reminders follow the new
+  dates on their own
 
 **Money & reporting**
 - Automatic invoicing with **dynamic discounts** (v3.0.0): the booked
@@ -373,13 +382,15 @@ The suite needs no external framework and runs in milliseconds:
   [ ok ] Recurring series: reminder maths
   [ ok ] RentalManager: recurring series
   [ ok ] RentalManager: pickup reminders
+  [ ok ] Reschedule: change-of-plans move rules
+  [ ok ] RentalManager: change-a-booking flow
   [ ok ] Pricing: dynamic discount maths
   [ ok ] RentalManager: discounted invoices
   [ ok ] RentalHistory: ledger & CSV round-trip
   [ ok ] Monthly report: builder maths
   [ ok ] RentalManager: monthly report flow
 
-5258 checks, 0 failure(s)
+5416 checks, 0 failure(s)
 ALL TESTS PASSED
 ```
 
@@ -416,6 +427,10 @@ Memory safety is verified with `g++ -fsanitize=address,undefined`.
   invoice, quoted at booking, announced at the desk (v3.0.0)
 - [x] Rental history ledger + monthly report — revenue, discounts,
   per-car bars and the busiest day, on screen and as CSV (v3.0.0)
+- [x] Pickup reminders — the week ahead greets the customer at
+  login and above My reservations, series tags included (v3.1.0)
+- [x] Change a booking — move one booking or shift a whole series
+  in one step, availability re-checked and re-quoted (v3.2.0)
 
 ## 📚 Documentation
 

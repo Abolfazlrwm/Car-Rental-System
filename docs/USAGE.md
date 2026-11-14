@@ -68,6 +68,7 @@ older versions (bare day numbers) still load.
 | 10. My loyalty card | your rank, points and progress to the next tier |
 | 11. Redeem points on my bill | turn points into a credit on what you owe |
 | 12. Logout | back to the main menu |
+| 13. Change a booking (move dates) | move one booking to new dates, or shift a whole series in one step; availability re-checked, a refused move changes nothing |
 
 A typical session:
 
@@ -123,6 +124,30 @@ today still reminds (the car is due back before it goes out
 again); the booking that is out right now never does. Cancelling a
 series clears its reminders in one step, and a quiet week prints
 nothing at all.
+
+### Change a booking (v3.2.0)
+
+Plans change; option 13 re-arranges what you already booked instead
+of cancelling it. Choose `1` to move a single booking — its `#id`
+from "My reservations", then the new start and end — or `2` to
+shift a whole series: its `#series id` and the new date for the
+next pickup, with every later occurrence keeping its plan spacing
+and its length.
+
+The move is checked like a fresh booking, with one kindness: the
+booking is lifted out of the schedule first, so its own old slot
+never stands in the way of its new dates. Refusals are explicit and
+change nothing — an overlapping range, new dates in the past, a
+pickup whose day has already passed, a booking the desk already
+handed over. A series shift is atomic like its creation: when one
+shifted occurrence would clash, NOTHING moves and the screen names
+it (`Occurrence 3`).
+
+On success the screen re-quotes the estimate for the new window
+with your current rank, the audit trail gains a
+`reservation.moved` / `recurring.moved` entry, and the reminders
+(see above) follow the new dates on their own — nothing to refresh,
+they are a read-only view over the bookings.
 
 ### The waitlist (v2.6.0)
 

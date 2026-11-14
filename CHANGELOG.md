@@ -4,6 +4,44 @@ All notable changes to the Car Rental System are documented in this file.
 The detailed v1.0 → v2.0 story lives in
 [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md).
 
+## [3.2.0] — 2026-11-14
+
+### Added
+
+- **Change a booking** — moving plans no longer means cancelling and
+  re-booking. Customer menu option 13 moves ONE booking to a new
+  window, or shifts a WHOLE series: the next pickup lands on the
+  date the customer types and the rest keep their plan spacing. The
+  move is availability-checked with the booking lifted out of the
+  schedule first — its old slot never stands in the way of its own
+  new dates — and a refusal (an overlapping range, a pickup already
+  in the past, new dates in the past, a booking already handed
+  over) leaves everything untouched and says exactly why. Series
+  moves are atomic like their creation: one clashing occurrence
+  moves nothing and the error names it (`Occurrence 3`). The rental
+  that is out right now cannot move — you cannot un-drive a car —
+  and its served window still blocks every move onto it. The id and
+  the arrival order survive: only the two date columns change, the
+  price is re-quoted on screen with the current rank, the reminders
+  (3.1.0) follow the new dates on their own, and both moves land in
+  the audit trail as `reservation.moved` / `recurring.moved`. No
+  file format changes.
+
+### Tests
+
+- Suite grown from 5,258 to **5,416 checks** (+158) across two new
+  suites: "Reschedule: change-of-plans move rules" (a pickup due
+  today can still move, the past never can, sane new windows only)
+  and "RentalManager: change-a-booking flow" (end to end: the move
+  itself, the same-range self-move that must not clash with itself,
+  unknown and foreign ids, a clashing new range refused with the
+  booking untouched, moves into the past, a pickup due today, the
+  handed-over booking and its served window, the stale never-served
+  pickup, a series shift with spacing kept, the zero-shift refusal,
+  the atomic series clash, ownership and the customer gate, and the
+  move surviving save/load). Still zero dependencies, still
+  leak-free under ASan + UBSan.
+
 ## [3.1.0] — 2026-11-13
 
 ### Added

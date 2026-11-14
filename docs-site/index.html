@@ -100,12 +100,13 @@
       scratch in C++17. Salted SHA-256 auth, ISO calendar dates, double-booking prevention,
       late-return penalties, a waitlist that auto-books freed slots, a tiered loyalty program,
       recurring weekly / biweekly / monthly series, dynamic loyalty-and-duration discounts,
-      pickup reminders for the week ahead, CSV &amp; JSON reports, a monthly revenue report, a
+      pickup reminders for the week ahead, bookings and whole series that move instead of
+      cancelling, CSV &amp; JSON reports, a monthly revenue report, a
       live analytics dashboard and an audited permission matrix. Leak-free under AddressSanitizer.
     </p>
     <div class="badges">
       <span class="badge">C++17</span>
-      <span class="badge"><b>5,258</b> checks</span>
+      <span class="badge"><b>5,416</b> checks</span>
       <span class="badge">ASan leak-free</span>
       <span class="badge">GCC · Clang · MSVC</span>
       <span class="badge">MIT</span>
@@ -151,9 +152,10 @@
       <div class="card"><h3>Booking rules that hold</h3><p>Date-range overlap rejection, earliest-pickup-first scheduling with FIFO ties, renewal blocked while others wait — and since 2.6.0 a per-car waitlist that auto-books the best-fitting wish the moment a return frees the window.</p></div>
       <div class="card"><h3>Loyalty that earns its rank</h3><p>Since 2.7.0 completed rentals pay 1 point per 10.00 spent at the rank's multiplier (Bronze → Platinum, up to ×2.0), ranks grow on lifetime points, and 10 points turn into 1.00 off the outstanding bill — every earn and redemption audited. Since 2.8.0 the standings ride along in <code>report.json</code>; since 2.9.0 rank crossings are announced at the desk, audited and listed on the overview, with a per-member <code>loyalty_report.csv</code>.</p></div>
       <div class="card"><h3>Series, discounts &amp; the month at a glance</h3><p>Since 3.0.0 a reservation can repeat weekly, biweekly or monthly (2–8 times): the whole series books atomically with a per-pickup estimate and cancels in one step. Invoices stack the long-rental rate (3–18%) with the rank rate (3–10%) multiplicatively — quoted at booking, announced at the desk, and late fees are never discounted. Every completed rental enters a history ledger the manager's monthly screen turns into revenue, discounts, per-car bars and the busiest day — on screen and as <code>monthly_YYYY-MM.csv</code>. Since 3.1.0 the week ahead greets the customer: <code>PICKUP REMINDERS</code> at login and above My reservations, soonest first, series tags included.</p></div>
+      <div class="card"><h3>Change of plans, not a cancellation</h3><p>Since 3.2.0 option 13 moves a booking instead of killing it: one booking to a new window, or a whole series shifted in one step with its plan spacing and length intact. The schedule is re-checked with the booking lifted out first — its old slot never blocks its own new dates — refusals change nothing and say why, and a series shift is atomic (<code>Occurrence 3</code> names the clash). The id and arrival order survive, the price is re-quoted at the current rank, the reminders follow the new dates on their own, and <code>reservation.moved</code> / <code>recurring.moved</code> land in the audit trail.</p></div>
       <div class="card"><h3>Money with an audit trail</h3><p>Automatic invoicing priced by one pure engine, 1.5× late-day penalties charged exactly once, customer balances, per-car income ledger — every privileged action audited.</p></div>
       <div class="card"><h3>CSV everything</h3><p>Full state round-trip in <code>data/*.csv</code>, plus manager-exported fleet &amp; bookings reports into <code>reports/</code> — and one <code>report.json</code> holding stats, fleet, bookings and the loyalty program.</p></div>
-      <div class="card"><h3>Tested like it matters</h3><p>5,258 dependency-free checks — every v1.0 bug is now a regression test — green under AddressSanitizer + UBSan on every push.</p></div>
+      <div class="card"><h3>Tested like it matters</h3><p>5,416 dependency-free checks — every v1.0 bug is now a regression test — green under AddressSanitizer + UBSan on every push.</p></div>
     </div>
   </div>
 </section>
