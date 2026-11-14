@@ -47,6 +47,14 @@ public:
     /// Used by "renew rental": push the return date further out.
     void extendEndDate(int extraDays) { endDate_ += extraDays; }
 
+    /// Used by "change a booking" (v3.2.0): move the whole window.
+    /// The id and the arrival order stay — only the dates change.
+    void setRange(int startDate, int endDate)
+    {
+        startDate_ = startDate;
+        endDate_ = endDate;
+    }
+
     /// True when `this` must be served before `other` (heap comparator).
     bool hasHigherPriorityThan(const Reservation *other) const;
 

@@ -190,4 +190,25 @@ inline void sortReminders(std::vector<PickupReminder> &reminders)
               });
 }
 
+/* ---------------- Change-of-plans moves (v3.2.0) ---------------- */
+
+/// A queued pickup can still MOVE while it has not happened: a
+/// pickup due today can still change plans (the desk has not
+/// served it yet), the past never can. The booking that is OUT
+/// right now is not movable either — but that is the facade's
+/// call, because "served" is a car status, not a date.
+inline bool isMovablePickup(int start, int today)
+{
+    return start >= today;
+}
+
+/// The new window of a moved booking: a sane range (start <= end)
+/// whose pickup lands today or later — a move into the past is
+/// refused before the schedule is touched. (The 1970 booking
+/// floor is the facade's business: it has Date::MIN_SERIAL.)
+inline bool isValidMoveRange(int newStart, int newEnd, int today)
+{
+    return isMovablePickup(newStart, today) && newEnd >= newStart;
+}
+
 #endif // RECURRING_H

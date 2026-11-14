@@ -108,6 +108,13 @@ public:
     /// Destroy a booking that belongs to this car (data cleanup / imports).
     void dropReservation(Reservation *r);
 
+    /// Take a booking OUT of the schedule WITHOUT freeing it
+    /// (v3.2.0): the reschedule flow lifts a booking off the heap
+    /// so its old slot cannot stand in the way of its own new
+    /// dates, then either re-inserts it (moved) or puts it back
+    /// untouched (refused). Ownership stays with the car.
+    void takeReservation(Reservation *r);
+
     /// Bookings whose customer matches `username` (for "my reservations").
     std::vector<Reservation *> reservationsOf(const std::string &username) const;
 

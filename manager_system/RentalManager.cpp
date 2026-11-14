@@ -614,6 +614,188 @@ std::vector<PickupReminder> RentalManager::upcomingPickups(int horizonDays,
     return result;
 }
 
+/* ============================================================
+ *  Change-of-plans moves (v3.2.0)
+ * ============================================================ */
+
+bool RentalManager::rescheduleReservation(int reservationId, int newStart,
+                                          int newEnd, int today,
+                                          std::string &errorOut)
+{
+    Customer *customer = asCustomer();
+    if (!customer)
+    {
+        errorOut = "Only logged-in customers can move a booking.";
+        return false;
+    }
+    if (reservationId < 1)
+    {
+        errorOut = "Invalid booking id.";
+        return false;
+    }
+    if (newStart < Date::MIN_SERIAL ||
+        !isValidMoveRange(newStart, newEnd, today))
+    {
+        errorOut = "Invalid new dates (need start <= end, today or later).";
+        return false;
+    }
+
+    // Find the booking across the whole fleet: it must belong to
+    // the caller and still be queued — the booking that is out
+    // right now was handed over and cannot move.
+    Car *owner = nullptr;
+    Reservation *target = nullptr;
+    forEachCar([&](Car *car)
+               {
+                   Reservation *served =
+                       (car->status() == CarStatus::Rented)
+                           ? car->currentReservation()
+                           : nullptr;
+                   for (Reservation *r :
+                        car->reservationsOf(customer->username()))
+                       if (r != served && r->id() == reservationId)
+                       {
+                           owner = car;
+                           target = r;
+                       }
+               });
+    if (!target)
+    {
+        errorOut = "No queued booking with that id - already handed "
+                   "over, already cancelled, or not yours.";
+        return false;
+    }
+    if (!isMovablePickup(target->startDate(), today))
+    {
+        errorOut = "That pickup day has passed - talk to the desk.";
+        return false;
+    }
+
+    // Lift the booking out first: its OLD slot must not stand in
+    // the way of its own new dates. A refusal restores it untouched.
+    owner->takeReservation(target);
+    if (owner->hasOverlap(newStart, newEnd))
+    {
+        owner->reinsertReservation(target);
+        errorOut =
+            "New dates overlap an existing reservation - booking unchanged.";
+        return false;
+    }
+
+    const int oldStart = target->startDate();
+    const int oldEnd = target->endDate();
+    target->setRange(newStart, newEnd);
+    owner->reinsertReservation(target);
+    audit("reservation.moved", owner->name() + " " + Date::toISO(oldStart)
+                                  + ".." + Date::toISO(oldEnd) + " -> "
+                                  + Date::toISO(newStart) + ".."
+                                  + Date::toISO(newEnd));
+    return true;
+}
+
+int RentalManager::rescheduleSeries(int seriesId, int newNextStart, int today,
+                                    std::string &errorOut)
+{
+    Customer *customer = asCustomer();
+    if (!customer)
+    {
+        errorOut = "Only logged-in customers can move a series.";
+        return 0;
+    }
+    if (seriesId < 1)
+    {
+        errorOut = "Invalid series id.";
+        return 0;
+    }
+    if (newNextStart < Date::MIN_SERIAL || !isMovablePickup(newNextStart, today))
+    {
+        errorOut = "Invalid new date (need today or later).";
+        return 0;
+    }
+
+    // Every still-queued occurrence of the series, across the
+    // fleet: the one being served stays put — you cannot un-drive
+    // a car — and the rest move relative to the earliest one left.
+    struct Occurrence
+    {
+        Car *car;
+        Reservation *r;
+    };
+    std::vector<Occurrence> occs;
+    forEachCar([&](Car *car)
+               {
+                   Reservation *served =
+                       (car->status() == CarStatus::Rented)
+                           ? car->currentReservation()
+                           : nullptr;
+                   for (Reservation *r :
+                        car->reservationsOf(customer->username()))
+                       if (r != served && r->seriesId() == seriesId)
+                           occs.push_back({car, r});
+               });
+    if (occs.empty())
+    {
+        errorOut = "No upcoming bookings from series #"
+                   + std::to_string(seriesId)
+                   + " - already served, already cancelled, or not yours.";
+        return 0;
+    }
+
+    // The earliest queued pickup is the anchor the customer moved.
+    std::sort(occs.begin(), occs.end(),
+              [](const Occurrence &a, const Occurrence &b)
+              { return a.r->startDate() < b.r->startDate(); });
+    if (!isMovablePickup(occs.front().r->startDate(), today))
+    {
+        errorOut = "That pickup day has passed - talk to the desk.";
+        return 0;
+    }
+
+    const int delta = newNextStart - occs.front().r->startDate();
+    if (delta == 0)
+    {
+        errorOut = "The next pickup already sits on that date.";
+        return 0;
+    }
+
+    // Atomic move, same discipline as series creation: lift every
+    // occurrence out BEFORE checking, and when any shifted window
+    // clashes, put every one of them back untouched.
+    for (Occurrence &o : occs)
+        o.car->takeReservation(o.r);
+
+    for (std::size_t i = 0; i < occs.size(); ++i)
+    {
+        const int s = occs[i].r->startDate() + delta;
+        const int e = occs[i].r->endDate() + delta;
+        if (occs[i].car->hasOverlap(s, e))
+        {
+            for (Occurrence &o : occs)
+                o.car->reinsertReservation(o.r);
+            errorOut = "Occurrence " + std::to_string(static_cast<int>(i) + 1)
+                       + " (" + Date::toISO(s) + ".." + Date::toISO(e)
+                       + ") overlaps an existing reservation - series "
+                         "unchanged.";
+            return 0;
+        }
+    }
+
+    for (Occurrence &o : occs)
+    {
+        o.r->setRange(o.r->startDate() + delta, o.r->endDate() + delta);
+        o.car->reinsertReservation(o.r);
+    }
+
+    const std::string sign = delta > 0 ? "+" : "";
+    audit("recurring.moved",
+          "series #" + std::to_string(seriesId) + ": "
+              + std::to_string(occs.size()) + " booking(s) shifted " + sign
+              + std::to_string(delta) + " day(s) -> "
+              + Date::toISO(occs.front().r->startDate()) + ".."
+              + Date::toISO(occs.front().r->endDate()));
+    return static_cast<int>(occs.size());
+}
+
 bool RentalManager::renewRental(const std::string &carName, int extraDays,
                                 std::string &errorOut)
 {

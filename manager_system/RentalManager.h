@@ -201,6 +201,30 @@ public:
     std::vector<PickupReminder> upcomingPickups(int horizonDays,
                                                 int today) const;
 
+    /// (v3.2.0) Move one of the logged-in customer's still-queued
+    /// bookings to a new window: the booking is lifted out of the
+    /// schedule first so its old slot cannot stand in the way of
+    /// its own new dates, and a refusal leaves it untouched. The
+    /// pickup must not have happened yet and the new pickup must
+    /// land today or later; the booking that is OUT right now
+    /// cannot move — it was already handed over. The id and the
+    /// arrival order stay, only the dates change, and the move is
+    /// stamped on the audit trail as `reservation.moved`.
+    bool rescheduleReservation(int reservationId, int newStart,
+                               int newEnd, int today,
+                               std::string &errorOut);
+
+    /// (v3.2.0) Move every still-queued occurrence of a series at
+    /// once: the next pickup lands on `newNextStart` and the rest
+    /// keep their plan spacing (one shared shift). Atomic — when
+    /// ANY shifted occurrence would clash, NOTHING moves and
+    /// errorOut says which one. An occurrence already handed over
+    /// stays put; the remaining ones move relative to the earliest
+    /// one still queued. Returns the number of bookings moved;
+    /// zero with the reason in `errorOut`.
+    int rescheduleSeries(int seriesId, int newNextStart, int today,
+                         std::string &errorOut);
+
     /// Extend the customer's active rental. Fails when the car is not
     /// currently rented by them or later bookings would be pushed.
     bool renewRental(const std::string &carName, int extraDays,

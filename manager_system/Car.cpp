@@ -84,6 +84,24 @@ void Car::dropReservation(Reservation *r)
         queue_.insert(cur);
 }
 
+void Car::takeReservation(Reservation *r)
+{
+    // Same O(n) rebuild as dropReservation() — minus the delete:
+    // the caller keeps ownership and re-inserts the booking.
+    std::vector<Reservation *> keep;
+    queue_.forEach([&](Reservation *cur)
+                   {
+                       if (cur != r)
+                           keep.push_back(cur);
+                   });
+
+    while (!queue_.empty())
+        (void)queue_.extractMin();
+
+    for (Reservation *cur : keep)
+        queue_.insert(cur);
+}
+
 std::vector<Reservation *> Car::reservationsOf(const std::string &username) const
 {
     std::vector<Reservation *> result;
