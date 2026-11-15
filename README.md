@@ -214,6 +214,15 @@ busiest day on one manager screen:
 
 ![Car Rental System — a weekly recurring series booking with its estimate, the discount announced at the desk and the manager monthly report with revenue bars](docs/v3_highlights.png)
 
+New in v3.1.0 & v3.2.0 — pickup reminders and change a booking: opening
+My reservations prints the week's pickups the way the desk would say them,
+and when plans change, option 13 moves ONE booking to new dates (the
+schedule is re-checked with the booking lifted out first and the price is
+re-quoted) or shifts a WHOLE series in one step — every refused move leaves
+everything untouched and says why:
+
+![Car Rental System — a refused overlapping move and a successful one with the price re-quoted, a weekly series shifted in one step and My reservations with the reminders and the moved dates](docs/v320_reschedule.png)
+
 Reserve the Benz → staff delivers it → customer returns it 2 days late →
 the manager sees the penalty on the books:
 
