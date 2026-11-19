@@ -93,13 +93,9 @@ static std::string cyan(const std::string &s)
 #include <cstdint>
 #include <emscripten.h>
 
-EM_JS(int, web_line_pending, (), {
-    return __crsLineReady() ? 1 : 0;
-});
+EM_JS(int, web_line_pending, (), { return __crsLineReady() ? 1 : 0; });
 
-EM_JS(int, web_line_take, (int buf, int maxlen), {
-    return __crsTakeLine(buf, maxlen);
-});
+EM_JS(int, web_line_take, (int buf, int maxlen), { return __crsTakeLine(buf, maxlen); });
 
 static bool readLine(const std::string &prompt, std::string &out)
 {
