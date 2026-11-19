@@ -69,11 +69,14 @@ jobs:
       - name: Configure (CMake, default toolchain)
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
+      # --config/-C pair keeps multi-config generators (Windows' Visual
+      # Studio) building and testing the same configuration; they are
+      # no-ops on single-config Linux/macOS.
       - name: Build
-        run: cmake --build build -j
+        run: cmake --build build --config Release -j
 
       - name: Unit tests
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build --output-on-failure -C Release
 
   # The README promises leak-free code — prove it on every push.
   sanitizers:
