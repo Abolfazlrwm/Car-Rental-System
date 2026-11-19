@@ -68,8 +68,9 @@ jobs:
       - name: Bundle
         run: |
           cd docs-site
-          zip -r ../../car_rental-wasm-demo.zip demo.html demo/car_rental.js demo/car_rental.wasm demo/pre.js demo/vendor
-          cd ..
+          # One level up lands in the workspace root, where the
+          # upload step looks for the file.
+          zip -r ../car_rental-wasm-demo.zip demo.html demo/car_rental.js demo/car_rental.wasm demo/pre.js demo/vendor
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
