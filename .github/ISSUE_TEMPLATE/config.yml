@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Live browser demo
+    url: https://abolfazlrwm.github.io/Car-Rental-System/demo.html
+    about: Try the actual binary compiled to WebAssembly before filing an issue.
+  - name: Documentation (README, usage, data formats)
+    url: https://github.com/Abolfazlrwm/Car-Rental-System/tree/main/docs
+    about: Most questions about menus, file formats and reports are answered there.

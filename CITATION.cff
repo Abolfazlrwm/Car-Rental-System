@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use this project in coursework or research, please cite it as below."
+title: Car Rental Management System — Console Edition (C++17)
+abstract: >-
+  A dependency-free car rental management system in C++17 built on four
+  hand-written data structures (AVL tree, hash table with chaining,
+  binary-heap priority queue, doubly linked list). Features RBAC accounts,
+  reservations with a waitlist, dynamic discounts, loyalty tiers, recurring
+  series with pickup reminders, change-a-booking moves, audit logging,
+  CSV/JSON persistence and monthly reports — with a 5,400+ check unit test
+  suite, AddressSanitizer/UBSan coverage and a WebAssembly build of the same
+  binary running in the browser.
+authors:
+  - given-names: Abolfazl
+    alias: Abolfazlrwm
+    website: https://github.com/Abolfazlrwm
+version: 3.3.0
+date-released: "2026-11-19"
+license: MIT
+repository-code: "https://github.com/Abolfazlrwm/Car-Rental-System"
+url: "https://abolfazlrwm.github.io/Car-Rental-System/"
+keywords:
+  - cpp
+  - cli
+  - data-structures
+  - avl-tree
+  - hash-table
+  - car-rental
+  - software-engineering
