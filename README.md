@@ -3,7 +3,7 @@
 [![CI](https://github.com/Abolfazlrwm/Car-Rental-System/actions/workflows/ci.yml/badge.svg)](https://github.com/Abolfazlrwm/Car-Rental-System/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Abolfazlrwm/Car-Rental-System)](https://github.com/Abolfazlrwm/Car-Rental-System/releases)
 ![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-5%2C416%20checks-3AAFA9)
+![Tests](https://img.shields.io/badge/tests-5%2C435%20checks-3AAFA9)
 ![Memory](https://img.shields.io/badge/AddressSanitizer-leak--free-4C6EF5)
 ![License](https://img.shields.io/badge/license-MIT-64748B)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)
@@ -27,6 +27,17 @@ There is also a live landing page, deployed automatically on every push:
 **[abolfazlrwm.github.io/Car-Rental-System](https://abolfazlrwm.github.io/Car-Rental-System/)**
 
 ![Car Rental System — GitHub Pages landing page: dark hero with the project stats](docs/landing.png)
+
+## 🌐 Run it in your browser — live demo
+
+No clone, no compiler, no install: the landing page's **[live demo](https://abolfazlrwm.github.io/Car-Rental-System/demo.html)**
+compiles the same `mainApp.cpp` + `manager_system/*.cpp` to WebAssembly
+(Emscripten) and runs the *real* binary in your tab — same menus, same
+hand-built AVL tree, hash table, priority queue, same audit trail —
+against an in-memory fleet that seeds itself on load. Log in as
+`ali / customer123` (customer), `sara / staff123` (staff) or
+`admin / manager123` (manager). The desktop build only swaps the input
+backend of `readLine`; everything else is the exact same code.
 
 <p align="center"><img src="assets/demo.gif" alt="demo" width="100%"></p>
 
@@ -299,7 +310,9 @@ On first start the app seeds the demo fleet and accounts; all state is
 saved to `data/` on exit and reloaded on the next run.
 
 Non-interactive queries never touch `data/`: `./car_rental --version`
-prints the version banner and `--help` lists the flags.
+prints the version banner and `--help` lists the flags. Plain output
+is available everywhere — `--no-color` for pipes, logs and CI, or a
+`NO_COLOR` environment variable ([no-color.org](https://no-color.org)).
 
 ---
 

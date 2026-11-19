@@ -4,6 +4,47 @@ All notable changes to the Car Rental System are documented in this file.
 The detailed v1.0 → v2.0 story lives in
 [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md).
 
+## [3.3.0] — 2026-11-19
+
+### Added
+
+- **Live browser demo** — the compiled binary itself, no install: the
+  same `mainApp.cpp` + `manager_system/*.cpp` compiled to WebAssembly
+  (Emscripten, `make wasm`) and served on the project's GitHub Pages at
+  `/demo.html`. Same menus, same hand-built structures, same audit
+  trail, against an in-memory fleet that seeds itself on load; the
+  terminal is xterm.js (vendored, so the zero-dependency promise
+  stands). The desktop build only swaps the input backend of
+  `readLine` — the browser build polls for a full line through
+  `emscripten_sleep` (Asyncify), so the program never spins and never
+  sees EOF. Every push re-proves the compile + a scripted end-to-end
+  session in CI, and the landing page leads with the demo button.
+- **`--no-color` and `NO_COLOR`** — plain output for pipes, logs and
+  CI, through a new pure parsing module `manager_system/Cli.h`
+  (unit-tested like everything else: `--help`/`-h`, `--version`/`-v`
+  with documented precedence, unknown options failing while naming
+  the argument). The help screen now points at the browser demo.
+
+### CI
+
+- The OS matrix the README promises is now proven: ubuntu + macOS +
+  Windows builds with CMake and ctest on every push.
+- **CodeQL** static analysis (cpp) runs weekly and on PRs.
+- **Release assets** build automatically on every version tag: native
+  binaries for Linux / macOS / Windows plus the WebAssembly demo
+  bundle, attached straight to the GitHub Release.
+- A **clang-format check** reports style drift; `make format`
+  (clang-format 23) was applied across the codebase once.
+- Community files: issue/PR templates and `CITATION.cff` for coursework
+  citations.
+
+### Tests
+
+- Suite grown from 5,416 to **5,435 checks** (+19) — a new suite,
+  "Cli: argument parsing" (defaults, help/version forms and their
+  precedence, `--no-color` combinations, unknown options and mistaken
+  file arguments), plus the CLI contract is asserted end to end in CI.
+
 ## [3.2.0] — 2026-11-14
 
 ### Added
