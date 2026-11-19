@@ -43,7 +43,7 @@
 #include "manager_system/RentalManager.h"
 
 /* Program version, reported by --version / --help. */
-static const char *APP_VERSION = "3.2.0";
+static const char *APP_VERSION = "3.3.0";
 
 /* ============================================================
  *  Terminal colors (no-ops when stdout is piped)
@@ -83,6 +83,40 @@ static std::string cyan(const std::string &s)
  *  Input helpers — the anti-segfault, anti-infinite-loop layer
  * ============================================================ */
 
+#ifdef __EMSCRIPTEN__
+/* The browser demo (make wasm): the page queues keystrokes through
+ * Module.pushInput, and readLine waits for a FULL line here — polling
+ * with emscripten_sleep (Asyncify) between checks — then copies the
+ * bytes in one go. Sleeping happens in plain wasm (never inside a
+ * JS import), so the UI never spins, the program never sees EOF and
+ * can only exit through its own Exit menu. */
+#include <cstdint>
+#include <emscripten.h>
+
+EM_JS(int, web_line_pending, (), {
+    return __crsLineReady() ? 1 : 0;
+});
+
+EM_JS(int, web_line_take, (int buf, int maxlen), {
+    return __crsTakeLine(buf, maxlen);
+});
+
+static bool readLine(const std::string &prompt, std::string &out)
+{
+    std::cout << prompt;
+    std::cout.flush();
+    out.clear();
+    while (web_line_pending() == 0)
+        emscripten_sleep(25);
+    char buf[512];
+    const int n = web_line_take((int)(uintptr_t)buf, (int)sizeof buf);
+    if (n > 0)
+        out.assign(buf, (std::string::size_type)n);
+    while (!out.empty() && (out.back() == '\r' || out.back() == ' '))
+        out.pop_back();
+    return true;
+}
+#else
 /// Read one line; returns false on EOF (input exhausted).
 static bool readLine(const std::string &prompt, std::string &out)
 {
@@ -94,6 +128,7 @@ static bool readLine(const std::string &prompt, std::string &out)
         out.pop_back();
     return true;
 }
+#endif
 
 /// Read a trimmed non-empty line.
 static bool readToken(const std::string &prompt, std::string &out)
