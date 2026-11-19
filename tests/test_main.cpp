@@ -19,13 +19,15 @@
  *    - RentalManager: the bugs that existed in v1.0 are now
  *      regression tests (null login, double income, fake renewal,
  *      duplicate fleet names, blocked accounts, persistence)
+ *    - Cli: flag parsing (--help / --version / --no-color),
+ *      unknown-option errors, documented precedence
  *
  *  Run:  ./build/unit_tests   (exit code 0 = all green)
  * ============================================================
  */
 
-#include <cmath>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -37,19 +39,20 @@
 #include <utility>
 #include <vector>
 
-#include "../manager_system/Analytics.h"
-#include "../manager_system/AuditLog.h"
 #include "../basic_structures/AVLTree.h"
 #include "../basic_structures/DoublyLinkedList.h"
 #include "../basic_structures/HashTable.h"
 #include "../basic_structures/PriorityQueue.h"
+#include "../manager_system/Analytics.h"
+#include "../manager_system/AuditLog.h"
 #include "../manager_system/Car.h"
+#include "../manager_system/Cli.h"
 #include "../manager_system/Date.h"
 #include "../manager_system/JsonExport.h"
 #include "../manager_system/Loyalty.h"
 #include "../manager_system/Permissions.h"
-#include "../manager_system/Reservation.h"
 #include "../manager_system/RentalManager.h"
+#include "../manager_system/Reservation.h"
 #include "../manager_system/SHA256.h"
 #include "../manager_system/User.h"
 
@@ -61,30 +64,30 @@ static int g_checks = 0;
 static int g_failures = 0;
 static const char *g_currentSuite = "?";
 
-#define CHECK(cond)                                                            \
-    do                                                                         \
-    {                                                                          \
-        ++g_checks;                                                            \
-        if (!(cond))                                                           \
-        {                                                                      \
-            ++g_failures;                                                      \
-            std::cout << "  [FAIL] " << g_currentSuite << " line "             \
-                      << __LINE__ << ": CHECK(" #cond ")\n";                   \
-        }                                                                      \
+#define CHECK(cond)                                                                                \
+    do                                                                                             \
+    {                                                                                              \
+        ++g_checks;                                                                                \
+        if (!(cond))                                                                               \
+        {                                                                                          \
+            ++g_failures;                                                                          \
+            std::cout << "  [FAIL] " << g_currentSuite << " line " << __LINE__                     \
+                      << ": CHECK(" #cond ")\n";                                                   \
+        }                                                                                          \
     } while (0)
 
-#define CHECK_EQ(a, b)                                                         \
-    do                                                                         \
-    {                                                                          \
-        ++g_checks;                                                            \
-        auto _va = (a);                                                        \
-        auto _vb = (b);                                                        \
-        if (!(_va == _vb))                                                     \
-        {                                                                      \
-            ++g_failures;                                                      \
-            std::cout << "  [FAIL] " << g_currentSuite << " line "             \
-                      << __LINE__ << ": " << _va << " != " << _vb << "\n";     \
-        }                                                                      \
+#define CHECK_EQ(a, b)                                                                             \
+    do                                                                                             \
+    {                                                                                              \
+        ++g_checks;                                                                                \
+        auto _va = (a);                                                                            \
+        auto _vb = (b);                                                                            \
+        if (!(_va == _vb))                                                                         \
+        {                                                                                          \
+            ++g_failures;                                                                          \
+            std::cout << "  [FAIL] " << g_currentSuite << " line " << __LINE__ << ": " << _va      \
+                      << " != " << _vb << "\n";                                                    \
+        }                                                                                          \
     } while (0)
 
 static void runSuite(const char *name, const std::function<void()> &fn)
@@ -92,8 +95,7 @@ static void runSuite(const char *name, const std::function<void()> &fn)
     int before = g_failures;
     g_currentSuite = name;
     fn();
-    std::cout << (g_failures == before ? "  [ ok ] " : "  [FAIL] ") << name
-              << "\n";
+    std::cout << (g_failures == before ? "  [ ok ] " : "  [FAIL] ") << name << "\n";
 }
 
 static bool approx(double a, double b, double eps = 1e-6)
@@ -108,13 +110,11 @@ static bool approx(double a, double b, double eps = 1e-6)
 static void testSHA256()
 {
     // Vector 1: empty string
-    CHECK_EQ(SHA256::hash(""),
-             std::string("e3b0c44298fc1c149afbf4c8996fb924"
-                         "27ae41e4649b934ca495991b7852b855"));
+    CHECK_EQ(SHA256::hash(""), std::string("e3b0c44298fc1c149afbf4c8996fb924"
+                                           "27ae41e4649b934ca495991b7852b855"));
     // Vector 2: "abc"
-    CHECK_EQ(SHA256::hash("abc"),
-             std::string("ba7816bf8f01cfea414140de5dae2223"
-                         "b00361a396177a9cb410ff61f20015ad"));
+    CHECK_EQ(SHA256::hash("abc"), std::string("ba7816bf8f01cfea414140de5dae2223"
+                                              "b00361a396177a9cb410ff61f20015ad"));
     // Vector 3: the classic two-sequence message
     CHECK_EQ(SHA256::hash("The quick brown fox jumps over the lazy dog"),
              std::string("d7a8fbb307d7809469ca9abcb0082e4f8"
@@ -199,10 +199,9 @@ struct Task
 static void testPriorityQueue()
 {
     // Min-heap on .priority, FIFO on ties via .seq
-    PriorityQueue<Task> q([](const Task &a, const Task &b)
-                          { return a.priority != b.priority
-                                       ? a.priority < b.priority
-                                       : a.seq < b.seq; });
+    PriorityQueue<Task> q(
+        [](const Task &a, const Task &b)
+        { return a.priority != b.priority ? a.priority < b.priority : a.seq < b.seq; });
 
     q.insert({5, 0});
     q.insert({1, 1});
@@ -223,8 +222,7 @@ static void testPriorityQueue()
 
     // Growth beyond the initial block (the v1.0 heap silently
     // dropped element #51 — regression test)
-    PriorityQueue<int> big([](int a, int b)
-                           { return a < b; });
+    PriorityQueue<int> big([](int a, int b) { return a < b; });
     for (int i = 200; i >= 1; --i)
         big.insert(i);
     CHECK_EQ(big.size(), std::size_t(200));
@@ -266,8 +264,7 @@ static void testAVLTree()
 
     // In-order traversal yields sorted keys.
     std::vector<int> keys;
-    tree.inOrderForEach([&](const int &k, const int &)
-                        { keys.push_back(k); });
+    tree.inOrderForEach([&](const int &k, const int &) { keys.push_back(k); });
     CHECK_EQ(keys.size(), std::size_t(N));
     bool sorted = true;
     for (std::size_t i = 1; i < keys.size(); ++i)
@@ -348,11 +345,11 @@ static void testReservationRules()
     Car car("Test Car", "Test", 100.0);
 
     // Range overlap truth table
-    CHECK(Reservation::rangesOverlap(1, 5, 5, 9));   // touching edges
-    CHECK(Reservation::rangesOverlap(4, 8, 1, 5));   // partial
-    CHECK(Reservation::rangesOverlap(2, 3, 1, 10));  // contained
-    CHECK(!Reservation::rangesOverlap(1, 4, 5, 9));  // disjoint
-    CHECK(!Reservation::rangesOverlap(6, 9, 1, 5));  // disjoint (after)
+    CHECK(Reservation::rangesOverlap(1, 5, 5, 9));  // touching edges
+    CHECK(Reservation::rangesOverlap(4, 8, 1, 5));  // partial
+    CHECK(Reservation::rangesOverlap(2, 3, 1, 10)); // contained
+    CHECK(!Reservation::rangesOverlap(1, 4, 5, 9)); // disjoint
+    CHECK(!Reservation::rangesOverlap(6, 9, 1, 5)); // disjoint (after)
 
     Reservation early(&c1, &car, 1, /*reqTime*/ 10, /*start*/ 2, /*end*/ 4);
     Reservation late(&c2, &car, 2, /*reqTime*/ 1, /*start*/ 5, /*end*/ 8);
@@ -387,17 +384,16 @@ static void testDates()
     // ---- leap years, century rules ------------------------------------
     CHECK(Date::parseISO("2024-02-29", s)); // leap year
     CHECK_EQ(Date::toISO(s), std::string("2024-02-29"));
-    CHECK(Date::parseISO("2000-02-29", s)); // divisible by 400 -> leap
+    CHECK(Date::parseISO("2000-02-29", s));  // divisible by 400 -> leap
     CHECK(!Date::parseISO("1900-02-29", s)); // divisible by 100 only
     CHECK(!Date::parseISO("2100-02-29", s));
     CHECK(!Date::parseISO("2026-02-30", s)); // Feb has 28 days here
 
     // ---- strict shape: garbage must never parse ------------------------
-    const char *bad[] = {"2026-13-01", "2026-00-10", "2026-04-31",
-                         "2026/11/05", "2026-1-05",  "2026-11-5",
-                         "26-11-05",   "abcdefghij", "",
-                         "2026-11-05 ", " 2026-11-05", "2026-11-0x",
-                         "9999-99-99", "2026-11",    "2026-11-05extra"};
+    const char *bad[] = {"2026-13-01", "2026-00-10",  "2026-04-31",     "2026/11/05",
+                         "2026-1-05",  "2026-11-5",   "26-11-05",       "abcdefghij",
+                         "",           "2026-11-05 ", " 2026-11-05",    "2026-11-0x",
+                         "9999-99-99", "2026-11",     "2026-11-05extra"};
     for (const char *t : bad)
         CHECK(!Date::parseISO(t, s));
     CHECK(!Date::isISODate("2026-04-31"));
@@ -464,8 +460,7 @@ static void testDates()
             std::ofstream legacy(dir + "/reservations.csv", std::ios::trunc);
             CHECK(legacy.good());
             legacy << "id,carName,customer,requestTime,startDate,endDate\n";
-            legacy << "1,Dena Plus,legacy,1," << startSerial << ","
-                   << endSerial << "\n";
+            legacy << "1,Dena Plus,legacy,1," << startSerial << "," << endSerial << "\n";
         }
 
         RentalManager m2;
@@ -483,9 +478,9 @@ static void testDates()
     {
         std::ofstream bad(dir + "/reservations.csv", std::ios::trunc);
         bad << "id,carName,customer,requestTime,startDate,endDate\n";
-        bad << "2,Dena Plus,legacy,1,not-a-date,2050-01-01\n";   // junk start
-        bad << "3,Dena Plus,legacy,1,2050-01-05,2050-01-02\n";   // start > end
-        bad << "4,Dena Plus,legacy,1,2050-01-05,2050-01-09\n";   // the good row
+        bad << "2,Dena Plus,legacy,1,not-a-date,2050-01-01\n"; // junk start
+        bad << "3,Dena Plus,legacy,1,2050-01-05,2050-01-02\n"; // start > end
+        bad << "4,Dena Plus,legacy,1,2050-01-05,2050-01-09\n"; // the good row
         bad.close();
 
         RentalManager m3;
@@ -541,7 +536,7 @@ static void testRentalManagerAccounts()
     CHECK(!m2.login("ali", "wrong1"));
     CHECK(!m2.login("ali", "wrong2"));
     CHECK(!m2.login("ali", "wrong3"));
-    CHECK(m2.isUserBlocked("ali"));        // locked out...
+    CHECK(m2.isUserBlocked("ali"));         // locked out...
     CHECK(!m2.login("ali", "customer123")); // ...even with the right password
     CHECK(m2.unblockUser("ali"));
     CHECK(m2.login("ali", "customer123")); // manager unblocks -> works
@@ -557,15 +552,15 @@ static void testRentalManagerReservations()
     std::string err;
     CHECK(!m.makeReservation("No Such Car", 1, 5, err)); // unknown car
     CHECK(!m.makeReservation("Benz C200", 9, 5, err));   // start > end
-    CHECK(!m.makeReservation("Benz C200", -1, 5, err)); // before 1970-01-01
+    CHECK(!m.makeReservation("Benz C200", -1, 5, err));  // before 1970-01-01
 
     CHECK(m.makeReservation("Benz C200", 5, 9, err));
 
     // REGRESSION: double-booking prevention.
-    CHECK(!m.makeReservation("Benz C200", 6, 7, err)); // inside
-    CHECK(!m.makeReservation("Benz C200", 4, 6, err)); // overlaps head
-    CHECK(!m.makeReservation("Benz C200", 8, 12, err)); // overlaps tail
-    CHECK(m.makeReservation("Benz C200", 10, 12, err)); // adjacent OK
+    CHECK(!m.makeReservation("Benz C200", 6, 7, err));   // inside
+    CHECK(!m.makeReservation("Benz C200", 4, 6, err));   // overlaps head
+    CHECK(!m.makeReservation("Benz C200", 8, 12, err));  // overlaps tail
+    CHECK(m.makeReservation("Benz C200", 10, 12, err));  // adjacent OK
     CHECK(!m.makeReservation("Benz C200", 12, 20, err)); // overlaps 2nd
 
     Car *benz = m.searchCar("Benz C200");
@@ -583,7 +578,7 @@ static void testRentalManagerReservations()
     CHECK_EQ(benz->currentReservation()->endDate(), 9); // unchanged
 
     // REGRESSION: income was booked TWICE (on reservation AND on return).
-    CHECK_EQ(benz->totalIncome(), 0.0); // nothing earned at booking time!
+    CHECK_EQ(benz->totalIncome(), 0.0);      // nothing earned at booking time!
     CHECK(m.returnCar("Benz C200", 9, err)); // on-time return
     // ali is a seeded Silver member: 5 days x 180 = 900, less the
     // 3% long-rental AND 3% Silver rates stacked -> 846.81, no
@@ -699,8 +694,8 @@ static void testRentalManagerFleetFilters()
     CHECK_EQ(band.size(), std::size_t(8));
     for (std::size_t i = 1; i < band.size(); ++i)
         CHECK(band[i - 1]->pricePerDay() <= band[i]->pricePerDay());
-    CHECK(band.front()->name() == "Pride 131");  // cheapest
-    CHECK(band.back()->name() == "Benz C200");   // most expensive
+    CHECK(band.front()->name() == "Pride 131"); // cheapest
+    CHECK(band.back()->name() == "Benz C200");  // most expensive
 
     // Equal rates tie-break alphabetically by car name.
     CHECK(m.addCar(new Car("ATest 1", "Zig", 45.0)));
@@ -713,16 +708,14 @@ static void testRentalManagerFleetFilters()
 
     // forEachCarByPrice visits the whole fleet, cheapest first ...
     std::vector<std::string> byPrice;
-    m.forEachCarByPrice([&](Car *car)
-                        { byPrice.push_back(car->name()); });
+    m.forEachCarByPrice([&](Car *car) { byPrice.push_back(car->name()); });
     CHECK_EQ(byPrice.size(), std::size_t(10));
     CHECK(byPrice.front() == "Pride 131");
     CHECK(byPrice.back() == "Benz C200");
 
     // ... and leaves the manager's insertion-order view untouched.
     std::vector<std::string> insertion;
-    m.forEachCar([&](Car *car)
-                 { insertion.push_back(car->name()); });
+    m.forEachCar([&](Car *car) { insertion.push_back(car->name()); });
     CHECK_EQ(insertion.size(), std::size_t(10));
     CHECK(insertion.front() == "Pride 131");
 
@@ -1009,25 +1002,24 @@ struct JsonValue
         Bool,
         Null
     } kind = Null;
-    std::string text;                                        // String / Number
-    bool boolean = false;                                    // Bool
-    std::vector<std::pair<std::string, JsonValue>> members;  // Object
-    std::vector<JsonValue> items;                            // Array
+    std::string text;                                       // String / Number
+    bool boolean = false;                                   // Bool
+    std::vector<std::pair<std::string, JsonValue>> members; // Object
+    std::vector<JsonValue> items;                           // Array
 };
 
 class Parser
 {
-public:
+  public:
     explicit Parser(const std::string &src) : src_(src) {}
 
     bool parse(JsonValue &out)
     {
         pos_ = 0;
-        return skipWs() && value(out, 0) && skipWs() &&
-               pos_ == src_.size();
+        return skipWs() && value(out, 0) && skipWs() && pos_ == src_.size();
     }
 
-private:
+  private:
     const std::string &src_;
     std::size_t pos_ = 0;
 
@@ -1035,9 +1027,8 @@ private:
 
     bool skipWs()
     {
-        while (pos_ < src_.size() &&
-               (src_[pos_] == ' ' || src_[pos_] == '\n' ||
-                src_[pos_] == '\t' || src_[pos_] == '\r'))
+        while (pos_ < src_.size() && (src_[pos_] == ' ' || src_[pos_] == '\n' ||
+                                      src_[pos_] == '\t' || src_[pos_] == '\r'))
             ++pos_;
         return true;
     }
@@ -1176,14 +1167,30 @@ private:
             const char e = src_[pos_++];
             switch (e)
             {
-            case '"': out += '"'; break;
-            case '\\': out += '\\'; break;
-            case '/': out += '/'; break;
-            case 'b': out += '\b'; break;
-            case 'f': out += '\f'; break;
-            case 'n': out += '\n'; break;
-            case 'r': out += '\r'; break;
-            case 't': out += '\t'; break;
+            case '"':
+                out += '"';
+                break;
+            case '\\':
+                out += '\\';
+                break;
+            case '/':
+                out += '/';
+                break;
+            case 'b':
+                out += '\b';
+                break;
+            case 'f':
+                out += '\f';
+                break;
+            case 'n':
+                out += '\n';
+                break;
+            case 'r':
+                out += '\r';
+                break;
+            case 't':
+                out += '\t';
+                break;
             case 'u':
             {
                 if (pos_ + 4 > src_.size())
@@ -1224,8 +1231,7 @@ private:
             ++pos_;
         bool digits = false;
         while (pos_ < src_.size() &&
-               (std::isdigit(static_cast<unsigned char>(src_[pos_])) ||
-                src_[pos_] == '.'))
+               (std::isdigit(static_cast<unsigned char>(src_[pos_])) || src_[pos_] == '.'))
         {
             if (std::isdigit(static_cast<unsigned char>(src_[pos_])))
                 digits = true;
@@ -1249,8 +1255,7 @@ const JsonValue *member(const JsonValue &obj, const std::string &key)
     return nullptr;
 }
 
-const JsonValue *fleetCarNamed(const JsonValue &report,
-                               const std::string &name)
+const JsonValue *fleetCarNamed(const JsonValue &report, const std::string &name)
 {
     const JsonValue *fleet = member(report, "fleet");
     if (fleet == nullptr)
@@ -1318,53 +1323,42 @@ static void testJsonExport()
         json_check::Parser p(body);
         json_check::JsonValue root;
         CHECK(p.parse(root));
-        const json_check::JsonValue *stats =
-            json_check::member(root, "stats");
+        const json_check::JsonValue *stats = json_check::member(root, "stats");
         CHECK(stats != nullptr);
         const json_check::JsonValue *total =
             stats ? json_check::member(*stats, "totalCars") : nullptr;
         CHECK(total != nullptr && total->text == "0");
-        const json_check::JsonValue *fleet =
-            json_check::member(root, "fleet");
+        const json_check::JsonValue *fleet = json_check::member(root, "fleet");
         CHECK(fleet != nullptr && fleet->items.empty());
-        const json_check::JsonValue *bookings =
-            json_check::member(root, "bookings");
+        const json_check::JsonValue *bookings = json_check::member(root, "bookings");
         CHECK(bookings != nullptr && bookings->items.empty());
-        const json_check::JsonValue *at =
-            json_check::member(root, "generatedAt");
+        const json_check::JsonValue *at = json_check::member(root, "generatedAt");
         CHECK(at != nullptr && Date::isISODate(at->text));
 
         // Loyalty section exists even for an empty program and
         // reads as all-zero, not garbage.               (v2.8.0)
-        const json_check::JsonValue *loyalty =
-            json_check::member(root, "loyalty");
+        const json_check::JsonValue *loyalty = json_check::member(root, "loyalty");
         CHECK(loyalty != nullptr);
         const json_check::JsonValue *members =
-            loyalty ? json_check::member(*loyalty, "totalMembers")
-                    : nullptr;
+            loyalty ? json_check::member(*loyalty, "totalMembers") : nullptr;
         CHECK(members != nullptr && members->text == "0");
         const json_check::JsonValue *tiers =
-            loyalty ? json_check::member(*loyalty, "membersByTier")
-                    : nullptr;
+            loyalty ? json_check::member(*loyalty, "membersByTier") : nullptr;
         CHECK(tiers != nullptr && tiers->items.empty());
         if (tiers != nullptr)
         {
-            const char *tierNames[4] = {"Bronze", "Silver", "Gold",
-                                        "Platinum"};
+            const char *tierNames[4] = {"Bronze", "Silver", "Gold", "Platinum"};
             for (const char *name : tierNames)
             {
-                const json_check::JsonValue *tier =
-                    json_check::member(*tiers, name);
+                const json_check::JsonValue *tier = json_check::member(*tiers, name);
                 CHECK(tier != nullptr && tier->text == "0");
             }
         }
         const json_check::JsonValue *held =
-            loyalty ? json_check::member(*loyalty, "outstandingPoints")
-                    : nullptr;
+            loyalty ? json_check::member(*loyalty, "outstandingPoints") : nullptr;
         CHECK(held != nullptr && held->text == "0");
         const json_check::JsonValue *liability =
-            loyalty ? json_check::member(*loyalty, "pointsLiability")
-                    : nullptr;
+            loyalty ? json_check::member(*loyalty, "pointsLiability") : nullptr;
         CHECK(liability != nullptr && liability->text == "0");
         const json_check::JsonValue *rows =
             loyalty ? json_check::member(*loyalty, "customers") : nullptr;
@@ -1381,8 +1375,7 @@ static void testJsonExport()
         CHECK(m.addCar(new Car("Multi\nLine \"car\"", "Debug", 10.0)));
         std::string err;
         CHECK(m.login("admin", "manager123"));
-        CHECK(m.recordMaintenance("Tucson 2023", "2026-11-01",
-                                  "oil change + filters", 45.5, err));
+        CHECK(m.recordMaintenance("Tucson 2023", "2026-11-01", "oil change + filters", 45.5, err));
         m.logout();
         CHECK(m.login("ali", "customer123"));
         int startA = 0, endA = 0, startB = 0, endB = 0;
@@ -1403,55 +1396,41 @@ static void testJsonExport()
         CHECK(p.parse(root));
 
         // Header fields.
-        const json_check::JsonValue *rep =
-            json_check::member(root, "report");
+        const json_check::JsonValue *rep = json_check::member(root, "report");
         CHECK(rep != nullptr && rep->text == "car-rental-system");
-        const json_check::JsonValue *at =
-            json_check::member(root, "generatedAt");
+        const json_check::JsonValue *at = json_check::member(root, "generatedAt");
         CHECK(at != nullptr && Date::isISODate(at->text));
 
         // Stats: 8 seeded cars + 2 = 10, two live bookings.
-        const json_check::JsonValue *stats =
-            json_check::member(root, "stats");
+        const json_check::JsonValue *stats = json_check::member(root, "stats");
         CHECK(stats != nullptr);
-        const json_check::JsonValue *totalCars =
-            json_check::member(*stats, "totalCars");
+        const json_check::JsonValue *totalCars = json_check::member(*stats, "totalCars");
         CHECK(totalCars != nullptr && totalCars->text == "10");
-        const json_check::JsonValue *active =
-            json_check::member(*stats, "activeBookings");
+        const json_check::JsonValue *active = json_check::member(*stats, "activeBookings");
         CHECK(active != nullptr && active->text == "2");
 
         // Fleet: name-sorted, and the hostile names round-trip exactly.
-        const json_check::JsonValue *fleet =
-            json_check::member(root, "fleet");
+        const json_check::JsonValue *fleet = json_check::member(root, "fleet");
         CHECK(fleet != nullptr && fleet->items.size() == 10);
-        CHECK(json_check::fleetCarNamed(root, "P\\206 \"GT\"") !=
-              nullptr);
-        CHECK(json_check::fleetCarNamed(root, "Multi\nLine \"car\"") !=
-              nullptr);
+        CHECK(json_check::fleetCarNamed(root, "P\\206 \"GT\"") != nullptr);
+        CHECK(json_check::fleetCarNamed(root, "Multi\nLine \"car\"") != nullptr);
 
         // The maintenance log travelled intact.
-        const json_check::JsonValue *tucson =
-            json_check::fleetCarNamed(root, "Tucson 2023");
+        const json_check::JsonValue *tucson = json_check::fleetCarNamed(root, "Tucson 2023");
         CHECK(tucson != nullptr);
         const json_check::JsonValue *log =
-            tucson ? json_check::member(*tucson, "maintenanceLog")
-                   : nullptr;
+            tucson ? json_check::member(*tucson, "maintenanceLog") : nullptr;
         CHECK(log != nullptr && log->items.size() == 1);
         const json_check::JsonValue *desc =
-            log ? json_check::member(log->items[0], "description")
-                : nullptr;
+            log ? json_check::member(log->items[0], "description") : nullptr;
         CHECK(desc != nullptr && desc->text == "oil change + filters");
 
         // Bookings ordered by pickup date, not insertion order.
-        const json_check::JsonValue *bookings =
-            json_check::member(root, "bookings");
+        const json_check::JsonValue *bookings = json_check::member(root, "bookings");
         CHECK(bookings != nullptr && bookings->items.size() == 2);
-        const json_check::JsonValue *firstCar =
-            json_check::member(bookings->items[0], "carName");
+        const json_check::JsonValue *firstCar = json_check::member(bookings->items[0], "carName");
         CHECK(firstCar != nullptr && firstCar->text == "Samand LX");
-        const json_check::JsonValue *firstId =
-            json_check::member(bookings->items[0], "id");
+        const json_check::JsonValue *firstId = json_check::member(bookings->items[0], "id");
         CHECK(firstId != nullptr && firstId->text == "2");
         const json_check::JsonValue *firstStart =
             json_check::member(bookings->items[0], "startDate");
@@ -1469,44 +1448,36 @@ static void testJsonExport()
         // Loyalty: ali is the demo's seeded Silver member holding
         // 340 points over 3 completed rentals — the file must name
         // the very same standing.                     (v2.8.0)
-        const json_check::JsonValue *loyalty =
-            json_check::member(root, "loyalty");
+        const json_check::JsonValue *loyalty = json_check::member(root, "loyalty");
         CHECK(loyalty != nullptr);
         const json_check::JsonValue *members =
-            loyalty ? json_check::member(*loyalty, "totalMembers")
-                    : nullptr;
+            loyalty ? json_check::member(*loyalty, "totalMembers") : nullptr;
         CHECK(members != nullptr && members->text == "1");
         const json_check::JsonValue *tiers =
-            loyalty ? json_check::member(*loyalty, "membersByTier")
-                    : nullptr;
+            loyalty ? json_check::member(*loyalty, "membersByTier") : nullptr;
         CHECK(tiers != nullptr);
         if (tiers != nullptr)
         {
             const char *emptyTiers[3] = {"Bronze", "Gold", "Platinum"};
             for (const char *name : emptyTiers)
             {
-                const json_check::JsonValue *tier =
-                    json_check::member(*tiers, name);
+                const json_check::JsonValue *tier = json_check::member(*tiers, name);
                 CHECK(tier != nullptr && tier->text == "0");
             }
-            const json_check::JsonValue *silver =
-                json_check::member(*tiers, "Silver");
+            const json_check::JsonValue *silver = json_check::member(*tiers, "Silver");
             CHECK(silver != nullptr && silver->text == "1");
         }
         const json_check::JsonValue *held =
-            loyalty ? json_check::member(*loyalty, "outstandingPoints")
-                    : nullptr;
+            loyalty ? json_check::member(*loyalty, "outstandingPoints") : nullptr;
         CHECK(held != nullptr && held->text == "340");
         const json_check::JsonValue *liability =
-            loyalty ? json_check::member(*loyalty, "pointsLiability")
-                    : nullptr;
+            loyalty ? json_check::member(*loyalty, "pointsLiability") : nullptr;
         CHECK(liability != nullptr && liability->text == "34");
         const json_check::JsonValue *topName =
             loyalty ? json_check::member(*loyalty, "topMember") : nullptr;
         CHECK(topName != nullptr && topName->text == "ali");
         const json_check::JsonValue *topPoints =
-            loyalty ? json_check::member(*loyalty, "topMemberLifetime")
-                    : nullptr;
+            loyalty ? json_check::member(*loyalty, "topMemberLifetime") : nullptr;
         CHECK(topPoints != nullptr && topPoints->text == "340");
         const json_check::JsonValue *rows =
             loyalty ? json_check::member(*loyalty, "customers") : nullptr;
@@ -1514,23 +1485,17 @@ static void testJsonExport()
         if (rows != nullptr && !rows->items.empty())
         {
             const json_check::JsonValue &row = rows->items[0];
-            const json_check::JsonValue *name =
-                json_check::member(row, "username");
+            const json_check::JsonValue *name = json_check::member(row, "username");
             CHECK(name != nullptr && name->text == "ali");
-            const json_check::JsonValue *tier =
-                json_check::member(row, "tier");
+            const json_check::JsonValue *tier = json_check::member(row, "tier");
             CHECK(tier != nullptr && tier->text == "Silver");
-            const json_check::JsonValue *pts =
-                json_check::member(row, "points");
+            const json_check::JsonValue *pts = json_check::member(row, "points");
             CHECK(pts != nullptr && pts->text == "340");
-            const json_check::JsonValue *life =
-                json_check::member(row, "lifetimePoints");
+            const json_check::JsonValue *life = json_check::member(row, "lifetimePoints");
             CHECK(life != nullptr && life->text == "340");
-            const json_check::JsonValue *done =
-                json_check::member(row, "completedRentals");
+            const json_check::JsonValue *done = json_check::member(row, "completedRentals");
             CHECK(done != nullptr && done->text == "3");
-            const json_check::JsonValue *toNext =
-                json_check::member(row, "pointsToNextTier");
+            const json_check::JsonValue *toNext = json_check::member(row, "pointsToNextTier");
             CHECK(toNext != nullptr && toNext->text == "660");
         }
     }
@@ -1577,8 +1542,7 @@ static void testJsonLoyaltyExport()
     json_check::JsonValue root;
     CHECK(p.parse(root));
 
-    const json_check::JsonValue *loyalty =
-        json_check::member(root, "loyalty");
+    const json_check::JsonValue *loyalty = json_check::member(root, "loyalty");
     CHECK(loyalty != nullptr);
     const json_check::JsonValue *members =
         loyalty ? json_check::member(*loyalty, "totalMembers") : nullptr;
@@ -1588,30 +1552,25 @@ static void testJsonLoyaltyExport()
     CHECK(tiers != nullptr);
     if (tiers != nullptr)
     {
-        const json_check::JsonValue *bronze =
-            json_check::member(*tiers, "Bronze");
+        const json_check::JsonValue *bronze = json_check::member(*tiers, "Bronze");
         CHECK(bronze != nullptr && bronze->text == "3");
-        const json_check::JsonValue *higher[3] = {
-            json_check::member(*tiers, "Silver"),
-            json_check::member(*tiers, "Gold"),
-            json_check::member(*tiers, "Platinum")};
+        const json_check::JsonValue *higher[3] = {json_check::member(*tiers, "Silver"),
+                                                  json_check::member(*tiers, "Gold"),
+                                                  json_check::member(*tiers, "Platinum")};
         for (const json_check::JsonValue *tier : higher)
             CHECK(tier != nullptr && tier->text == "0");
     }
     const json_check::JsonValue *held =
-        loyalty ? json_check::member(*loyalty, "outstandingPoints")
-                : nullptr;
+        loyalty ? json_check::member(*loyalty, "outstandingPoints") : nullptr;
     CHECK(held != nullptr && held->text == "19");
     const json_check::JsonValue *liability =
-        loyalty ? json_check::member(*loyalty, "pointsLiability")
-                : nullptr;
+        loyalty ? json_check::member(*loyalty, "pointsLiability") : nullptr;
     CHECK(liability != nullptr && liability->text == "1.9");
     const json_check::JsonValue *topName =
         loyalty ? json_check::member(*loyalty, "topMember") : nullptr;
     CHECK(topName != nullptr && topName->text == "zara");
     const json_check::JsonValue *topPoints =
-        loyalty ? json_check::member(*loyalty, "topMemberLifetime")
-                : nullptr;
+        loyalty ? json_check::member(*loyalty, "topMemberLifetime") : nullptr;
     CHECK(topPoints != nullptr && topPoints->text == "19");
 
     // Three rows, username-sorted: behrad, mina, zara.
@@ -1623,18 +1582,15 @@ static void testJsonLoyaltyExport()
         const char *order[3] = {"behrad", "mina", "zara"};
         for (int i = 0; i < 3; ++i)
         {
-            const json_check::JsonValue *name =
-                json_check::member(rows->items[i], "username");
+            const json_check::JsonValue *name = json_check::member(rows->items[i], "username");
             CHECK(name != nullptr && name->text == order[i]);
-            const json_check::JsonValue *tier =
-                json_check::member(rows->items[i], "tier");
+            const json_check::JsonValue *tier = json_check::member(rows->items[i], "tier");
             CHECK(tier != nullptr && tier->text == "Bronze");
         }
         // The two fresh members: all-zero standings.
         for (int i = 0; i < 2; ++i)
         {
-            const json_check::JsonValue *pts =
-                json_check::member(rows->items[i], "points");
+            const json_check::JsonValue *pts = json_check::member(rows->items[i], "points");
             CHECK(pts != nullptr && pts->text == "0");
             const json_check::JsonValue *done =
                 json_check::member(rows->items[i], "completedRentals");
@@ -1645,17 +1601,13 @@ static void testJsonLoyaltyExport()
         }
         // zara's earned standing rode into the file.
         const json_check::JsonValue &zara = rows->items[2];
-        const json_check::JsonValue *pts =
-            json_check::member(zara, "points");
+        const json_check::JsonValue *pts = json_check::member(zara, "points");
         CHECK(pts != nullptr && pts->text == "19");
-        const json_check::JsonValue *life =
-            json_check::member(zara, "lifetimePoints");
+        const json_check::JsonValue *life = json_check::member(zara, "lifetimePoints");
         CHECK(life != nullptr && life->text == "19");
-        const json_check::JsonValue *done =
-            json_check::member(zara, "completedRentals");
+        const json_check::JsonValue *done = json_check::member(zara, "completedRentals");
         CHECK(done != nullptr && done->text == "1");
-        const json_check::JsonValue *toNext =
-            json_check::member(zara, "pointsToNextTier");
+        const json_check::JsonValue *toNext = json_check::member(zara, "pointsToNextTier");
         CHECK(toNext != nullptr && toNext->text == "231");
     }
 
@@ -1679,11 +1631,11 @@ static void testAnalytics()
     /* ---- pure rendering helpers: exact, deterministic ---- */
     CHECK(analyticsBar(0, 0) == "");
     CHECK(analyticsBar(0, 5) == "");
-    CHECK(analyticsBar(5, 0) == ""); // degenerate max
-    CHECK(analyticsBar(3, 3, 12).size() == 12 * 3);  // full bar: 12 blocks
-    CHECK(analyticsBar(1, 3, 12).size() == 4 * 3);   // 1/3 rounds to 4
-    CHECK(analyticsBar(2, 3, 12).size() == 8 * 3);   // 2/3 rounds to 8
-    CHECK(analyticsBar(1, 1000, 24).size() == 3);    // tiny value stays visible
+    CHECK(analyticsBar(5, 0) == "");                         // degenerate max
+    CHECK(analyticsBar(3, 3, 12).size() == 12 * 3);          // full bar: 12 blocks
+    CHECK(analyticsBar(1, 3, 12).size() == 4 * 3);           // 1/3 rounds to 4
+    CHECK(analyticsBar(2, 3, 12).size() == 8 * 3);           // 2/3 rounds to 8
+    CHECK(analyticsBar(1, 1000, 24).size() == 3);            // tiny value stays visible
     CHECK(analyticsBar(2, 5, 10) == analyticsBar(2, 5, 10)); // deterministic
     CHECK(analyticsPad("ab", 5) == "   ab");
     CHECK(analyticsPad("abcde", 5) == "abcde");
@@ -1809,20 +1761,13 @@ static void testPermissions()
     CHECK(!roleHasPermission("", Permission::MANAGE_USERS));
 
     // Stable kebab-case ids — the audit trail spells them out.
-    CHECK(std::string(permissionName(Permission::MANAGE_USERS)) ==
-          "manage-users");
-    CHECK(std::string(permissionName(Permission::EXPORT_REPORTS)) ==
-          "export-reports");
-    CHECK(std::string(permissionName(Permission::VIEW_ANALYTICS)) ==
-          "view-analytics");
-    CHECK(std::string(permissionName(Permission::VIEW_AUDIT_LOG)) ==
-          "view-audit-log");
-    CHECK(std::string(permissionName(Permission::HANDLE_DELIVERIES)) ==
-          "handle-deliveries");
-    CHECK(std::string(permissionName(Permission::PROCESS_RETURNS)) ==
-          "process-returns");
-    CHECK(std::string(permissionName(Permission::SEND_MAINTENANCE)) ==
-          "send-maintenance");
+    CHECK(std::string(permissionName(Permission::MANAGE_USERS)) == "manage-users");
+    CHECK(std::string(permissionName(Permission::EXPORT_REPORTS)) == "export-reports");
+    CHECK(std::string(permissionName(Permission::VIEW_ANALYTICS)) == "view-analytics");
+    CHECK(std::string(permissionName(Permission::VIEW_AUDIT_LOG)) == "view-audit-log");
+    CHECK(std::string(permissionName(Permission::HANDLE_DELIVERIES)) == "handle-deliveries");
+    CHECK(std::string(permissionName(Permission::PROCESS_RETURNS)) == "process-returns");
+    CHECK(std::string(permissionName(Permission::SEND_MAINTENANCE)) == "send-maintenance");
 }
 
 /* ============================================================
@@ -1836,8 +1781,7 @@ static void testAuditLog()
     CHECK_EQ(log.size(), std::size_t(0));
 
     log.record("2026-11-08", "admin", "login.ok", "Manager", true);
-    log.record("2026-11-08", "sara", "export.fleet",
-               "denied: needs export-reports", false);
+    log.record("2026-11-08", "sara", "export.fleet", "denied: needs export-reports", false);
     log.record("2026-11-08", "ali", "reservation.made", "Benz 1..3", true);
     CHECK_EQ(log.size(), std::size_t(3));
 
@@ -1865,10 +1809,8 @@ static void testAuditLog()
 
     // Round-trip through CSV, hostile details included.
     AuditLog saved;
-    saved.record("2026-11-08", "admin", "user.created",
-                 "Staff, \"big\"", true);
-    saved.record("2026-11-08", "sara", "login.failed", "multi\nline",
-                 false);
+    saved.record("2026-11-08", "admin", "user.created", "Staff, \"big\"", true);
+    saved.record("2026-11-08", "sara", "login.failed", "multi\nline", false);
     CHECK(saved.saveCSV("/tmp/audit_roundtrip.csv"));
 
     AuditLog loaded;
@@ -1918,8 +1860,7 @@ static void testRbacEnforcement()
     CHECK(!trail.back().allowed);
     CHECK(trail.back().actor == "sara");
     CHECK(trail.back().action == "export.fleet");
-    CHECK(trail.back().detail.find("export-reports") !=
-          std::string::npos);
+    CHECK(trail.back().detail.find("export-reports") != std::string::npos);
 
     // Same story for account management — nothing is created.
     CHECK(!m.registerStaffAccount("eve", "pass1234", "Staff"));
@@ -2002,7 +1943,7 @@ static void testCarWaitlistQueue()
     CHECK(car.hasOverlap(10, 19));
     CHECK(!car.hasOverlap(1, 9));
 
-    WaitlistEntry *e1 = new WaitlistEntry(&ali, &car, 1, 5, 7);   // fits
+    WaitlistEntry *e1 = new WaitlistEntry(&ali, &car, 1, 5, 7);    // fits
     WaitlistEntry *e2 = new WaitlistEntry(&sara, &car, 2, 12, 14); // clashes
     WaitlistEntry *e3 = new WaitlistEntry(&reza, &car, 3, 25, 26); // fits
     car.enqueueWaitlistEntry(e1);
@@ -2077,10 +2018,10 @@ static void testRentalManagerWaitlist()
     m.logout();
 
     m.login("behnam", "pass1234");
-    CHECK(!m.joinWaitlist("Ghost", s1, s2, err));      // unknown car
-    CHECK(!m.joinWaitlist("Pride 131", s2, s1, err));  // inverted range
-    CHECK(!m.joinWaitlist("Pride 131", -7, s1, err));  // before 1970-01-01
-    CHECK(!m.joinWaitlist("Quick R", s1, s2, err));    // simply bookable
+    CHECK(!m.joinWaitlist("Ghost", s1, s2, err));     // unknown car
+    CHECK(!m.joinWaitlist("Pride 131", s2, s1, err)); // inverted range
+    CHECK(!m.joinWaitlist("Pride 131", -7, s1, err)); // before 1970-01-01
+    CHECK(!m.joinWaitlist("Quick R", s1, s2, err));   // simply bookable
     CHECK(err.find("make a reservation instead") != std::string::npos);
 
     // Pride 131 holds 12-01..12-03 -> behnam may wait for the clash.
@@ -2101,11 +2042,11 @@ static void testRentalManagerWaitlist()
     // Two wishes on two cars; the earliest pickup lists first even
     // though it was joined later.
     CHECK(m.joinWaitlist("Pride 131", s1 + 1, s1 + 3, err)); // wish #2
-    m.sendToMaintenance("Samand LX"); // a serviced car is wish-worthy
+    m.sendToMaintenance("Samand LX");                        // a serviced car is wish-worthy
     CHECK(m.joinWaitlist("Samand LX", s1, s1 + 1, err));     // wish #3
     CHECK(m.totalWaitlisted() == std::size_t(2));
     CHECK(m.myWaitlist().size() == std::size_t(2));
-    CHECK(m.myWaitlist().front()->startDate() == s1);        // Samand wish
+    CHECK(m.myWaitlist().front()->startDate() == s1); // Samand wish
     CHECK(m.myWaitlist().front()->joinOrder() == 3);
     CHECK(m.myWaitlist().back()->car()->name() == "Pride 131");
     m.logout();
@@ -2115,8 +2056,7 @@ static void testRentalManagerWaitlist()
     CHECK(!m.serveWaitlist("Samand LX", err));
     CHECK(m.auditLog().all().back().action == "waitlist.served");
     CHECK(!m.auditLog().all().back().allowed);
-    CHECK(m.auditLog().all().back().detail.find("handle-deliveries") !=
-          std::string::npos);
+    CHECK(m.auditLog().all().back().detail.find("handle-deliveries") != std::string::npos);
     m.logout();
 
     m.login("sara", "staff123");
@@ -2148,8 +2088,7 @@ static void testRentalManagerWaitlist()
         CHECK(car->currentReservation()->endDate() == s1 + 3);
     }
     CHECK(m.auditLog().all().back().action == "waitlist.promoted");
-    CHECK(m.auditLog().all().back().detail.find("(auto)") !=
-          std::string::npos);
+    CHECK(m.auditLog().all().back().detail.find("(auto)") != std::string::npos);
     CHECK(m.totalWaitlisted() == std::size_t(2)); // parisa + the Samand wish
 
     // behnam's rental ends -> parisa is auto-booked in her turn.
@@ -2189,8 +2128,7 @@ static void testRentalManagerWaitlist()
         CHECK(car->reservationCount() == std::size_t(2));
     }
     CHECK(m.auditLog().all().back().action == "waitlist.served");
-    CHECK(m.auditLog().all().back().detail.find("behnam") !=
-          std::string::npos);
+    CHECK(m.auditLog().all().back().detail.find("behnam") != std::string::npos);
     CHECK(m.auditLog().all().back().allowed);
     CHECK(!m.serveWaitlist("Benz C200", err)); // queue exhausted
     CHECK(err.find("No waitlisted wish") != std::string::npos);
@@ -2260,8 +2198,7 @@ static void testLoyaltyMaths()
     CHECK_EQ(std::string(toString(LoyaltyTier::Bronze)), std::string("Bronze"));
     CHECK_EQ(std::string(toString(LoyaltyTier::Silver)), std::string("Silver"));
     CHECK_EQ(std::string(toString(LoyaltyTier::Gold)), std::string("Gold"));
-    CHECK_EQ(std::string(toString(LoyaltyTier::Platinum)),
-             std::string("Platinum"));
+    CHECK_EQ(std::string(toString(LoyaltyTier::Platinum)), std::string("Platinum"));
     CHECK_EQ(tierThreshold(LoyaltyTier::Bronze), 0);
     CHECK_EQ(tierThreshold(LoyaltyTier::Silver), 250);
     CHECK_EQ(tierThreshold(LoyaltyTier::Gold), 1000);
@@ -2306,10 +2243,10 @@ static void testLoyaltyMaths()
     CHECK_EQ(pointsEarnedFor(0, -50.0), 0);
     CHECK_EQ(pointsEarnedFor(0, 9.99), 0); // floor, never rounds up
     CHECK_EQ(pointsEarnedFor(0, 90.0), 9);
-    CHECK_EQ(pointsEarnedFor(0, 540.0), 54);                     // Bronze x1.0
-    CHECK_EQ(pointsEarnedFor(250, 540.0), 67);                   // 67.5 -> 67
-    CHECK_EQ(pointsEarnedFor(1000, 540.0), 81);                  // Gold x1.5
-    CHECK_EQ(pointsEarnedFor(2500, 540.0), 108);                 // Platinum x2.0
+    CHECK_EQ(pointsEarnedFor(0, 540.0), 54);     // Bronze x1.0
+    CHECK_EQ(pointsEarnedFor(250, 540.0), 67);   // 67.5 -> 67
+    CHECK_EQ(pointsEarnedFor(1000, 540.0), 81);  // Gold x1.5
+    CHECK_EQ(pointsEarnedFor(2500, 540.0), 108); // Platinum x2.0
 
     // Redemption maths: 10 points = 1.00, min 50, steps of 10.
     CHECK(approx(pointsToValue(50), 5.0));
@@ -2366,7 +2303,7 @@ static void testRentalManagerLoyalty()
     m.logout();
     CHECK(m.deliverCar("Testar", err));
     CHECK(m.returnCar("Testar", 109, err)); // on time
-    CHECK(m.lastLoyaltyRankUp().empty()); // Bronze stays Bronze (v2.9.0)
+    CHECK(m.lastLoyaltyRankUp().empty());   // Bronze stays Bronze (v2.9.0)
 
     m.login("parisa", "pass1234");
     CHECK_EQ(m.myLoyalty().points, 41);
@@ -2405,7 +2342,7 @@ static void testRentalManagerLoyalty()
     m.logout();
     CHECK(m.deliverCar("Testar", err));
     CHECK(m.returnCar("Testar", 210, err)); // 1 day late
-    CHECK(m.lastLoyaltyRankUp().empty()); // Silver stays Silver (v2.9.0)
+    CHECK(m.lastLoyaltyRankUp().empty());   // Silver stays Silver (v2.9.0)
 
     m.login("parisa", "pass1234");
     CHECK_EQ(m.myLoyalty().points, 321);
@@ -2548,8 +2485,7 @@ static void testLoyaltyOverview()
               << ",Customer,0,0,12.50,2600,2600,9\n";
         users << "zara," << salt << ',' << SHA256::hash(salt + "pass1234")
               << ",Customer,0,0,99.00,2600,2600,9\n";
-        users << "olduser," << salt << ','
-              << SHA256::hash(salt + "pass1234")
+        users << "olduser," << salt << ',' << SHA256::hash(salt + "pass1234")
               << ",Customer,0,0,12.50\n"; // pre-2.7.0 row shape
         users << "st," << salt << ',' << SHA256::hash(salt + "pass1234")
               << ",Staff,0,0,0.00,0,0,0\n";
@@ -2629,8 +2565,7 @@ static void testRecurringMaths()
     // Date::addMonths: clamp, leap years, year carry, identity.
     CHECK_EQ(Date::toISO(Date::addMonths(iso("2026-01-31"), 1)),
              std::string("2026-02-28")); // clamp past February's end
-    CHECK_EQ(Date::toISO(Date::addMonths(iso("2026-02-28"), 1)),
-             std::string("2026-03-28"));
+    CHECK_EQ(Date::toISO(Date::addMonths(iso("2026-02-28"), 1)), std::string("2026-03-28"));
     CHECK_EQ(Date::toISO(Date::addMonths(iso("2024-01-31"), 1)),
              std::string("2024-02-29")); // leap year keeps the 29th
     CHECK_EQ(Date::toISO(Date::addMonths(iso("2026-11-15"), 3)),
@@ -2639,22 +2574,19 @@ static void testRecurringMaths()
 
     // buildSeriesStarts: weekly spacing.
     std::vector<int> starts;
-    CHECK(buildSeriesStarts(RecurrencePlan::Weekly, iso("2026-12-01"), 3, 3,
-                            starts));
+    CHECK(buildSeriesStarts(RecurrencePlan::Weekly, iso("2026-12-01"), 3, 3, starts));
     CHECK_EQ(starts.size(), std::size_t(3));
     CHECK_EQ(starts[0], iso("2026-12-01"));
     CHECK_EQ(starts[1], iso("2026-12-08"));
     CHECK_EQ(starts[2], iso("2026-12-15"));
 
     // Biweekly.
-    CHECK(buildSeriesStarts(RecurrencePlan::Biweekly, iso("2026-12-01"), 5, 2,
-                            starts));
+    CHECK(buildSeriesStarts(RecurrencePlan::Biweekly, iso("2026-12-01"), 5, 2, starts));
     CHECK_EQ(starts.size(), std::size_t(2));
     CHECK_EQ(starts[1], iso("2026-12-15"));
 
     // Monthly: the clamped Feb pickup keeps the series alive.
-    CHECK(buildSeriesStarts(RecurrencePlan::Monthly, iso("2026-01-31"), 1, 3,
-                            starts));
+    CHECK(buildSeriesStarts(RecurrencePlan::Monthly, iso("2026-01-31"), 1, 3, starts));
     CHECK_EQ(starts.size(), std::size_t(3));
     CHECK_EQ(starts[0], iso("2026-01-31"));
     CHECK_EQ(starts[1], iso("2026-02-28"));
@@ -2662,11 +2594,9 @@ static void testRecurringMaths()
 
     // Self-overlap: a 10-day rental repeats weekly -> occurrence 2
     // starts while occurrence 1 is still out.
-    CHECK(!buildSeriesStarts(RecurrencePlan::Weekly, iso("2027-01-01"), 10, 3,
-                             starts));
+    CHECK(!buildSeriesStarts(RecurrencePlan::Weekly, iso("2027-01-01"), 10, 3, starts));
     // Exactly one step of duration fits.
-    CHECK(buildSeriesStarts(RecurrencePlan::Weekly, iso("2026-12-01"), 7, 2,
-                            starts));
+    CHECK(buildSeriesStarts(RecurrencePlan::Weekly, iso("2026-12-01"), 7, 2, starts));
     CHECK_EQ(starts[1], iso("2026-12-08"));
 
     // Bounds and garbage.
@@ -2692,7 +2622,7 @@ static void testReminderMaths()
     CHECK(isUpcomingPickup(1007, 1000, REMINDER_HORIZON_DAYS)); // edge
     CHECK(!isUpcomingPickup(1008, 1000, REMINDER_HORIZON_DAYS));
     CHECK(!isUpcomingPickup(999, 1000, REMINDER_HORIZON_DAYS)); // the past
-    CHECK(isUpcomingPickup(1000, 1000, 0)); // a zero horizon is today only
+    CHECK(isUpcomingPickup(1000, 1000, 0));                     // a zero horizon is today only
     CHECK(!isUpcomingPickup(1001, 1000, 0));
 
     // The desk phrasing.
@@ -2704,9 +2634,9 @@ static void testReminderMaths()
     // Ordering: soonest pickup first, ties broken by car name —
     // and every field rides along untouched.
     std::vector<PickupReminder> rs = {
-        {"Zeta", 3, 0, 1200, 5},   // later start, sorts last
-        {"Beta", 2, 7, 1100, 0},   // same start as Alpha, sorts second
-        {"Alpha", 1, 0, 1100, 0},  // soonest, sorts first
+        {"Zeta", 3, 0, 1200, 5},  // later start, sorts last
+        {"Beta", 2, 7, 1100, 0},  // same start as Alpha, sorts second
+        {"Alpha", 1, 0, 1100, 0}, // soonest, sorts first
     };
     sortReminders(rs);
     CHECK_EQ(rs.size(), std::size_t(3));
@@ -2739,10 +2669,8 @@ static void testRecurringFacade()
     m.login("nima", "pass1234");
     std::string err;
     int seriesId = 0;
-    CHECK(m.makeRecurringReservation("Cruiser", iso("2026-12-01"),
-                                     iso("2026-12-03"),
-                                     RecurrencePlan::Weekly, 3, seriesId,
-                                     err));
+    CHECK(m.makeRecurringReservation("Cruiser", iso("2026-12-01"), iso("2026-12-03"),
+                                     RecurrencePlan::Weekly, 3, seriesId, err));
     CHECK_EQ(seriesId, 1);
 
     std::vector<Reservation *> mine = m.myReservations();
@@ -2768,15 +2696,12 @@ static void testRecurringFacade()
     // ---- the gap booking fits BETWEEN the occurrences -----------------
     m.logout();
     m.login("mina", "pass1234");
-    CHECK(m.makeReservation("Cruiser", iso("2026-12-04"), iso("2026-12-06"),
-                            err));
+    CHECK(m.makeReservation("Cruiser", iso("2026-12-04"), iso("2026-12-06"), err));
     // ...and one that collides with nima's OWN series (occurrence 3
     // runs 12-15..12-17) kills the whole NEW series atomically: the
     // clash is reported for occurrence 1, nothing is booked.
-    CHECK(!m.makeRecurringReservation("Cruiser", iso("2026-12-14"),
-                                      iso("2026-12-16"),
-                                      RecurrencePlan::Weekly, 2, seriesId,
-                                      err));
+    CHECK(!m.makeRecurringReservation("Cruiser", iso("2026-12-14"), iso("2026-12-16"),
+                                      RecurrencePlan::Weekly, 2, seriesId, err));
     CHECK(err.find("Occurrence 1") != std::string::npos);
     CHECK_EQ(seriesId, 0); // nothing was booked, no tag was minted
     m.logout();
@@ -2786,36 +2711,24 @@ static void testRecurringFacade()
 
     // ---- validation: bounds, self-overlap, garbage ---------------------
     m.login("nima", "pass1234");
-    CHECK(!m.makeRecurringReservation("Cruiser", iso("2027-02-01"),
-                                      iso("2027-02-03"),
-                                      RecurrencePlan::Weekly, 1, seriesId,
-                                      err));
+    CHECK(!m.makeRecurringReservation("Cruiser", iso("2027-02-01"), iso("2027-02-03"),
+                                      RecurrencePlan::Weekly, 1, seriesId, err));
     CHECK(err.find("not bookable") != std::string::npos);
-    CHECK(!m.makeRecurringReservation("Cruiser", iso("2027-02-01"),
-                                      iso("2027-02-03"),
-                                      RecurrencePlan::Weekly, 9, seriesId,
-                                      err));
+    CHECK(!m.makeRecurringReservation("Cruiser", iso("2027-02-01"), iso("2027-02-03"),
+                                      RecurrencePlan::Weekly, 9, seriesId, err));
     // 10-day rentals cannot repeat weekly without colliding with
     // themselves.
-    CHECK(!m.makeRecurringReservation("Cruiser", iso("2027-01-01"),
-                                      iso("2027-01-10"),
-                                      RecurrencePlan::Weekly, 3, seriesId,
-                                      err));
+    CHECK(!m.makeRecurringReservation("Cruiser", iso("2027-01-01"), iso("2027-01-10"),
+                                      RecurrencePlan::Weekly, 3, seriesId, err));
     // Unknown car, invalid range.
-    CHECK(!m.makeRecurringReservation("Ghost", iso("2027-02-01"),
-                                      iso("2027-02-03"),
-                                      RecurrencePlan::Weekly, 2, seriesId,
-                                      err));
-    CHECK(!m.makeRecurringReservation("Cruiser", iso("2027-02-03"),
-                                      iso("2027-02-01"),
-                                      RecurrencePlan::Weekly, 2, seriesId,
-                                      err));
+    CHECK(!m.makeRecurringReservation("Ghost", iso("2027-02-01"), iso("2027-02-03"),
+                                      RecurrencePlan::Weekly, 2, seriesId, err));
+    CHECK(!m.makeRecurringReservation("Cruiser", iso("2027-02-03"), iso("2027-02-01"),
+                                      RecurrencePlan::Weekly, 2, seriesId, err));
 
     // ---- monthly across February --------------------------------------
-    CHECK(m.makeRecurringReservation("Cruiser", iso("2027-01-31"),
-                                     iso("2027-01-31"),
-                                     RecurrencePlan::Monthly, 2, seriesId,
-                                     err));
+    CHECK(m.makeRecurringReservation("Cruiser", iso("2027-01-31"), iso("2027-01-31"),
+                                     RecurrencePlan::Monthly, 2, seriesId, err));
     CHECK_EQ(seriesId, 2);
     mine = m.myReservations();
     CHECK_EQ(mine.size(), std::size_t(5)); // 3 weekly + 2 monthly
@@ -2835,7 +2748,7 @@ static void testRecurringFacade()
     for (const Reservation *r : mine)
         if (r->startDate() == iso("2026-12-01"))
             rentedSurvives = r->seriesId() == 1;
-    CHECK(rentedSurvives); // you cannot un-drive a car
+    CHECK(rentedSurvives);                             // you cannot un-drive a car
     CHECK_EQ(car->reservationCount(), std::size_t(4)); // occ1 + mina's + 2 monthly
 
     // Nothing left to cancel; the trail kept the cancellation.
@@ -2862,10 +2775,8 @@ static void testRecurringFacade()
 
     // ---- persistence: series tags and the counter survive -------------
     m.login("nima", "pass1234");
-    CHECK(m.makeRecurringReservation("Cruiser", iso("2028-03-01"),
-                                     iso("2028-03-03"),
-                                     RecurrencePlan::Biweekly, 2, seriesId,
-                                     err));
+    CHECK(m.makeRecurringReservation("Cruiser", iso("2028-03-01"), iso("2028-03-03"),
+                                     RecurrencePlan::Biweekly, 2, seriesId, err));
     CHECK_EQ(seriesId, 3);
     m.logout();
     CHECK(m.saveData(dir));
@@ -2891,10 +2802,8 @@ static void testRecurringFacade()
 
     // The counter advanced past every loaded tag: the next series is #4.
     int nextSeries = 0;
-    CHECK(reloaded.makeRecurringReservation("Cruiser", iso("2029-06-01"),
-                                            iso("2029-06-02"),
-                                            RecurrencePlan::Weekly, 2,
-                                            nextSeries, err));
+    CHECK(reloaded.makeRecurringReservation("Cruiser", iso("2029-06-01"), iso("2029-06-02"),
+                                            RecurrencePlan::Weekly, 2, nextSeries, err));
     CHECK_EQ(nextSeries, 4);
     reloaded.logout();
 }
@@ -2922,31 +2831,25 @@ static void testRentalManagerReminders()
     // A weekly series on Alpha picking up in 3 days (two further
     // occurrences outside the horizon), a Beta one-off due TODAY,
     // a Beta one-off tomorrow, and one far beyond every horizon.
-    CHECK(m.makeRecurringReservation("Alpha", iso("2026-11-16"),
-                                     iso("2026-11-18"),
-                                     RecurrencePlan::Weekly, 3, seriesId,
-                                     err));
-    CHECK(m.makeReservation("Beta", iso("2026-11-13"), iso("2026-11-13"),
-                            err));
-    CHECK(m.makeReservation("Beta", iso("2026-11-14"), iso("2026-11-15"),
-                            err));
-    CHECK(m.makeReservation("Beta", iso("2027-03-01"), iso("2027-03-03"),
-                            err));
+    CHECK(m.makeRecurringReservation("Alpha", iso("2026-11-16"), iso("2026-11-18"),
+                                     RecurrencePlan::Weekly, 3, seriesId, err));
+    CHECK(m.makeReservation("Beta", iso("2026-11-13"), iso("2026-11-13"), err));
+    CHECK(m.makeReservation("Beta", iso("2026-11-14"), iso("2026-11-15"), err));
+    CHECK(m.makeReservation("Beta", iso("2027-03-01"), iso("2027-03-03"), err));
 
     // Inside the horizon: Beta today, Beta tomorrow, Alpha in 3 —
     // the later Alpha occurrences (10 and 17 days out) stay quiet.
-    std::vector<PickupReminder> up = m.upcomingPickups(
-        REMINDER_HORIZON_DAYS, today);
+    std::vector<PickupReminder> up = m.upcomingPickups(REMINDER_HORIZON_DAYS, today);
     CHECK_EQ(up.size(), std::size_t(3));
-    CHECK(up[0].carName == "Beta");            // soonest first
-    CHECK_EQ(up[0].daysAway, 0);               // due today still reminds
-    CHECK_EQ(up[0].seriesId, 0);               // a one-off has no tag
+    CHECK(up[0].carName == "Beta"); // soonest first
+    CHECK_EQ(up[0].daysAway, 0);    // due today still reminds
+    CHECK_EQ(up[0].seriesId, 0);    // a one-off has no tag
     CHECK_EQ(up[0].start, iso("2026-11-13"));
     CHECK(up[1].carName == "Beta");
     CHECK_EQ(up[1].daysAway, 1);
     CHECK(up[2].carName == "Alpha");
     CHECK_EQ(up[2].daysAway, 3);
-    CHECK_EQ(up[2].seriesId, seriesId);        // the series tag rides along
+    CHECK_EQ(up[2].seriesId, seriesId); // the series tag rides along
     CHECK_EQ(up[2].start, iso("2026-11-16"));
 
     // A wide horizon pulls every queued pickup in, still ordered:
@@ -3014,7 +2917,6 @@ static void testRentalManagerReminders()
     CHECK_EQ(m.cancelRecurringSeries(999, err), 0);
 }
 
-
 /* ============================================================
  *  Reschedule: change-of-plans move rules   (v3.2.0)
  * ============================================================ */
@@ -3037,7 +2939,6 @@ static void testRescheduleMoveRules()
     CHECK(!isValidMoveRange(iso("2026-11-13"), iso("2026-11-15"), today));
     CHECK(!isValidMoveRange(iso("2026-11-13"), iso("2026-11-13"), today));
 }
-
 
 /* ============================================================
  *  RentalManager: change-a-booking flow   (v3.2.0)
@@ -3067,8 +2968,7 @@ static void testRentalManagerReschedule()
     auto hasAudit = [&](const std::string &action, const std::string &needle)
     {
         for (const AuditEntry &e : m.auditLog().all())
-            if (e.action == action &&
-                e.detail.find(needle) != std::string::npos)
+            if (e.action == action && e.detail.find(needle) != std::string::npos)
                 return true;
         return false;
     };
@@ -3087,8 +2987,7 @@ static void testRentalManagerReschedule()
 
     /* ---- moving ONE booking ---- */
     m.login("nima", "pass1234");
-    CHECK(m.rescheduleReservation(1, iso("2026-11-18"), iso("2026-11-20"),
-                                  today, err));
+    CHECK(m.rescheduleReservation(1, iso("2026-11-18"), iso("2026-11-20"), today, err));
     Reservation *beta = findBooking(1);
     CHECK(beta != nullptr);
     CHECK_EQ(beta->startDate(), iso("2026-11-18"));
@@ -3105,38 +3004,30 @@ static void testRentalManagerReschedule()
 
     // A same-range "move" succeeds — the booking's OLD slot must
     // not stand in the way of its own new dates.
-    CHECK(m.rescheduleReservation(2, iso("2026-11-25"), iso("2026-11-27"),
-                                  today, err));
+    CHECK(m.rescheduleReservation(2, iso("2026-11-25"), iso("2026-11-27"), today, err));
 
     // Unknown ids, other people's bookings, clashing new dates.
-    CHECK(!m.rescheduleReservation(999, iso("2026-11-18"), iso("2026-11-19"),
-                                   today, err));
+    CHECK(!m.rescheduleReservation(999, iso("2026-11-18"), iso("2026-11-19"), today, err));
     CHECK(err.find("No queued booking") != std::string::npos);
     m.logout();
     m.login("parisa", "pass1234");
-    CHECK(!m.rescheduleReservation(1, iso("2026-11-18"), iso("2026-11-19"),
-                                   today, err));
+    CHECK(!m.rescheduleReservation(1, iso("2026-11-18"), iso("2026-11-19"), today, err));
     CHECK(err.find("No queued booking") != std::string::npos);
     m.logout();
     m.login("nima", "pass1234");
-    CHECK(!m.rescheduleReservation(2, iso("2026-11-28"), iso("2026-11-30"),
-                                   today, err));
+    CHECK(!m.rescheduleReservation(2, iso("2026-11-28"), iso("2026-11-30"), today, err));
     CHECK(err.find("overlap") != std::string::npos);
     CHECK_EQ(findBooking(2)->startDate(),
              iso("2026-11-25")); // refused -> untouched
 
     // A move into the past is refused before the schedule is touched.
-    CHECK(!m.rescheduleReservation(2, iso("2026-11-01"), iso("2026-11-03"),
-                                   today, err));
+    CHECK(!m.rescheduleReservation(2, iso("2026-11-01"), iso("2026-11-03"), today, err));
     CHECK(err.find("Invalid new dates") != std::string::npos);
-    CHECK(!m.rescheduleReservation(2, iso("2026-11-24"), iso("2026-11-23"),
-                                   today, err));
+    CHECK(!m.rescheduleReservation(2, iso("2026-11-24"), iso("2026-11-23"), today, err));
 
     // A pickup due TODAY can still change plans.
-    CHECK(m.rescheduleReservation(2, iso("2026-11-14"), iso("2026-11-15"),
-                                  today, err));
-    CHECK(m.rescheduleReservation(2, iso("2026-11-25"), iso("2026-11-27"),
-                                  today, err));
+    CHECK(m.rescheduleReservation(2, iso("2026-11-14"), iso("2026-11-15"), today, err));
+    CHECK(m.rescheduleReservation(2, iso("2026-11-25"), iso("2026-11-27"), today, err));
     CHECK(hasAudit("reservation.moved", "2026-11-25..2026-11-27 -> "
                                         "2026-11-14..2026-11-15"));
 
@@ -3150,16 +3041,13 @@ static void testRentalManagerReschedule()
     m.login("nima", "pass1234");
 
     // The handed-over booking cannot move — you cannot un-drive it.
-    CHECK(!m.rescheduleReservation(4, iso("2026-11-21"), iso("2026-11-22"),
-                                   today, err));
+    CHECK(!m.rescheduleReservation(4, iso("2026-11-21"), iso("2026-11-22"), today, err));
     CHECK(err.find("No queued booking") != std::string::npos);
     // ...and its served window blocks every move onto it...
-    CHECK(!m.rescheduleReservation(1, iso("2026-11-14"), iso("2026-11-15"),
-                                   today, err));
+    CHECK(!m.rescheduleReservation(1, iso("2026-11-14"), iso("2026-11-15"), today, err));
     CHECK(err.find("overlap") != std::string::npos);
     // ...while a later booking on the rented car still moves.
-    CHECK(m.rescheduleReservation(1, iso("2026-11-21"), iso("2026-11-23"),
-                                  today, err));
+    CHECK(m.rescheduleReservation(1, iso("2026-11-21"), iso("2026-11-23"), today, err));
     CHECK_EQ(findBooking(1)->startDate(), iso("2026-11-21"));
 
     // A stale past pickup still queued (booked late, never served)
@@ -3167,14 +3055,12 @@ static void testRentalManagerReschedule()
     // served booking stays the one the heap front points at.
     CHECK(m.makeReservation("Alpha", iso("2026-11-10"), iso("2026-11-12"),
                             err)); // #5, past-dated
-    CHECK(!m.rescheduleReservation(5, iso("2026-11-21"), iso("2026-11-22"),
-                                   today, err));
+    CHECK(!m.rescheduleReservation(5, iso("2026-11-21"), iso("2026-11-22"), today, err));
     CHECK(err.find("pickup day has passed") != std::string::npos);
 
     /* ---- moving a WHOLE series ---- */
     int S = 0;
-    CHECK(m.makeRecurringReservation("Alpha", iso("2026-12-01"),
-                                     iso("2026-12-03"),
+    CHECK(m.makeRecurringReservation("Alpha", iso("2026-12-01"), iso("2026-12-03"),
                                      RecurrencePlan::Weekly, 3, S, err));
     CHECK(S > 0);
     auto findSeries = [&](int seriesId)
@@ -3183,8 +3069,7 @@ static void testRentalManagerReschedule()
         for (Reservation *r : m.myReservations())
             if (r->seriesId() == seriesId)
                 v.push_back(r);
-        std::sort(v.begin(), v.end(),
-                  [](const Reservation *a, const Reservation *b)
+        std::sort(v.begin(), v.end(), [](const Reservation *a, const Reservation *b)
                   { return a->startDate() < b->startDate(); });
         return v;
     };
@@ -3196,11 +3081,11 @@ static void testRentalManagerReschedule()
     occ = findSeries(S);
     CHECK_EQ(occ.size(), std::size_t(3));
     CHECK_EQ(occ[0]->startDate(), iso("2026-12-05"));
-    CHECK_EQ(occ[0]->endDate(), iso("2026-12-07")); // length kept
+    CHECK_EQ(occ[0]->endDate(), iso("2026-12-07"));   // length kept
     CHECK_EQ(occ[1]->startDate(), iso("2026-12-12")); // spacing kept
     CHECK_EQ(occ[2]->startDate(), iso("2026-12-19"));
-    CHECK(hasAudit("recurring.moved", "series #" + std::to_string(S)
-                                          + ": 3 booking(s) shifted +4"));
+    CHECK(
+        hasAudit("recurring.moved", "series #" + std::to_string(S) + ": 3 booking(s) shifted +4"));
 
     // Reminders follow the series to its new dates.
     up = m.upcomingPickups(100, today);
@@ -3220,8 +3105,7 @@ static void testRentalManagerReschedule()
     // after a shift to 12-04 occurrence 3 lands on 12-18..20.
     m.logout();
     m.login("parisa", "pass1234");
-    CHECK(m.makeReservation("Alpha", iso("2026-12-17"), iso("2026-12-18"),
-                            err));
+    CHECK(m.makeReservation("Alpha", iso("2026-12-17"), iso("2026-12-18"), err));
     m.logout();
     m.login("nima", "pass1234");
     CHECK_EQ(m.rescheduleSeries(S, iso("2026-12-04"), today, err), 0);
@@ -3238,8 +3122,7 @@ static void testRentalManagerReschedule()
     CHECK(err.find("not yours") != std::string::npos);
     m.logout();
     m.login("desk", "staff1234");
-    CHECK(!m.rescheduleReservation(1, iso("2026-11-21"), iso("2026-11-22"),
-                                   today, err));
+    CHECK(!m.rescheduleReservation(1, iso("2026-11-21"), iso("2026-11-22"), today, err));
     CHECK(err.find("Only logged-in customers") != std::string::npos);
     CHECK_EQ(m.rescheduleSeries(S, iso("2026-12-06"), today, err), 0);
     m.logout();
@@ -3265,7 +3148,6 @@ static void testRentalManagerReschedule()
     CHECK_EQ(m.rescheduleSeries(999, iso("2026-12-06"), today, err), 0);
 }
 
-
 /* ============================================================
  *  RentalHistory + MonthlyReport   (v3.0.0)
  * ============================================================ */
@@ -3279,17 +3161,15 @@ static void testRentalHistoryLedger()
     // Append-only: records come back in completion order.
     RentalHistory h;
     CHECK(h.empty());
-    h.add(RentalRecord("Benz C200", "ali", "2026-11-01", "2026-11-05",
-                       "2026-11-05", 900.0, 53.19, 540.0, 1386.81));
-    h.add(RentalRecord("Pride 131", "mina", "2026-11-02", "2026-11-04",
-                       "2026-11-05", 150.0, 4.5, 0.0, 145.5));
+    h.add(RentalRecord("Benz C200", "ali", "2026-11-01", "2026-11-05", "2026-11-05", 900.0, 53.19,
+                       540.0, 1386.81));
+    h.add(RentalRecord("Pride 131", "mina", "2026-11-02", "2026-11-04", "2026-11-05", 150.0, 4.5,
+                       0.0, 145.5));
     CHECK_EQ(h.size(), std::size_t(2));
 
     std::vector<std::string> order;
-    h.forEach([&](const RentalRecord &r)
-              { order.push_back(r.carName + "/" + r.customer); });
-    CHECK(order.size() == 2 && order[0] == "Benz C200/ali" &&
-          order[1] == "Pride 131/mina");
+    h.forEach([&](const RentalRecord &r) { order.push_back(r.carName + "/" + r.customer); });
+    CHECK(order.size() == 2 && order[0] == "Benz C200/ali" && order[1] == "Pride 131/mina");
 
     // Round-trip: every field survives, including the money split.
     CHECK(h.saveCSV(dir + "/history.csv"));
@@ -3297,11 +3177,12 @@ static void testRentalHistoryLedger()
     CHECK(reloaded.loadCSV(dir + "/history.csv"));
     CHECK_EQ(reloaded.size(), std::size_t(2));
     RentalRecord first;
-    reloaded.forEach([&](const RentalRecord &r)
-                     {
-                         if (first.carName.empty())
-                             first = r;
-                     });
+    reloaded.forEach(
+        [&](const RentalRecord &r)
+        {
+            if (first.carName.empty())
+                first = r;
+        });
     CHECK(first.carName == "Benz C200" && first.customer == "ali");
     CHECK(first.startISO == "2026-11-01" && first.endISO == "2026-11-05" &&
           first.returnISO == "2026-11-05");
@@ -3336,18 +3217,18 @@ static void testRentalHistoryLedger()
 static void testMonthlyReportBuilder()
 {
     RentalHistory h;
-    h.add(RentalRecord("Benz C200", "ali", "2026-11-01", "2026-11-05",
-                       "2026-11-05", 900.0, 53.19, 540.0, 1386.81));
-    h.add(RentalRecord("Pride 131", "mina", "2026-11-02", "2026-11-04",
-                       "2026-11-05", 150.0, 4.5, 0.0, 145.5));
-    h.add(RentalRecord("Benz C200", "nima", "2026-11-15", "2026-11-17",
-                       "2026-11-17", 540.0, 16.2, 0.0, 523.8));
-    h.add(RentalRecord("Pride 131", "ali", "2026-11-16", "2026-11-17",
-                       "2026-11-17", 150.0, 4.5, 0.0, 145.5));
-    h.add(RentalRecord("Tucson 2023", "mina", "2026-11-10", "2026-11-20",
-                       "2026-11-20", 1200.0, 0.0, 360.0, 1560.0));
-    h.add(RentalRecord("Benz C200", "ali", "2026-10-25", "2026-10-31",
-                       "2026-10-31", 900.0, 0.0, 0.0, 900.0));
+    h.add(RentalRecord("Benz C200", "ali", "2026-11-01", "2026-11-05", "2026-11-05", 900.0, 53.19,
+                       540.0, 1386.81));
+    h.add(RentalRecord("Pride 131", "mina", "2026-11-02", "2026-11-04", "2026-11-05", 150.0, 4.5,
+                       0.0, 145.5));
+    h.add(RentalRecord("Benz C200", "nima", "2026-11-15", "2026-11-17", "2026-11-17", 540.0, 16.2,
+                       0.0, 523.8));
+    h.add(RentalRecord("Pride 131", "ali", "2026-11-16", "2026-11-17", "2026-11-17", 150.0, 4.5,
+                       0.0, 145.5));
+    h.add(RentalRecord("Tucson 2023", "mina", "2026-11-10", "2026-11-20", "2026-11-20", 1200.0, 0.0,
+                       360.0, 1560.0));
+    h.add(RentalRecord("Benz C200", "ali", "2026-10-25", "2026-10-31", "2026-10-31", 900.0, 0.0,
+                       0.0, 900.0));
 
     const MonthlyReport nov = buildMonthlyReport(h, 2026, 11);
     CHECK(nov.month == "2026-11");
@@ -3362,13 +3243,10 @@ static void testMonthlyReportBuilder()
     CHECK_EQ(nov.perCar.size(), std::size_t(3));
     if (nov.perCar.size() == 3)
     {
-        CHECK(nov.perCar[0].name == "Benz C200" &&
-              nov.perCar[0].rentals == 2 &&
+        CHECK(nov.perCar[0].name == "Benz C200" && nov.perCar[0].rentals == 2 &&
               approx(nov.perCar[0].revenue, 1910.61));
-        CHECK(nov.perCar[1].name == "Tucson 2023" &&
-              approx(nov.perCar[1].revenue, 1560.0));
-        CHECK(nov.perCar[2].name == "Pride 131" &&
-              approx(nov.perCar[2].revenue, 291.0));
+        CHECK(nov.perCar[1].name == "Tucson 2023" && approx(nov.perCar[1].revenue, 1560.0));
+        CHECK(nov.perCar[2].name == "Pride 131" && approx(nov.perCar[2].revenue, 291.0));
     }
 
     // Only days that saw a return appear, ascending; the tie on two
@@ -3433,8 +3311,7 @@ static void testRentalManagerMonthly()
     // The ledger holds the full invoice breakdown.
     CHECK_EQ(m.history().size(), std::size_t(1));
     RentalRecord rec;
-    m.history().forEach([&](const RentalRecord &r)
-                        { rec = r; });
+    m.history().forEach([&](const RentalRecord &r) { rec = r; });
     CHECK(rec.carName == "Benz C200" && rec.customer == "ali");
     CHECK(rec.startISO == "2027-03-01" && rec.endISO == "2027-03-05" &&
           rec.returnISO == "2027-03-07");
@@ -3512,7 +3389,6 @@ static void testRentalManagerMonthly()
     reloaded.logout();
 }
 
-
 /* ============================================================
  *  Pricing: dynamic discount maths   (v3.0.0)
  * ============================================================ */
@@ -3559,16 +3435,14 @@ static void testPricingMaths()
     // Late days stay at the RAW daily rate, untouched by discounts:
     // 3 x 180 = 540 -> 523.80 at Bronze, + 3 late days x 180 x 1.5
     // = 810.
-    const PriceBreakdown late =
-        quoteRental(3, 180.0, LoyaltyTier::Bronze, 3);
+    const PriceBreakdown late = quoteRental(3, 180.0, LoyaltyTier::Bronze, 3);
     CHECK(approx(late.discount, 16.2));
     CHECK(approx(late.penalty, 810.0));
     CHECK(approx(late.total, 1333.8));
     CHECK(approx(late.total, 540.0 * 0.97 + 810.0));
 
     // Platinum on a month-long booking: 18% + 10%.
-    const PriceBreakdown top =
-        quoteRental(30, 10.0, LoyaltyTier::Platinum);
+    const PriceBreakdown top = quoteRental(30, 10.0, LoyaltyTier::Platinum);
     CHECK(approx(top.total, 300.0 * 0.82 * 0.90));
     CHECK(discountNote(top) == "78.60 off (18% long rental, 10% Platinum)");
 
@@ -3633,8 +3507,7 @@ static void testDiscountedInvoices()
     CHECK(m.deliverCar("Boxer", err));
     CHECK(m.returnCar("Boxer", 34, err)); // 2 days late
     CHECK(m.lastDiscountNote() == "9.00 off (3% long rental)");
-    CHECK(approx(m.searchCar("Boxer")->totalIncome(),
-                 200.0 + 485.0 + 591.0));
+    CHECK(approx(m.searchCar("Boxer")->totalIncome(), 200.0 + 485.0 + 591.0));
     discountAudits = 0;
     for (const AuditEntry &e : m.auditLog().all())
         if (e.action == "discount.applied")
@@ -3642,6 +3515,78 @@ static void testDiscountedInvoices()
     CHECK_EQ(discountAudits, 2); // the 5-day and the late 3-day return
 }
 
+/* ============================================================
+ *  Cli: argument parsing (v3.3.0)
+ * ============================================================ */
+static void testCli()
+{
+    // No options: the interactive run, nothing toggled, no error.
+    {
+        char *argv[] = {(char *)"car_rental"};
+        const cli::Options o = cli::parse(1, argv);
+        CHECK(!o.showHelp && !o.showVersion && !o.noColor);
+        CHECK(o.error.empty());
+    }
+    // Help, long and short form.
+    {
+        char *argv[] = {(char *)"car_rental", (char *)"--help"};
+        const cli::Options o = cli::parse(2, argv);
+        CHECK(o.showHelp);
+        CHECK(!o.showVersion);
+        CHECK(o.error.empty());
+    }
+    {
+        char *argv[] = {(char *)"car_rental", (char *)"-h"};
+        CHECK(cli::parse(2, argv).showHelp);
+    }
+    // Version, long and short form.
+    {
+        char *argv[] = {(char *)"car_rental", (char *)"--version"};
+        const cli::Options o = cli::parse(2, argv);
+        CHECK(o.showVersion);
+        CHECK(!o.showHelp);
+    }
+    {
+        char *argv[] = {(char *)"car_rental", (char *)"-v"};
+        CHECK(cli::parse(2, argv).showVersion);
+    }
+    // --no-color, alone and beside other flags.
+    {
+        char *argv[] = {(char *)"car_rental", (char *)"--no-color"};
+        const cli::Options o = cli::parse(2, argv);
+        CHECK(o.noColor);
+        CHECK(!o.showHelp && !o.showVersion);
+        CHECK(o.error.empty());
+    }
+    {
+        char *argv[] = {(char *)"car_rental", (char *)"--no-color", (char *)"-h"};
+        const cli::Options o = cli::parse(3, argv);
+        CHECK(o.noColor && o.showHelp);
+    }
+    // Documented precedence: --version wins over --help.
+    {
+        char *argv[] = {(char *)"car_rental", (char *)"-h", (char *)"-v"};
+        const cli::Options o = cli::parse(3, argv);
+        CHECK(o.showVersion && o.showHelp);
+    }
+    // Unknown options fail and name the argument (usage error, exit 1).
+    {
+        char *argv[] = {(char *)"car_rental", (char *)"--datadir"};
+        const cli::Options o = cli::parse(2, argv);
+        CHECK(!o.error.empty());
+        CHECK(o.error.find("--datadir") != std::string::npos);
+        CHECK(!o.showHelp && !o.showVersion);
+    }
+    {
+        char *argv[] = {(char *)"car_rental", (char *)"-x"};
+        CHECK(cli::parse(2, argv).error.find("-x") != std::string::npos);
+    }
+    // A mistaken file argument is still just an unknown option.
+    {
+        char *argv[] = {(char *)"car_rental", (char *)"readme.md"};
+        CHECK(cli::parse(2, argv).error.find("readme.md") != std::string::npos);
+    }
+}
 
 int main()
 {
@@ -3687,6 +3632,7 @@ int main()
     runSuite("RentalHistory: ledger & CSV round-trip", testRentalHistoryLedger);
     runSuite("Monthly report: builder maths", testMonthlyReportBuilder);
     runSuite("RentalManager: monthly report flow", testRentalManagerMonthly);
+    runSuite("Cli: argument parsing", testCli);
 
     std::cout << "\n" << g_checks << " checks, " << g_failures << " failure(s)\n";
     if (g_failures == 0)

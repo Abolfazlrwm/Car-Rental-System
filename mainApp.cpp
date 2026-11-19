@@ -17,6 +17,7 @@
  */
 
 #include <cstdio>
+#include <cstdlib> // NO_COLOR environment variable
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -32,13 +33,14 @@
 #endif
 
 #include "manager_system/Analytics.h"
-#include "manager_system/RentalManager.h"
+#include "manager_system/Cli.h"
 #include "manager_system/Date.h"
 #include "manager_system/JsonExport.h"
 #include "manager_system/Loyalty.h"
 #include "manager_system/MonthlyReport.h"
 #include "manager_system/Pricing.h"
 #include "manager_system/Recurring.h"
+#include "manager_system/RentalManager.h"
 
 /* Program version, reported by --version / --help. */
 static const char *APP_VERSION = "3.2.0";
@@ -47,18 +49,35 @@ static const char *APP_VERSION = "3.2.0";
  *  Terminal colors (no-ops when stdout is piped)
  * ============================================================ */
 
-static const bool g_colors = IS_TTY;
+/* Colors start on for terminals (and the browser terminal); --no-color
+ * or a NO_COLOR environment variable (no-color.org) turns them off. */
+static bool g_colors = IS_TTY;
 
 static std::string colorize(const std::string &text, const char *code)
 {
     return g_colors ? std::string(code) + text + "\033[0m" : text;
 }
 
-static std::string bold(const std::string &s) { return colorize(s, "\033[1m"); }
-static std::string green(const std::string &s) { return colorize(s, "\033[32m"); }
-static std::string red(const std::string &s) { return colorize(s, "\033[31m"); }
-static std::string yellow(const std::string &s) { return colorize(s, "\033[33m"); }
-static std::string cyan(const std::string &s) { return colorize(s, "\033[36m"); }
+static std::string bold(const std::string &s)
+{
+    return colorize(s, "\033[1m");
+}
+static std::string green(const std::string &s)
+{
+    return colorize(s, "\033[32m");
+}
+static std::string red(const std::string &s)
+{
+    return colorize(s, "\033[31m");
+}
+static std::string yellow(const std::string &s)
+{
+    return colorize(s, "\033[33m");
+}
+static std::string cyan(const std::string &s)
+{
+    return colorize(s, "\033[36m");
+}
 
 /* ============================================================
  *  Input helpers — the anti-segfault, anti-infinite-loop layer
@@ -160,8 +179,7 @@ static int readMenuChoice(const std::string &prompt, int minChoice, int maxChoic
     {
         if (choice >= minChoice && choice <= maxChoice)
             return choice;
-        std::cout << red("  Choice must be between ")
-                  << minChoice << " and " << maxChoice << ".\n";
+        std::cout << red("  Choice must be between ") << minChoice << " and " << maxChoice << ".\n";
     }
     return maxChoice; // EOF -> last option (usually "exit/logout")
 }
@@ -185,10 +203,9 @@ static void printBanner()
 static void printCarTableHeader()
 {
     std::ostringstream oss;
-    oss << "  " << std::left << std::setw(16) << "NAME" << std::setw(12)
-        << "BRAND" << std::right << std::setw(10) << "PRICE/DAY"
-        << "  " << std::left << std::setw(12) << "STATUS"
-        << std::right << std::setw(6) << "QUEUE";
+    oss << "  " << std::left << std::setw(16) << "NAME" << std::setw(12) << "BRAND" << std::right
+        << std::setw(10) << "PRICE/DAY"
+        << "  " << std::left << std::setw(12) << "STATUS" << std::right << std::setw(6) << "QUEUE";
     std::cout << bold(oss.str()) << "\n";
     std::cout << "  " << std::string(62, '-') << "\n";
 }
@@ -206,12 +223,10 @@ static void printCarRow(const Car *car)
     std::ostringstream price;
     price << std::fixed << std::setprecision(1) << car->pricePerDay();
 
-    std::cout << "  " << std::left << std::setw(16) << car->name()
-              << std::setw(12) << car->brand()
-              << std::right << std::setw(10) << price.str()
-              << "  " << std::left << std::setw(12) << status
-              << std::right << std::setw(4) << car->reservationCount()
-              << std::setw(2) << " booking(s)"
+    std::cout << "  " << std::left << std::setw(16) << car->name() << std::setw(12) << car->brand()
+              << std::right << std::setw(10) << price.str() << "  " << std::left << std::setw(12)
+              << status << std::right << std::setw(4) << car->reservationCount() << std::setw(2)
+              << " booking(s)"
               << "\n";
 }
 
@@ -224,11 +239,11 @@ static void printFleet(RentalManager &system, bool sorted)
         return;
     }
 
-    std::cout << "\n" << bold("  FLEET (" + std::to_string(count) + " cars"
-                               + (sorted ? ", sorted by name" : ", insertion order") + ")\n");
+    std::cout << "\n"
+              << bold("  FLEET (" + std::to_string(count) + " cars" +
+                      (sorted ? ", sorted by name" : ", insertion order") + ")\n");
     printCarTableHeader();
-    auto printRow = [](Car *car)
-    { printCarRow(car); };
+    auto printRow = [](Car *car) { printCarRow(car); };
     if (sorted)
         system.forEachCarSorted(printRow);
     else
@@ -245,23 +260,19 @@ static void printFleet(RentalManager &system, bool sorted)
  * ============================================================ */
 static void printPickupReminders(const RentalManager &system)
 {
-    const std::vector<PickupReminder> pickups = system.upcomingPickups(
-        REMINDER_HORIZON_DAYS, Date::todaySerial());
+    const std::vector<PickupReminder> pickups =
+        system.upcomingPickups(REMINDER_HORIZON_DAYS, Date::todaySerial());
     if (pickups.empty())
         return;
 
-    std::cout << bold(cyan("\n===== PICKUP REMINDERS | next "
-                           + std::to_string(REMINDER_HORIZON_DAYS)
-                           + " days =====\n"));
+    std::cout << bold(cyan("\n===== PICKUP REMINDERS | next " +
+                           std::to_string(REMINDER_HORIZON_DAYS) + " days =====\n"));
     for (const PickupReminder &p : pickups)
     {
-        std::cout << "  #" << p.reservationId
-                  << " | " << analyticsPad(p.carName, 16)
-                  << " | " << Date::toISO(p.start) << "  "
-                  << yellow(reminderPhrase(p.daysAway));
+        std::cout << "  #" << p.reservationId << " | " << analyticsPad(p.carName, 16) << " | "
+                  << Date::toISO(p.start) << "  " << yellow(reminderPhrase(p.daysAway));
         if (p.seriesId > 0)
-            std::cout << yellow("  [series #"
-                                + std::to_string(p.seriesId) + "]");
+            std::cout << yellow("  [series #" + std::to_string(p.seriesId) + "]");
         std::cout << "\n";
     }
     std::cout << yellow("  Review or cancel them in My reservations.\n");
@@ -278,16 +289,13 @@ static void printReservations(const std::vector<Reservation *> &list)
     std::cout << "  " << std::string(66, '-') << "\n";
     for (const Reservation *r : list)
     {
-        std::cout << "  #" << r->id()
-                  << " | " << std::left << std::setw(16) << r->car()->name()
-                  << " | " << Date::toISO(r->startDate()) << " -> "
-                  << Date::toISO(r->endDate())
+        std::cout << "  #" << r->id() << " | " << std::left << std::setw(16) << r->car()->name()
+                  << " | " << Date::toISO(r->startDate()) << " -> " << Date::toISO(r->endDate())
                   << " (" << r->durationDays() << " day(s))";
         // (v3.0.0) Occurrences of a recurring series carry the shared
         // series tag, so the customer can cancel the rest in one step.
         if (r->seriesId() > 0)
-            std::cout << yellow("  [series #"
-                                + std::to_string(r->seriesId()) + "]");
+            std::cout << yellow("  [series #" + std::to_string(r->seriesId()) + "]");
         std::cout << "\n";
     }
 }
@@ -303,11 +311,9 @@ static void printWaitlist(const std::vector<WaitlistEntry *> &list)
     std::cout << bold("\n  YOUR WAITLIST\n");
     std::cout << "  " << std::string(60, '-') << "\n";
     for (const WaitlistEntry *e : list)
-        std::cout << "  wish #" << e->joinOrder()
-                  << " | " << std::left << std::setw(16) << e->car()->name()
-                  << " | " << Date::toISO(e->startDate()) << " -> "
-                  << Date::toISO(e->endDate())
-                  << " (" << e->durationDays() << " day(s))\n";
+        std::cout << "  wish #" << e->joinOrder() << " | " << std::left << std::setw(16)
+                  << e->car()->name() << " | " << Date::toISO(e->startDate()) << " -> "
+                  << Date::toISO(e->endDate()) << " (" << e->durationDays() << " day(s))\n";
     std::cout << yellow("  We auto-book you the moment a wished range frees up.\n");
 }
 
@@ -343,8 +349,7 @@ static void loginScreen(RentalManager &system)
 
     if (system.login(username, password))
     {
-        std::cout << green("  Welcome, " + username + " ("
-                           + system.currentUserRole() + ")!\n");
+        std::cout << green("  Welcome, " + username + " (" + system.currentUserRole() + ")!\n");
         // (v3.1.0) A customer with pickups due this week hears
         // about them the moment they sign in. Non-customers hold
         // no pickups, so the screen stays quiet for staff.
@@ -374,19 +379,18 @@ static std::string money(double amount)
 /// duration + the customer's CURRENT rank, and the estimated
 /// total. The return invoice re-prices with the rank held that
 /// day — the estimate says so, and late fees are never included.
-static void printBookingEstimate(const Car *car, int start, int end,
-                                 LoyaltyTier tier)
+static void printBookingEstimate(const Car *car, int start, int end, LoyaltyTier tier)
 {
     const int days = end - start + 1;
     const PriceBreakdown q = quoteRental(days, car->pricePerDay(), tier);
     const std::string note = discountNote(q);
-    std::cout << "  Estimate: " << days << " day(s) x "
-              << money(car->pricePerDay()) << " = " << money(q.base);
+    std::cout << "  Estimate: " << days << " day(s) x " << money(car->pricePerDay()) << " = "
+              << money(q.base);
     if (!note.empty())
         std::cout << yellow("  (" + note + ")");
     std::cout << "\n"
-                 "  Pay on delivery about " << bold(money(q.total))
-              << " — late fees are never discounted.\n";
+                 "  Pay on delivery about "
+              << bold(money(q.total)) << " — late fees are never discounted.\n";
 }
 
 /* ============================================================
@@ -396,8 +400,7 @@ static void printBookingEstimate(const Car *car, int start, int end,
  *  the next rank reuses the analytics bar primitives, so every
  *  number the customer sees is pinned by the unit tests.
  * ============================================================ */
-static void printLoyaltyCard(const std::string &username,
-                             const LoyaltyProfile &p)
+static void printLoyaltyCard(const std::string &username, const LoyaltyProfile &p)
 {
     std::cout << bold(cyan("\n===== LOYALTY CARD | " + username + " =====\n"));
     std::cout << "\n  Rank: " << bold(toString(p.tier())) << "\n";
@@ -411,17 +414,22 @@ static void printLoyaltyCard(const std::string &username,
         const LoyaltyTier next = nextTier(p.tier());
         const int span = tierThreshold(next) - tierThreshold(p.tier());
         const int done = p.lifetimePoints - tierThreshold(p.tier());
-        std::cout << "   " << analyticsBar(done, span, 28) << "  "
-                  << p.pointsToNextTier() << " points to " << toString(next)
-                  << "\n";
+        std::cout << "   " << analyticsBar(done, span, 28) << "  " << p.pointsToNextTier()
+                  << " points to " << toString(next) << "\n";
     }
 
     std::ostringstream rate;
     rate << std::fixed << std::setprecision(2) << tierMultiplier(p.tier());
-    std::cout << "  Points available  : " << p.points << "\n"
-                 "  Lifetime points   : " << p.lifetimePoints << "\n"
-                 "  Completed rentals : " << p.completedRentals << "\n"
-                 "  Earning rate      : x" << rate.str()
+    std::cout << "  Points available  : " << p.points
+              << "\n"
+                 "  Lifetime points   : "
+              << p.lifetimePoints
+              << "\n"
+                 "  Completed rentals : "
+              << p.completedRentals
+              << "\n"
+                 "  Earning rate      : x"
+              << rate.str()
               << " - 1 point per 10.00 spent, credited on return\n"
                  "  Redemption        : 10 points = 1.00 off your bill"
                  " (min 50, steps of 10)\n";
@@ -429,9 +437,9 @@ static void printLoyaltyCard(const std::string &username,
 
 static void customerMenu(RentalManager &system, bool &running)
 {
-    std::cout << bold(cyan("\n===== CUSTOMER MENU | " + system.currentUsername()
-                           + " | balance due: " + money(system.currentCustomerBalance())
-                           + " =====\n"));
+    std::cout << bold(cyan("\n===== CUSTOMER MENU | " + system.currentUsername() +
+                           " | balance due: " + money(system.currentCustomerBalance()) +
+                           " =====\n"));
     std::cout << "  1. View fleet\n"
                  "  2. Search car by name\n"
                  "  3. My reservations\n"
@@ -485,9 +493,7 @@ static void customerMenu(RentalManager &system, bool &running)
         if (hasSeries)
         {
             std::string answer;
-            if (!readLine(
-                    "  Cancel a whole series? enter its #id (empty = stay): ",
-                    answer) ||
+            if (!readLine("  Cancel a whole series? enter its #id (empty = stay): ", answer) ||
                 answer.empty())
                 break;
             int seriesId = 0;
@@ -503,9 +509,8 @@ static void customerMenu(RentalManager &system, bool &running)
             std::string error;
             const int removed = system.cancelRecurringSeries(seriesId, error);
             if (removed > 0)
-                std::cout << green("  Series #" + std::to_string(seriesId)
-                                   + ": " + std::to_string(removed)
-                                   + " upcoming booking(s) cancelled.\n");
+                std::cout << green("  Series #" + std::to_string(seriesId) + ": " +
+                                   std::to_string(removed) + " upcoming booking(s) cancelled.\n");
             else
                 std::cout << red("  " + error + "\n");
         }
@@ -526,8 +531,7 @@ static void customerMenu(RentalManager &system, bool &running)
         // and duration again one plan step later, as many times as
         // requested — atomically, or not at all.
         int repeat = 0;
-        if (!readInt("  Repeat: 0 none, 1 weekly, 2 biweekly, 3 monthly: ",
-                     repeat))
+        if (!readInt("  Repeat: 0 none, 1 weekly, 2 biweekly, 3 monthly: ", repeat))
             return;
 
         if (repeat == 0)
@@ -537,16 +541,14 @@ static void customerMenu(RentalManager &system, bool &running)
                 std::cout << green("  Reservation confirmed! Pay on delivery.\n");
                 // (v3.0.0) Money preview with the CURRENT rank.
                 if (Car *booked = system.searchCar(name))
-                    printBookingEstimate(booked, start, end,
-                                         system.myLoyalty().tier());
+                    printBookingEstimate(booked, start, end, system.myLoyalty().tier());
             }
             else
             {
                 std::cout << red("  Reservation failed: " + error + "\n");
                 if (error.find("overlap") != std::string::npos)
-                    std::cout << yellow(
-                        "  Tip: join the waitlist (option 6) and we book you\n"
-                        "       automatically when the range frees up.\n");
+                    std::cout << yellow("  Tip: join the waitlist (option 6) and we book you\n"
+                                        "       automatically when the range frees up.\n");
             }
             break;
         }
@@ -562,41 +564,34 @@ static void customerMenu(RentalManager &system, bool &running)
             return;
 
         int seriesId = 0;
-        if (system.makeRecurringReservation(name, start, end, plan, times,
-                                            seriesId, error))
+        if (system.makeRecurringReservation(name, start, end, plan, times, seriesId, error))
         {
-            std::cout << green("  Series #" + std::to_string(seriesId)
-                               + " booked: " + std::to_string(times) + " x "
-                               + toString(plan) + " on " + name + "\n");
+            std::cout << green("  Series #" + std::to_string(seriesId) +
+                               " booked: " + std::to_string(times) + " x " + toString(plan) +
+                               " on " + name + "\n");
             const int durationDays = end - start + 1;
             for (int i = 0; i < times; ++i)
             {
                 const int s = occurrenceStart(plan, start, i);
-                std::cout << "    pickup " << (i + 1) << ": "
-                          << Date::toISO(s) << " -> "
+                std::cout << "    pickup " << (i + 1) << ": " << Date::toISO(s) << " -> "
                           << Date::toISO(s + durationDays - 1) << "\n";
             }
             // (v3.0.0) Per-occurrence money preview + series total.
             if (Car *booked = system.searchCar(name))
             {
-                const PriceBreakdown q = quoteRental(
-                    durationDays, booked->pricePerDay(),
-                    system.myLoyalty().tier());
-                std::cout << "  Estimate per pickup: " << durationDays
-                          << " day(s) x " << money(booked->pricePerDay())
-                          << " = " << money(q.base);
+                const PriceBreakdown q =
+                    quoteRental(durationDays, booked->pricePerDay(), system.myLoyalty().tier());
+                std::cout << "  Estimate per pickup: " << durationDays << " day(s) x "
+                          << money(booked->pricePerDay()) << " = " << money(q.base);
                 if (q.discount > 0.0)
-                    std::cout << yellow(" -> " + money(q.total) + " after "
-                                        + discountNote(q).substr(
-                                            discountNote(q).find('(')));
+                    std::cout << yellow(" -> " + money(q.total) + " after " +
+                                        discountNote(q).substr(discountNote(q).find('(')));
                 std::cout << "\n"
                              "  Series total about "
-                          << bold(money(q.total * times))
-                          << " (late fees are never discounted).\n";
+                          << bold(money(q.total * times)) << " (late fees are never discounted).\n";
             }
-            std::cout << yellow(
-                "  The whole series is cancelled at once from\n"
-                "       My reservations (option 3) — just give its #id.\n");
+            std::cout << yellow("  The whole series is cancelled at once from\n"
+                                "       My reservations (option 3) — just give its #id.\n");
         }
         else
             std::cout << red("  Series booking failed: " + error + "\n");
@@ -612,15 +607,14 @@ static void customerMenu(RentalManager &system, bool &running)
         std::vector<Car *> freeCars = system.findAvailableCars(start, end);
         if (freeCars.empty())
         {
-            std::cout << red("  No car is free for " + Date::toISO(start)
-                             + " -> " + Date::toISO(end) + ".\n");
+            std::cout << red("  No car is free for " + Date::toISO(start) + " -> " +
+                             Date::toISO(end) + ".\n");
             std::cout << yellow("  Tip: join a car's waitlist (option 6) to be\n"
                                 "       auto-booked when a window opens up.\n");
             break;
         }
-        std::cout << bold("\n  FREE FOR " + Date::toISO(start) + " -> "
-                          + Date::toISO(end) + " ("
-                          + std::to_string(freeCars.size()) + " car(s))\n");
+        std::cout << bold("\n  FREE FOR " + Date::toISO(start) + " -> " + Date::toISO(end) + " (" +
+                          std::to_string(freeCars.size()) + " car(s))\n");
         printCarTableHeader();
         for (const Car *car : freeCars)
             printCarRow(car);
@@ -637,8 +631,8 @@ static void customerMenu(RentalManager &system, bool &running)
         if (!readDate("  Desired end   (YYYY-MM-DD): ", end))
             return;
         if (system.joinWaitlist(name, start, end, error))
-            std::cout << green("  You are on the waitlist for \"" + name
-                               + "\". We book you automatically when it frees up.\n");
+            std::cout << green("  You are on the waitlist for \"" + name +
+                               "\". We book you automatically when it frees up.\n");
         else
             std::cout << red("  Waitlist failed: " + error + "\n");
         break;
@@ -665,8 +659,8 @@ static void customerMenu(RentalManager &system, bool &running)
         if (!readInt("  Extra days: ", days))
             return;
         if (system.renewRental(name, days, error))
-            std::cout << green("  Rental extended by " + std::to_string(days)
-                               + " day(s). Extra charges apply at return.\n");
+            std::cout << green("  Rental extended by " + std::to_string(days) +
+                               " day(s). Extra charges apply at return.\n");
         else
             std::cout << red("  Renewal failed: " + error + "\n");
         break;
@@ -693,13 +687,12 @@ static void customerMenu(RentalManager &system, bool &running)
         const LoyaltyProfile profile = system.myLoyalty();
         const double owed = system.currentCustomerBalance();
         std::cout << bold(cyan("\n--- REDEEM LOYALTY POINTS ---\n"));
-        std::cout << "  Points available: " << profile.points
-                  << "  |  bill due: " << money(owed) << "\n";
+        std::cout << "  Points available: " << profile.points << "  |  bill due: " << money(owed)
+                  << "\n";
         if (owed <= 0.0)
         {
-            std::cout << yellow(
-                "  Your bill is clear - points are redeemed against a bill,\n"
-                "       so come back after your next rental.\n");
+            std::cout << yellow("  Your bill is clear - points are redeemed against a bill,\n"
+                                "       so come back after your next rental.\n");
             break;
         }
         int points;
@@ -708,12 +701,10 @@ static void customerMenu(RentalManager &system, bool &running)
         std::string error;
         const double credited = system.redeemPoints(points, error);
         if (credited >= 0.0)
-            std::cout << green("  Credit of " + money(credited)
-                               + " applied. Bill now: "
-                               + money(system.currentCustomerBalance())
-                               + ", points left: "
-                               + std::to_string(system.myLoyalty().points)
-                               + ".\n");
+            std::cout << green("  Credit of " + money(credited) +
+                               " applied. Bill now: " + money(system.currentCustomerBalance()) +
+                               ", points left: " + std::to_string(system.myLoyalty().points) +
+                               ".\n");
         else
             std::cout << red("  Redemption failed: " + error + "\n");
         break;
@@ -732,8 +723,7 @@ static void customerMenu(RentalManager &system, bool &running)
         // they follow the new dates automatically.
         std::cout << bold(cyan("\n--- CHANGE A BOOKING ---\n"));
         std::string mode, error;
-        if (!readToken("  Move a single booking (1) or a whole series (2): ",
-                       mode))
+        if (!readToken("  Move a single booking (1) or a whole series (2): ", mode))
             return;
         if (mode == "1")
         {
@@ -760,12 +750,10 @@ static void customerMenu(RentalManager &system, bool &running)
             for (Reservation *r : mine)
                 if (r->id() == id)
                     target = r;
-            if (system.rescheduleReservation(id, newStart, newEnd,
-                                             Date::todaySerial(), error))
+            if (system.rescheduleReservation(id, newStart, newEnd, Date::todaySerial(), error))
             {
-                std::cout << green("  Booking #" + std::to_string(id)
-                                   + " moved to " + Date::toISO(newStart)
-                                   + " -> " + Date::toISO(newEnd) + ".\n");
+                std::cout << green("  Booking #" + std::to_string(id) + " moved to " +
+                                   Date::toISO(newStart) + " -> " + Date::toISO(newEnd) + ".\n");
                 if (target) // money preview with the CURRENT rank
                     printBookingEstimate(target->car(), newStart, newEnd,
                                          system.myLoyalty().tier());
@@ -789,17 +777,15 @@ static void customerMenu(RentalManager &system, bool &running)
                 break;
             }
             int newNext;
-            if (!readDate("  New date for the next pickup (YYYY-MM-DD): ",
-                          newNext))
+            if (!readDate("  New date for the next pickup (YYYY-MM-DD): ", newNext))
                 return;
-            const int moved = system.rescheduleSeries(seriesId, newNext,
-                                                      Date::todaySerial(),
-                                                      error);
+            const int moved =
+                system.rescheduleSeries(seriesId, newNext, Date::todaySerial(), error);
             if (moved > 0)
-                std::cout << green("  Series #" + std::to_string(seriesId)
-                                   + ": " + std::to_string(moved)
-                                   + " upcoming booking(s) moved - reminders "
-                                     "follow the new dates.\n");
+                std::cout << green("  Series #" + std::to_string(seriesId) + ": " +
+                                   std::to_string(moved) +
+                                   " upcoming booking(s) moved - reminders "
+                                   "follow the new dates.\n");
             else
                 std::cout << red("  Move failed: " + error + "\n");
         }
@@ -880,9 +866,8 @@ static void staffMenu(RentalManager &system, bool &running)
             // announcing at the desk.
             const std::string rankUp = system.lastLoyaltyRankUp();
             if (!rankUp.empty())
-                std::cout << yellow(
-                    "  Rank up! " + rankUp
-                    + " - the new multiplier applies from the next rental.\n");
+                std::cout << yellow("  Rank up! " + rankUp +
+                                    " - the new multiplier applies from the next rental.\n");
         }
         else
             std::cout << red("  Return failed: " + error + "\n");
@@ -937,8 +922,8 @@ static void staffMenu(RentalManager &system, bool &running)
         }
         std::cout << bold("\n  MAINTENANCE LOG | " + car->name() + "\n");
         for (const auto &rec : log)
-            std::cout << "  " << rec.date << " | " << rec.description
-                      << " | cost " << rec.cost << "\n";
+            std::cout << "  " << rec.date << " | " << rec.description << " | cost " << rec.cost
+                      << "\n";
         break;
     }
     case 8:
@@ -979,8 +964,8 @@ static void printFleetStats(const FleetStats &s)
 
     auto row = [](const std::string &label, const std::string &value)
     {
-        std::cout << "  " << std::left << std::setw(24) << label
-                  << std::right << std::setw(26) << value << "\n";
+        std::cout << "  " << std::left << std::setw(24) << label << std::right << std::setw(26)
+                  << value << "\n";
     };
 
     row("Fleet size", std::to_string(s.totalCars) + " car(s)");
@@ -1010,12 +995,10 @@ static void renderDashboard(const RentalManager &system)
     const int today = Date::todaySerial();
     const AnalyticsReport report = buildAnalytics(system, today);
 
-    std::cout << bold(cyan("\n===== FLEET ANALYTICS | " + Date::toISO(today)
-                           + " =====\n"));
+    std::cout << bold(cyan("\n===== FLEET ANALYTICS | " + Date::toISO(today) + " =====\n"));
 
-    const auto drawBars = [](const std::string &title,
-                             const std::vector<NamedCount> &slices,
-                             std::size_t labelWidth)
+    const auto drawBars =
+        [](const std::string &title, const std::vector<NamedCount> &slices, std::size_t labelWidth)
     {
         std::cout << "\n  " << bold(title) << "\n";
         int maxCount = 0;
@@ -1023,8 +1006,7 @@ static void renderDashboard(const RentalManager &system)
             maxCount = std::max(maxCount, slice.count);
         for (const NamedCount &slice : slices)
             std::cout << "   " << analyticsPad(slice.label, labelWidth) << "  "
-                      << analyticsBar(slice.count, maxCount) << " "
-                      << slice.count << "\n";
+                      << analyticsBar(slice.count, maxCount) << " " << slice.count << "\n";
     };
 
     drawBars("Fleet composition", report.fleetByStatus, 13);
@@ -1040,8 +1022,7 @@ static void renderDashboard(const RentalManager &system)
         const int maxBookings = report.bookingsPerCar.front().count;
         for (const NamedCount &row : report.bookingsPerCar)
             std::cout << "   " << analyticsPad(row.label, 16) << "  "
-                      << analyticsBar(row.count, maxBookings, 16) << " "
-                      << row.count << "\n";
+                      << analyticsBar(row.count, maxBookings, 16) << " " << row.count << "\n";
     }
 
     std::cout << "\n  " << bold("Waitlist depth per car") << "\n";
@@ -1054,8 +1035,7 @@ static void renderDashboard(const RentalManager &system)
         const int maxWaiting = report.waitlistPerCar.front().count;
         for (const NamedCount &row : report.waitlistPerCar)
             std::cout << "   " << analyticsPad(row.label, 16) << "  "
-                      << analyticsBar(row.count, maxWaiting, 16) << " "
-                      << row.count << "\n";
+                      << analyticsBar(row.count, maxWaiting, 16) << " " << row.count << "\n";
     }
 
     std::cout << "\n  " << bold("Upcoming pickups") << "\n";
@@ -1074,22 +1054,18 @@ static void renderDashboard(const RentalManager &system)
                 when = "tomorrow";
             else
                 when = "in " + std::to_string(p.daysAway) + " days";
-            std::cout << "   " << p.startDate << "  "
-                      << analyticsPad(p.carName, 16) << "  "
+            std::cout << "   " << p.startDate << "  " << analyticsPad(p.carName, 16) << "  "
                       << p.customer << "  (" << when << ")\n";
         }
     }
 
     if (report.overdueReturns > 0)
-        std::cout << yellow(
-            "\n  ! " + std::to_string(report.overdueReturns)
-            + " booking(s) past their end date — chase up the returns.\n");
+        std::cout << yellow("\n  ! " + std::to_string(report.overdueReturns) +
+                            " booking(s) past their end date — chase up the returns.\n");
     if (report.totalWaitlisted > 0)
-        std::cout << yellow(
-            "  ! " + std::to_string(report.totalWaitlisted)
-            + " customer(s) on a waitlist — serving one after every return.\n");
-    std::cout << "\n  " << report.totalActiveBookings
-              << " live booking(s) fleet-wide.\n";
+        std::cout << yellow("  ! " + std::to_string(report.totalWaitlisted) +
+                            " customer(s) on a waitlist — serving one after every return.\n");
+    std::cout << "\n  " << report.totalActiveBookings << " live booking(s) fleet-wide.\n";
 }
 
 /* ============================================================
@@ -1117,21 +1093,18 @@ static void printAuditLog(const RentalManager &system)
         return out;
     };
 
-    std::cout << bold(cyan("\n  AUDIT TRAIL — newest "
-                           + std::to_string(tail.size()) + " of "
-                           + std::to_string(system.auditLog().size())
-                           + " entry(ies)\n"));
+    std::cout << bold(cyan("\n  AUDIT TRAIL — newest " + std::to_string(tail.size()) + " of " +
+                           std::to_string(system.auditLog().size()) + " entry(ies)\n"));
     std::cout << "  DATE       ACTOR        ACTION"
                  "               RESULT  DETAIL\n"
                  "  ---------------------------------------------------------"
                  "------------\n";
     for (const AuditEntry &e : tail)
     {
-        const std::string line =
-            "  " + pad(e.date, 10) + " " + pad(e.actor, 12) + " "
-            + pad(e.action, 20) + "  "
-            + (e.allowed ? std::string("ok     ") : std::string("DENIED "))
-            + e.detail.substr(0, 30) + "\n";
+        const std::string line = "  " + pad(e.date, 10) + " " + pad(e.actor, 12) + " " +
+                                 pad(e.action, 20) + "  " +
+                                 (e.allowed ? std::string("ok     ") : std::string("DENIED ")) +
+                                 e.detail.substr(0, 30) + "\n";
         if (e.allowed)
             std::cout << line;
         else
@@ -1163,18 +1136,22 @@ static void renderLoyaltyOverview(const RentalManager &system)
     std::cout << "\n  Members per rank\n";
     for (int i = 0; i < 4; ++i)
         std::cout << "   " << analyticsPad(tierNames[i], 9) << "  "
-                  << analyticsBar(o.membersByTier[i], maxMembers, 20) << " "
-                  << o.membersByTier[i] << "\n";
+                  << analyticsBar(o.membersByTier[i], maxMembers, 20) << " " << o.membersByTier[i]
+                  << "\n";
 
-    std::cout << "\n  Total members      : " << o.totalMembers << "\n"
-                 "  Outstanding points : " << o.outstandingPoints << "\n"
-                 "  Potential credits  : " << money(o.pointsLiability) << "\n"
+    std::cout << "\n  Total members      : " << o.totalMembers
+              << "\n"
+                 "  Outstanding points : "
+              << o.outstandingPoints
+              << "\n"
+                 "  Potential credits  : "
+              << money(o.pointsLiability)
+              << "\n"
                  "  Top member         : ";
     if (o.topMember.empty())
         std::cout << "-\n";
     else
-        std::cout << o.topMember << " (" << o.topMemberLifetime
-                  << " lifetime points)\n";
+        std::cout << o.topMember << " (" << o.topMemberLifetime << " lifetime points)\n";
 
     // (v2.9.0) Recent promotions, straight from the audit trail —
     // the five newest loyalty.rankup entries, still chronological.
@@ -1205,16 +1182,18 @@ static void renderMonthlyReport(const MonthlyReport &r)
     std::cout << bold(cyan("\n===== MONTHLY REPORT | " + r.month + " =====\n"));
     if (r.rentalsCompleted == 0)
     {
-        std::cout << yellow("\n  No rentals were completed in " + r.month
-                            + ".\n");
+        std::cout << yellow("\n  No rentals were completed in " + r.month + ".\n");
         return;
     }
 
-    std::cout << "\n  Rentals completed : " << r.rentalsCompleted << "\n"
-                 "  Revenue booked    : " << money(r.revenue)
-              << "   (discounts given: " << money(r.discountGiven)
-              << " | late fees: " << money(r.lateFees) << ")\n"
-                 "  Distinct customers: " << r.distinctCustomers << "\n";
+    std::cout << "\n  Rentals completed : " << r.rentalsCompleted
+              << "\n"
+                 "  Revenue booked    : "
+              << money(r.revenue) << "   (discounts given: " << money(r.discountGiven)
+              << " | late fees: " << money(r.lateFees)
+              << ")\n"
+                 "  Distinct customers: "
+              << r.distinctCustomers << "\n";
 
     int maxCarRentals = 0;
     for (const CarRevenue &car : r.perCar)
@@ -1222,9 +1201,8 @@ static void renderMonthlyReport(const MonthlyReport &r)
     std::cout << "\n  " << bold("Revenue by car") << "\n";
     for (const CarRevenue &car : r.perCar)
         std::cout << "   " << analyticsPad(car.name, 16) << "  "
-                  << analyticsBar(car.rentals, maxCarRentals, 16) << " "
-                  << car.rentals << " rental(s), " << money(car.revenue)
-                  << "\n";
+                  << analyticsBar(car.rentals, maxCarRentals, 16) << " " << car.rentals
+                  << " rental(s), " << money(car.revenue) << "\n";
 
     int maxDayReturns = 0;
     for (const NamedCount &day : r.perDay)
@@ -1232,13 +1210,11 @@ static void renderMonthlyReport(const MonthlyReport &r)
     std::cout << "\n  " << bold("Returns per day") << "\n";
     for (const NamedCount &day : r.perDay)
         std::cout << "   " << analyticsPad(day.label, 4) << "  "
-                  << analyticsBar(day.count, maxDayReturns, 16) << " "
-                  << day.count << "\n";
+                  << analyticsBar(day.count, maxDayReturns, 16) << " " << day.count << "\n";
 
     char day[4];
     std::snprintf(day, sizeof day, "%02d", r.topDay);
-    std::cout << "\n  Busiest day: " << day << " ("
-              << r.topDayRentals << " return(s))\n";
+    std::cout << "\n  Busiest day: " << day << " (" << r.topDayRentals << " return(s))\n";
 }
 
 static void managerMenu(RentalManager &system, bool &running)
@@ -1297,8 +1273,7 @@ static void managerMenu(RentalManager &system, bool &running)
             std::cout << red("  Nothing matches \"" + keyword + "\".\n");
             break;
         }
-        std::cout << bold("\n  MATCHES (" + std::to_string(matches.size())
-                          + ")\n");
+        std::cout << bold("\n  MATCHES (" + std::to_string(matches.size()) + ")\n");
         printCarTableHeader();
         for (const Car *car : matches)
             printCarRow(car);
@@ -1322,10 +1297,8 @@ static void managerMenu(RentalManager &system, bool &running)
     case 10:
     {
         const bool fleetOk = system.exportFleetReport("reports/fleet_report.csv");
-        const bool bookingsOk =
-            system.exportBookingReport("reports/bookings_report.csv");
-        const bool loyaltyOk =
-            system.exportLoyaltyReport("reports/loyalty_report.csv");
+        const bool bookingsOk = system.exportBookingReport("reports/bookings_report.csv");
+        const bool loyaltyOk = system.exportLoyaltyReport("reports/loyalty_report.csv");
         const bool jsonOk = exportJsonReport(system, "reports/report.json");
         if (fleetOk && bookingsOk && loyaltyOk && jsonOk)
             std::cout << green("  Reports written:\n"
@@ -1408,8 +1381,7 @@ static void managerMenu(RentalManager &system, bool &running)
             if (system.exportMonthlyReport(year, month, name.str(), error))
                 std::cout << green("  Saved to " + name.str() + "\n");
             else
-                std::cout << red("  Could not write " + name.str()
-                                 + ": " + error + "\n");
+                std::cout << red("  Could not write " + name.str() + ": " + error + "\n");
         }
         break;
     }
@@ -1425,33 +1397,50 @@ static void managerMenu(RentalManager &system, bool &running)
 int main(int argc, char *argv[])
 {
     // Non-interactive queries exit before touching data/.
-    for (int i = 1; i < argc; ++i)
+    const cli::Options opts = cli::parse(argc, argv);
+    if (!opts.error.empty())
     {
-        const std::string arg = argv[i];
-        if (arg == "--version" || arg == "-v")
-        {
-            std::cout << "Car Rental Management System v" << APP_VERSION
-                      << " — C++17, zero dependencies\n";
-            return 0;
-        }
-        if (arg == "--help" || arg == "-h")
-        {
-            std::cout << "Car Rental Management System v" << APP_VERSION << "\n"
-                         "\n"
-                         "Usage: car_rental [option]\n"
-                         "\n"
-                         "  (no option)    start the interactive console app\n"
-                         "  -v, --version  print version and exit\n"
-                         "  -h, --help     show this help and exit\n"
-                         "\n"
-                         "Demo accounts (auto-seeded on first run):\n"
-                         "  manager  admin / manager123\n"
-                         "  staff    sara  / staff123\n"
-                         "  customer ali   / customer123\n";
-            return 0;
-        }
-        std::cerr << "car_rental: unknown option '" << arg << "' — try --help\n";
+        std::cerr << "car_rental: " << opts.error << " — try --help\n";
         return 1;
+    }
+
+    // Plain output: the no-color.org convention (present and non-empty)
+    // or the explicit --no-color flag.
+    if (const char *nc = std::getenv("NO_COLOR"))
+        if (*nc != '\0')
+            g_colors = false;
+    if (opts.noColor)
+        g_colors = false;
+
+    if (opts.showVersion)
+    {
+        std::cout << "Car Rental Management System v" << APP_VERSION
+                  << " — C++17, zero dependencies\n";
+        return 0;
+    }
+    if (opts.showHelp)
+    {
+        std::cout << "Car Rental Management System v" << APP_VERSION
+                  << "\n"
+                     "\n"
+                     "Usage: car_rental [option]\n"
+                     "\n"
+                     "  (no option)    start the interactive console app\n"
+                     "  -v, --version  print version and exit\n"
+                     "  -h, --help     show this help and exit\n"
+                     "  --no-color     plain output (pipes, logs, CI)\n"
+                     "\n"
+                     "Plain output also follows the NO_COLOR environment\n"
+                     "variable (no-color.org).\n"
+                     "\n"
+                     "Demo accounts (auto-seeded on first run):\n"
+                     "  manager  admin / manager123\n"
+                     "  staff    sara  / staff123\n"
+                     "  customer ali   / customer123\n"
+                     "\n"
+                     "No compiler? The same binary runs in your browser:\n"
+                     "  https://abolfazlrwm.github.io/Car-Rental-System/demo.html\n";
+        return 0;
     }
 
     RentalManager system;
