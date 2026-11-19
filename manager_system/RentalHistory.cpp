@@ -10,8 +10,7 @@
 
 bool RentalHistory::saveCSV(const std::string &path) const
 {
-    const std::filesystem::path parent =
-        std::filesystem::path(path).parent_path();
+    const std::filesystem::path parent = std::filesystem::path(path).parent_path();
     if (!parent.empty())
         std::filesystem::create_directories(parent);
 
@@ -23,9 +22,9 @@ bool RentalHistory::saveCSV(const std::string &path) const
             "base,discount,penalty,total\n";
     for (const RentalRecord &r : records_)
     {
-        file << r.carName << ',' << r.customer << ',' << r.startISO << ','
-             << r.endISO << ',' << r.returnISO << ',' << r.base << ','
-             << r.discount << ',' << r.penalty << ',' << r.total << '\n';
+        file << r.carName << ',' << r.customer << ',' << r.startISO << ',' << r.endISO << ','
+             << r.returnISO << ',' << r.base << ',' << r.discount << ',' << r.penalty << ','
+             << r.total << '\n';
     }
     return true;
 }
@@ -61,11 +60,8 @@ bool RentalHistory::loadCSV(const std::string &path)
         // other loader in this project.
         try
         {
-            RentalRecord record(carName, customer, startISO, endISO,
-                                returnISO, std::stod(baseStr),
-                                std::stod(discountStr),
-                                std::stod(penaltyStr),
-                                std::stod(totalStr));
+            RentalRecord record(carName, customer, startISO, endISO, returnISO, std::stod(baseStr),
+                                std::stod(discountStr), std::stod(penaltyStr), std::stod(totalStr));
             records_.push_back(record);
         }
         catch (...)

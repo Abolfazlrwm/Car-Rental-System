@@ -42,49 +42,40 @@ AnalyticsReport buildAnalytics(const RentalManager &mgr, int todaySerial)
 
     // Fixed four-slice layout (CarStatus enum order), so the
     // dashboard keeps its shape even when a status is empty.
-    report.fleetByStatus = {{"Available", 0},
-                            {"Reserved", 0},
-                            {"Rented", 0},
-                            {"Maintenance", 0}};
+    report.fleetByStatus = {{"Available", 0}, {"Reserved", 0}, {"Rented", 0}, {"Maintenance", 0}};
 
     // Fixed daily-rate buckets.
-    report.priceBuckets = {{"0-50", 0}, {"51-100", 0}, {"101-200", 0},
-                           {"200+", 0}};
+    report.priceBuckets = {{"0-50", 0}, {"51-100", 0}, {"101-200", 0}, {"200+", 0}};
 
-    mgr.forEachCar([&](Car *car)
-                   {
-                       ++report.fleetByStatus[static_cast<int>(car->status())]
-                              .count;
+    mgr.forEachCar(
+        [&](Car *car)
+        {
+            ++report.fleetByStatus[static_cast<int>(car->status())].count;
 
-                       const double price = car->pricePerDay();
-                       const int bucket = price <= 50.0   ? 0
-                                          : price <= 100.0 ? 1
-                                          : price <= 200.0 ? 2
-                                                           : 3;
-                       ++report.priceBuckets[bucket].count;
+            const double price = car->pricePerDay();
+            const int bucket = price <= 50.0 ? 0 : price <= 100.0 ? 1 : price <= 200.0 ? 2 : 3;
+            ++report.priceBuckets[bucket].count;
 
-                       report.totalWaitlisted +=
-                           static_cast<int>(car->waitlistCount());
+            report.totalWaitlisted += static_cast<int>(car->waitlistCount());
 
-                       car->forEachReservation(
-                           [&](const Reservation *r)
-                           {
-                               ++report.totalActiveBookings;
-                               if (r->endDate() < todaySerial)
-                                   ++report.overdueReturns;
-                           });
-                   });
+            car->forEachReservation(
+                [&](const Reservation *r)
+                {
+                    ++report.totalActiveBookings;
+                    if (r->endDate() < todaySerial)
+                        ++report.overdueReturns;
+                });
+        });
 
     // Bookings per car: only cars that actually have bookings,
     // most-booked first, name breaks ties (deterministic output).
     std::vector<NamedCount> perCar;
-    mgr.forEachCar([&](Car *car)
-                   {
-                       if (car->reservationCount() > 0)
-                           perCar.push_back({car->name(),
-                                             static_cast<int>(
-                                                 car->reservationCount())});
-                   });
+    mgr.forEachCar(
+        [&](Car *car)
+        {
+            if (car->reservationCount() > 0)
+                perCar.push_back({car->name(), static_cast<int>(car->reservationCount())});
+        });
     std::sort(perCar.begin(), perCar.end(),
               [](const NamedCount &a, const NamedCount &b)
               {
@@ -98,13 +89,12 @@ AnalyticsReport buildAnalytics(const RentalManager &mgr, int todaySerial)
     // deepest queue first, name breaks ties (same ordering
     // contract as bookingsPerCar).
     std::vector<NamedCount> perCarWaitlist;
-    mgr.forEachCar([&](Car *car)
-                   {
-                       if (car->waitlistCount() > 0)
-                           perCarWaitlist.push_back(
-                               {car->name(),
-                                static_cast<int>(car->waitlistCount())});
-                   });
+    mgr.forEachCar(
+        [&](Car *car)
+        {
+            if (car->waitlistCount() > 0)
+                perCarWaitlist.push_back({car->name(), static_cast<int>(car->waitlistCount())});
+        });
     std::sort(perCarWaitlist.begin(), perCarWaitlist.end(),
               [](const NamedCount &a, const NamedCount &b)
               {
@@ -116,15 +106,16 @@ AnalyticsReport buildAnalytics(const RentalManager &mgr, int todaySerial)
 
     // Upcoming pickups from today onwards, earliest first.
     std::vector<const Reservation *> scheduled;
-    mgr.forEachCar([&](Car *car)
-                   {
-                       car->forEachReservation(
-                           [&](const Reservation *r)
-                           {
-                               if (r->startDate() >= todaySerial)
-                                   scheduled.push_back(r);
-                           });
-                   });
+    mgr.forEachCar(
+        [&](Car *car)
+        {
+            car->forEachReservation(
+                [&](const Reservation *r)
+                {
+                    if (r->startDate() >= todaySerial)
+                        scheduled.push_back(r);
+                });
+        });
     std::sort(scheduled.begin(), scheduled.end(),
               [](const Reservation *a, const Reservation *b)
               {
@@ -136,10 +127,8 @@ AnalyticsReport buildAnalytics(const RentalManager &mgr, int todaySerial)
     for (std::size_t i = 0; i < scheduled.size() && i < kMaxUpcoming; ++i)
     {
         const Reservation *r = scheduled[i];
-        report.upcoming.push_back({r->car()->name(),
-                                   r->customer()->username(),
-                                   Date::toISO(r->startDate()),
-                                   r->startDate() - todaySerial});
+        report.upcoming.push_back({r->car()->name(), r->customer()->username(),
+                                   Date::toISO(r->startDate()), r->startDate() - todaySerial});
     }
 
     return report;

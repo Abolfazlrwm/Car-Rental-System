@@ -36,7 +36,7 @@
 template <typename K, typename V>
 class AVLTree
 {
-private:
+  private:
     struct Node
     {
         K key;
@@ -45,8 +45,7 @@ private:
         Node *right;
         int height;
 
-        Node(const K &k, const V &v)
-            : key(k), value(v), left(nullptr), right(nullptr), height(1) {}
+        Node(const K &k, const V &v) : key(k), value(v), left(nullptr), right(nullptr), height(1) {}
     };
 
     Node *root_;
@@ -58,10 +57,7 @@ private:
     static int nodeHeight(Node *n) { return n ? n->height : 0; }
 
     /// balance = height(left) - height(right); AVL requires |balance| <= 1.
-    static int balanceFactor(Node *n)
-    {
-        return n ? nodeHeight(n->left) - nodeHeight(n->right) : 0;
-    }
+    static int balanceFactor(Node *n) { return n ? nodeHeight(n->left) - nodeHeight(n->right) : 0; }
 
     static void updateHeight(Node *n)
     {
@@ -184,9 +180,8 @@ private:
         delete node;
     }
 
-public:
-    explicit AVLTree(bool ownsValues = false)
-        : root_(nullptr), size_(0), ownsValues_(ownsValues) {}
+  public:
+    explicit AVLTree(bool ownsValues = false) : root_(nullptr), size_(0), ownsValues_(ownsValues) {}
 
     ~AVLTree() { destroy(root_, ownsValues_); }
 
@@ -206,10 +201,7 @@ public:
     bool empty() const { return size_ == 0; }
     int height() const { return nodeHeight(root_); }
 
-    void insert(const K &key, const V &value)
-    {
-        root_ = insert(root_, key, value);
-    }
+    void insert(const K &key, const V &value) { root_ = insert(root_, key, value); }
 
     /// nullptr when the key is absent. O(log n).
     V *find(const K &key)
@@ -218,10 +210,7 @@ public:
         return n ? &n->value : nullptr;
     }
 
-    const V *find(const K &key) const
-    {
-        return const_cast<AVLTree *>(this)->find(key);
-    }
+    const V *find(const K &key) const { return const_cast<AVLTree *>(this)->find(key); }
 
     bool contains(const K &key) const { return find(key) != nullptr; }
 

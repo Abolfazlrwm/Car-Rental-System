@@ -19,12 +19,8 @@ std::string toString(CarStatus status)
 }
 
 Car::Car(const std::string &name, const std::string &brand, double pricePerDay)
-    : name_(name),
-      brand_(brand),
-      pricePerDay_(pricePerDay),
-      status_(CarStatus::Available),
-      totalIncome_(0.0),
-      maintenanceCost_(0.0),
+    : name_(name), brand_(brand), pricePerDay_(pricePerDay), status_(CarStatus::Available),
+      totalIncome_(0.0), maintenanceCost_(0.0),
       // Heap order: Reservation::hasHigherPriorityThan decides who is next.
       queue_([](const Reservation *a, const Reservation *b)
              { return a->hasHigherPriorityThan(b); }),
@@ -38,10 +34,8 @@ Car::~Car()
 {
     // Free every booking still waiting in the schedule and every
     // wish still waiting for a slot.
-    queue_.forEach([](Reservation *r)
-                   { delete r; });
-    waitlist_.forEach([](WaitlistEntry *e)
-                      { delete e; });
+    queue_.forEach([](Reservation *r) { delete r; });
+    waitlist_.forEach([](WaitlistEntry *e) { delete e; });
 }
 
 void Car::reserve(Reservation *r)
@@ -54,11 +48,12 @@ void Car::reserve(Reservation *r)
 bool Car::hasOverlap(int start, int end) const
 {
     bool clash = false;
-    queue_.forEach([&](const Reservation *r)
-                   {
-                       if (Reservation::rangesOverlap(start, end, r->startDate(), r->endDate()))
-                           clash = true;
-                   });
+    queue_.forEach(
+        [&](const Reservation *r)
+        {
+            if (Reservation::rangesOverlap(start, end, r->startDate(), r->endDate()))
+                clash = true;
+        });
     return clash;
 }
 
@@ -67,11 +62,12 @@ void Car::dropReservation(Reservation *r)
     // Rebuild the heap without the given booking (simple + safe: the
     // schedule is tiny, so an O(n) rebuild is perfectly fine here).
     std::vector<Reservation *> keep;
-    queue_.forEach([&](Reservation *cur)
-                   {
-                       if (cur != r)
-                           keep.push_back(cur);
-                   });
+    queue_.forEach(
+        [&](Reservation *cur)
+        {
+            if (cur != r)
+                keep.push_back(cur);
+        });
 
     // Drain FIRST, free LAST: extractMin() re-heapifies and would
     // still touch `r` — deleting before draining was a use-after-free
@@ -89,11 +85,12 @@ void Car::takeReservation(Reservation *r)
     // Same O(n) rebuild as dropReservation() — minus the delete:
     // the caller keeps ownership and re-inserts the booking.
     std::vector<Reservation *> keep;
-    queue_.forEach([&](Reservation *cur)
-                   {
-                       if (cur != r)
-                           keep.push_back(cur);
-                   });
+    queue_.forEach(
+        [&](Reservation *cur)
+        {
+            if (cur != r)
+                keep.push_back(cur);
+        });
 
     while (!queue_.empty())
         (void)queue_.extractMin();
@@ -105,11 +102,12 @@ void Car::takeReservation(Reservation *r)
 std::vector<Reservation *> Car::reservationsOf(const std::string &username) const
 {
     std::vector<Reservation *> result;
-    queue_.forEach([&](Reservation *r)
-                   {
-                       if (r->customer()->username() == username)
-                           result.push_back(r);
-                   });
+    queue_.forEach(
+        [&](Reservation *r)
+        {
+            if (r->customer()->username() == username)
+                result.push_back(r);
+        });
     return result;
 }
 void Car::reinsertReservation(Reservation *r)
@@ -169,8 +167,7 @@ void Car::refreshStatus()
     status_ = queue_.empty() ? CarStatus::Available : CarStatus::Reserved;
 }
 
-void Car::addMaintenanceLog(const std::string &date,
-                            const std::string &description, double cost)
+void Car::addMaintenanceLog(const std::string &date, const std::string &description, double cost)
 {
     maintenanceLog_.emplace_back(date, description, cost);
     maintenanceCost_ += cost;

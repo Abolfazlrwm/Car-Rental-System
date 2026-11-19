@@ -35,11 +35,11 @@
 template <typename T>
 class PriorityQueue
 {
-public:
+  public:
     /// Returns true if `a` should be served before `b`.
     using Comparator = std::function<bool(const T &, const T &)>;
 
-private:
+  private:
     T *heap_;
     std::size_t capacity_;
     std::size_t size_;
@@ -73,8 +73,7 @@ private:
 
     void heapifyUp(std::size_t index)
     {
-        while (index > 0 &&
-               higherPriority_(heap_[index], heap_[parent(index)]))
+        while (index > 0 && higherPriority_(heap_[index], heap_[parent(index)]))
         {
             swap(index, parent(index));
             index = parent(index);
@@ -99,17 +98,14 @@ private:
         }
     }
 
-public:
+  public:
     explicit PriorityQueue(Comparator higherPriority)
         : heap_(nullptr), capacity_(0), size_(0), higherPriority_(higherPriority)
     {
         grow(); // start with a small initial block
     }
 
-    ~PriorityQueue()
-    {
-        delete[] heap_;
-    }
+    ~PriorityQueue() { delete[] heap_; }
 
     // Non-copyable: the queue owns its backing array.
     PriorityQueue(const PriorityQueue &) = delete;

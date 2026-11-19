@@ -3,12 +3,9 @@
 #include "Car.h"
 #include "User.h"
 
-WaitlistEntry::WaitlistEntry(Customer *customer, Car *car, int joinOrder,
-                             int startDate, int endDate)
-    : customer_(customer),
-      car_(car),
-      joinOrder_(joinOrder),
-      startDate_(startDate),
+WaitlistEntry::WaitlistEntry(Customer *customer, Car *car, int joinOrder, int startDate,
+                             int endDate)
+    : customer_(customer), car_(car), joinOrder_(joinOrder), startDate_(startDate),
       endDate_(endDate)
 {
 }

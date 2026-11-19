@@ -81,8 +81,7 @@ std::string jnum(double value)
 
 bool exportJsonReport(const RentalManager &manager, const std::string &path)
 {
-    const std::filesystem::path parent =
-        std::filesystem::path(path).parent_path();
+    const std::filesystem::path parent = std::filesystem::path(path).parent_path();
     if (!parent.empty())
         std::filesystem::create_directories(parent);
 
@@ -94,8 +93,7 @@ bool exportJsonReport(const RentalManager &manager, const std::string &path)
 
     file << "{\n";
     file << "  \"report\": \"car-rental-system\",\n";
-    file << "  \"generatedAt\": " << jstr(Date::toISO(Date::todaySerial()))
-         << ",\n";
+    file << "  \"generatedAt\": " << jstr(Date::toISO(Date::todaySerial())) << ",\n";
 
     /* ---------------- stats snapshot ---------------- */
     file << "  \"stats\": {\n";
@@ -106,8 +104,7 @@ bool exportJsonReport(const RentalManager &manager, const std::string &path)
     file << "    \"maintenanceCars\": " << stats.maintenanceCars << ",\n";
     file << "    \"activeBookings\": " << stats.activeBookings << ",\n";
     file << "    \"grossIncome\": " << jnum(stats.grossIncome) << ",\n";
-    file << "    \"maintenanceSpend\": " << jnum(stats.maintenanceSpend)
-         << ",\n";
+    file << "    \"maintenanceSpend\": " << jnum(stats.maintenanceSpend) << ",\n";
     file << "    \"netRevenue\": " << jnum(stats.netRevenue) << ",\n";
     file << "    \"utilization\": " << jnum(stats.utilization) << ",\n";
     file << "    \"topEarner\": " << jstr(stats.topEarner) << "\n";
@@ -116,56 +113,41 @@ bool exportJsonReport(const RentalManager &manager, const std::string &path)
     /* ---------------- fleet (name-sorted, like the CSV sheet) ---- */
     file << "  \"fleet\": [\n";
     bool firstCar = true;
-    manager.forEachCarSorted([&](Car *car)
-                             {
-                                 if (!firstCar)
-                                     file << ",\n";
-                                 firstCar = false;
-                                 file << "    {\n";
-                                 file << "      \"name\": "
-                                      << jstr(car->name()) << ",\n";
-                                 file << "      \"brand\": "
-                                      << jstr(car->brand()) << ",\n";
-                                 file << "      \"pricePerDay\": "
-                                      << jnum(car->pricePerDay()) << ",\n";
-                                 file << "      \"status\": "
-                                      << jstr(toString(car->status()))
-                                      << ",\n";
-                                 file << "      \"income\": "
-                                      << jnum(car->totalIncome()) << ",\n";
-                                 file << "      \"maintenanceCost\": "
-                                      << jnum(car->maintenanceCost())
-                                      << ",\n";
-                                 file << "      \"netRevenue\": "
-                                      << jnum(car->netRevenue()) << ",\n";
-                                 file << "      \"maintenanceLog\": [";
-                                 bool firstRecord = true;
-                                 for (const MaintenanceRecord &record :
-                                      car->maintenanceLog())
-                                 {
-                                     if (!firstRecord)
-                                         file << ", ";
-                                     firstRecord = false;
-                                     file << "{\"date\": "
-                                          << jstr(record.date)
-                                          << ", \"description\": "
-                                          << jstr(record.description)
-                                          << ", \"cost\": "
-                                          << jnum(record.cost) << "}";
-                                 }
-                                 file << "]\n";
-                                 file << "    }";
-                             });
+    manager.forEachCarSorted(
+        [&](Car *car)
+        {
+            if (!firstCar)
+                file << ",\n";
+            firstCar = false;
+            file << "    {\n";
+            file << "      \"name\": " << jstr(car->name()) << ",\n";
+            file << "      \"brand\": " << jstr(car->brand()) << ",\n";
+            file << "      \"pricePerDay\": " << jnum(car->pricePerDay()) << ",\n";
+            file << "      \"status\": " << jstr(toString(car->status())) << ",\n";
+            file << "      \"income\": " << jnum(car->totalIncome()) << ",\n";
+            file << "      \"maintenanceCost\": " << jnum(car->maintenanceCost()) << ",\n";
+            file << "      \"netRevenue\": " << jnum(car->netRevenue()) << ",\n";
+            file << "      \"maintenanceLog\": [";
+            bool firstRecord = true;
+            for (const MaintenanceRecord &record : car->maintenanceLog())
+            {
+                if (!firstRecord)
+                    file << ", ";
+                firstRecord = false;
+                file << "{\"date\": " << jstr(record.date)
+                     << ", \"description\": " << jstr(record.description)
+                     << ", \"cost\": " << jnum(record.cost) << "}";
+            }
+            file << "]\n";
+            file << "    }";
+        });
     file << "\n  ],\n";
 
     /* ---------------- bookings (ordered by pickup, like the CSV) -- */
     std::vector<const Reservation *> bookings;
-    manager.forEachCarSorted([&](Car *car)
-                             {
-                                 car->forEachReservation(
-                                     [&](const Reservation *r)
-                                     { bookings.push_back(r); });
-                             });
+    manager.forEachCarSorted(
+        [&](Car *car)
+        { car->forEachReservation([&](const Reservation *r) { bookings.push_back(r); }); });
     std::sort(bookings.begin(), bookings.end(),
               [](const Reservation *a, const Reservation *b)
               {
@@ -184,12 +166,9 @@ bool exportJsonReport(const RentalManager &manager, const std::string &path)
         file << "    {\n";
         file << "      \"id\": " << r->id() << ",\n";
         file << "      \"carName\": " << jstr(r->car()->name()) << ",\n";
-        file << "      \"customer\": " << jstr(r->customer()->username())
-             << ",\n";
-        file << "      \"startDate\": " << jstr(Date::toISO(r->startDate()))
-             << ",\n";
-        file << "      \"endDate\": " << jstr(Date::toISO(r->endDate()))
-             << ",\n";
+        file << "      \"customer\": " << jstr(r->customer()->username()) << ",\n";
+        file << "      \"startDate\": " << jstr(Date::toISO(r->startDate())) << ",\n";
+        file << "      \"endDate\": " << jstr(Date::toISO(r->endDate())) << ",\n";
         file << "      \"durationDays\": " << r->durationDays() << "\n";
         file << "    }";
     }
@@ -211,47 +190,31 @@ bool exportJsonReport(const RentalManager &manager, const std::string &path)
     file << "      \"Gold\": " << loyalty.membersByTier[2] << ",\n";
     file << "      \"Platinum\": " << loyalty.membersByTier[3] << "\n";
     file << "    },\n";
-    file << "    \"outstandingPoints\": " << loyalty.outstandingPoints
-         << ",\n";
-    file << "    \"pointsLiability\": " << jnum(loyalty.pointsLiability)
-         << ",\n";
+    file << "    \"outstandingPoints\": " << loyalty.outstandingPoints << ",\n";
+    file << "    \"pointsLiability\": " << jnum(loyalty.pointsLiability) << ",\n";
     file << "    \"topMember\": " << jstr(loyalty.topMember) << ",\n";
-    file << "    \"topMemberLifetime\": " << loyalty.topMemberLifetime
-         << ",\n";
+    file << "    \"topMemberLifetime\": " << loyalty.topMemberLifetime << ",\n";
     file << "    \"customers\": [\n";
     bool firstMember = true;
-    manager.forEachCustomerSorted([&](const Customer *customer)
-                                  {
-                                      if (!firstMember)
-                                          file << ",\n";
-                                      firstMember = false;
-                                      LoyaltyProfile profile;
-                                      profile.points =
-                                          customer->loyaltyPoints();
-                                      profile.lifetimePoints =
-                                          customer->lifetimePoints();
-                                      profile.completedRentals =
-                                          customer->completedRentals();
-                                      file << "      {\n";
-                                      file << "        \"username\": "
-                                           << jstr(customer->username())
-                                           << ",\n";
-                                      file << "        \"tier\": "
-                                           << jstr(toString(profile.tier()))
-                                           << ",\n";
-                                      file << "        \"points\": "
-                                           << profile.points << ",\n";
-                                      file << "        \"lifetimePoints\": "
-                                           << profile.lifetimePoints
-                                           << ",\n";
-                                      file << "        \"completedRentals\": "
-                                           << profile.completedRentals
-                                           << ",\n";
-                                      file << "        \"pointsToNextTier\": "
-                                           << profile.pointsToNextTier()
-                                           << "\n";
-                                      file << "      }";
-                                  });
+    manager.forEachCustomerSorted(
+        [&](const Customer *customer)
+        {
+            if (!firstMember)
+                file << ",\n";
+            firstMember = false;
+            LoyaltyProfile profile;
+            profile.points = customer->loyaltyPoints();
+            profile.lifetimePoints = customer->lifetimePoints();
+            profile.completedRentals = customer->completedRentals();
+            file << "      {\n";
+            file << "        \"username\": " << jstr(customer->username()) << ",\n";
+            file << "        \"tier\": " << jstr(toString(profile.tier())) << ",\n";
+            file << "        \"points\": " << profile.points << ",\n";
+            file << "        \"lifetimePoints\": " << profile.lifetimePoints << ",\n";
+            file << "        \"completedRentals\": " << profile.completedRentals << ",\n";
+            file << "        \"pointsToNextTier\": " << profile.pointsToNextTier() << "\n";
+            file << "      }";
+        });
     file << "\n    ]\n";
     file << "  }\n";
     file << "}\n";

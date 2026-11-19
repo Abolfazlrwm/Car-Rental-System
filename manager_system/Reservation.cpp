@@ -1,9 +1,11 @@
 #include "Reservation.h"
 
-Reservation::Reservation(Customer *customer, Car *car, int id,
-                         int requestTime, int startDate, int endDate)
-    : customer_(customer), car_(car), id_(id),
-      requestTime_(requestTime), startDate_(startDate), endDate_(endDate) {}
+Reservation::Reservation(Customer *customer, Car *car, int id, int requestTime, int startDate,
+                         int endDate)
+    : customer_(customer), car_(car), id_(id), requestTime_(requestTime), startDate_(startDate),
+      endDate_(endDate)
+{
+}
 
 bool Reservation::hasHigherPriorityThan(const Reservation *other) const
 {

@@ -30,7 +30,7 @@
 template <typename T>
 class DoublyLinkedList
 {
-private:
+  private:
     struct Node
     {
         T data;
@@ -44,7 +44,7 @@ private:
     Node *tail_;
     std::size_t size_;
 
-public:
+  public:
     DoublyLinkedList() : head_(nullptr), tail_(nullptr), size_(0) {}
 
     ~DoublyLinkedList() { clear(); }
@@ -282,13 +282,14 @@ public:
         std::ostringstream oss;
         oss << '[';
         bool first = true;
-        forEach([&](const T &v)
-                {
-                    if (!first)
-                        oss << ", ";
-                    oss << v;
-                    first = false;
-                });
+        forEach(
+            [&](const T &v)
+            {
+                if (!first)
+                    oss << ", ";
+                oss << v;
+                first = false;
+            });
         oss << ']';
         return oss.str();
     }

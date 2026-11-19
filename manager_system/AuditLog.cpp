@@ -165,14 +165,13 @@ bool AuditLog::saveCSV(const std::string &path) const
         return false;
 
     file << "date,actor,action,result,detail\n";
-    entries_.forEach([&file](const AuditEntry &e)
-                     {
-                         file << escapeField(e.date) << ','
-                              << escapeField(e.actor) << ','
-                              << escapeField(e.action) << ','
-                              << (e.allowed ? "ok" : "denied") << ','
-                              << escapeField(e.detail) << '\n';
-                     });
+    entries_.forEach(
+        [&file](const AuditEntry &e)
+        {
+            file << escapeField(e.date) << ',' << escapeField(e.actor) << ','
+                 << escapeField(e.action) << ',' << (e.allowed ? "ok" : "denied") << ','
+                 << escapeField(e.detail) << '\n';
+        });
     return true;
 }
 
@@ -191,8 +190,7 @@ bool AuditLog::loadCSV(const std::string &path)
         std::string f[5];
         if (!splitCSV5(line, f))
             continue; // skip malformed rows instead of aborting
-        record(unescapeField(f[0]), unescapeField(f[1]),
-               unescapeField(f[2]), unescapeField(f[4]),
+        record(unescapeField(f[0]), unescapeField(f[1]), unescapeField(f[2]), unescapeField(f[4]),
                f[3] != "denied");
     }
     return true;

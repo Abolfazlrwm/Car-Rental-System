@@ -37,7 +37,7 @@
 template <typename K, typename V>
 class HashTable
 {
-private:
+  private:
     struct Node
     {
         K key;
@@ -54,10 +54,7 @@ private:
 
     static constexpr double MAX_LOAD_FACTOR = 0.75;
 
-    std::size_t bucketIndex(const K &key) const
-    {
-        return hasher_(key) % buckets_.size();
-    }
+    std::size_t bucketIndex(const K &key) const { return hasher_(key) % buckets_.size(); }
 
     /// Double the bucket count and re-chain every node. O(n)
     void rehash()
@@ -94,10 +91,12 @@ private:
         size_ = 0;
     }
 
-public:
+  public:
     explicit HashTable(std::function<std::size_t(const K &)> hasher = std::hash<K>(),
                        bool ownsValues = false)
-        : buckets_(17, nullptr), size_(0), hasher_(hasher), ownsValues_(ownsValues) {}
+        : buckets_(17, nullptr), size_(0), hasher_(hasher), ownsValues_(ownsValues)
+    {
+    }
 
     ~HashTable() { clear(); }
 
@@ -161,10 +160,7 @@ public:
         return nullptr;
     }
 
-    const V *find(const K &key) const
-    {
-        return const_cast<HashTable *>(this)->find(key);
-    }
+    const V *find(const K &key) const { return const_cast<HashTable *>(this)->find(key); }
 
     bool contains(const K &key) const { return find(key) != nullptr; }
 

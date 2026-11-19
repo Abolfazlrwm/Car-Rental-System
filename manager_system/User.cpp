@@ -5,7 +5,9 @@
 #include <sstream>
 
 User::User(const std::string &username, const std::string &role)
-    : username_(username), role_(role), blocked_(false), failedLogins_(0) {}
+    : username_(username), role_(role), blocked_(false), failedLogins_(0)
+{
+}
 
 void User::setPassword(const std::string &plainPassword)
 {

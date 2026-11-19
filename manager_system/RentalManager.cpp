@@ -16,9 +16,10 @@
  * ============================================================ */
 
 RentalManager::RentalManager()
-    : userIndex_(&RentalManager::stringHash, /*ownsValues=*/true),
-      carIndex_(/*ownsValues=*/true), currentUser_(nullptr),
-      reservationCounter_(0), waitlistCounter_(0), seriesCounter_(0) {}
+    : userIndex_(&RentalManager::stringHash, /*ownsValues=*/true), carIndex_(/*ownsValues=*/true),
+      currentUser_(nullptr), reservationCounter_(0), waitlistCounter_(0), seriesCounter_(0)
+{
+}
 
 RentalManager::~RentalManager()
 {
@@ -61,13 +62,11 @@ Customer *RentalManager::asCustomer() const
  *  Audit trail
  * ============================================================ */
 
-void RentalManager::audit(const std::string &action,
-                          const std::string &detail, bool allowed) const
+void RentalManager::audit(const std::string &action, const std::string &detail, bool allowed) const
 {
     auditLog_.record(Date::toISO(Date::todaySerial()),
-                     currentUser_ ? currentUser_->username()
-                                  : std::string("?"),
-                     action, detail, allowed);
+                     currentUser_ ? currentUser_->username() : std::string("?"), action, detail,
+                     allowed);
 }
 
 bool RentalManager::hasPermission(Permission p) const
@@ -91,8 +90,7 @@ static std::string toLowerCopy(const std::string &text)
 {
     std::string out = text;
     std::transform(out.begin(), out.end(), out.begin(),
-                   [](unsigned char c)
-                   { return static_cast<char>(std::tolower(c)); });
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return out;
 }
 
@@ -100,8 +98,7 @@ static std::string toLowerCopy(const std::string &text)
  *  Account management
  * ============================================================ */
 
-bool RentalManager::registerCustomer(const std::string &username,
-                                     const std::string &password)
+bool RentalManager::registerCustomer(const std::string &username, const std::string &password)
 {
     if (username.empty() || password.size() < 4)
         return false;
@@ -115,8 +112,7 @@ bool RentalManager::registerCustomer(const std::string &username,
     return true;
 }
 
-bool RentalManager::registerStaffAccount(const std::string &username,
-                                         const std::string &password,
+bool RentalManager::registerStaffAccount(const std::string &username, const std::string &password,
                                          const std::string &role)
 {
     if (!permitted(Permission::MANAGE_USERS, "user.created"))
@@ -136,8 +132,7 @@ bool RentalManager::registerStaffAccount(const std::string &username,
     return true;
 }
 
-bool RentalManager::login(const std::string &username,
-                          const std::string &password)
+bool RentalManager::login(const std::string &username, const std::string &password)
 {
     User **slot = userIndex_.find(username);
     if (!slot) // FIX: original dereferenced null here and segfaulted
@@ -158,8 +153,7 @@ bool RentalManager::login(const std::string &username,
         user->registerFailedLogin(); // 3 strikes -> account blocked
         audit("login.failed", username, false);
         if (user->isBlocked())
-            audit("account.autoblock",
-                  username + " after 3 failed logins", false);
+            audit("account.autoblock", username + " after 3 failed logins", false);
         return false;
     }
 
@@ -169,9 +163,15 @@ bool RentalManager::login(const std::string &username,
     return true;
 }
 
-void RentalManager::logout() { currentUser_ = nullptr; }
+void RentalManager::logout()
+{
+    currentUser_ = nullptr;
+}
 
-bool RentalManager::isLoggedIn() const { return currentUser_ != nullptr; }
+bool RentalManager::isLoggedIn() const
+{
+    return currentUser_ != nullptr;
+}
 
 std::string RentalManager::currentUserRole() const
 {
@@ -244,51 +244,53 @@ Car *RentalManager::searchCar(const std::string &name)
 std::vector<Car *> RentalManager::findCarsByBrand(const std::string &brand) const
 {
     std::vector<Car *> matches;
-    carIndex_.inOrderForEach([&](const std::string &, Car *car)
-                             {
-                                 if (car->brand() == brand)
-                                     matches.push_back(car);
-                             });
+    carIndex_.inOrderForEach(
+        [&](const std::string &, Car *car)
+        {
+            if (car->brand() == brand)
+                matches.push_back(car);
+        });
     return matches;
 }
 
 void RentalManager::forEachCar(const std::function<void(Car *)> &fn) const
 {
-    carOrder_.forEach([&](const std::string &name)
-                      {
-                          const Car *const *slot = carIndex_.find(name);
-                          if (slot)
-                              fn(const_cast<Car *>(*slot));
-                      });
+    carOrder_.forEach(
+        [&](const std::string &name)
+        {
+            const Car *const *slot = carIndex_.find(name);
+            if (slot)
+                fn(const_cast<Car *>(*slot));
+        });
 }
 
 void RentalManager::forEachCarSorted(const std::function<void(Car *)> &fn) const
 {
-    carIndex_.inOrderForEach([&](const std::string &, Car *car)
-                             { fn(car); });
+    carIndex_.inOrderForEach([&](const std::string &, Car *car) { fn(car); });
 }
 
 std::vector<Car *> RentalManager::findBookableCars() const
 {
     std::vector<Car *> out;
-    forEachCar([&](Car *car)
-               {
-                   if (car->isAvailableForBooking())
-                       out.push_back(car);
-               });
+    forEachCar(
+        [&](Car *car)
+        {
+            if (car->isAvailableForBooking())
+                out.push_back(car);
+        });
     return out;
 }
 
-std::vector<Car *> RentalManager::findCarsInPriceRange(double minPrice,
-                                                       double maxPrice) const
+std::vector<Car *> RentalManager::findCarsInPriceRange(double minPrice, double maxPrice) const
 {
     std::vector<Car *> out;
-    carIndex_.inOrderForEach([&](const std::string &, Car *car)
-                             {
-                                 double rate = car->pricePerDay();
-                                 if (rate >= minPrice && rate <= maxPrice)
-                                     out.push_back(car);
-                             });
+    carIndex_.inOrderForEach(
+        [&](const std::string &, Car *car)
+        {
+            double rate = car->pricePerDay();
+            if (rate >= minPrice && rate <= maxPrice)
+                out.push_back(car);
+        });
     std::sort(out.begin(), out.end(),
               [](const Car *a, const Car *b)
               {
@@ -302,8 +304,7 @@ std::vector<Car *> RentalManager::findCarsInPriceRange(double minPrice,
 void RentalManager::forEachCarByPrice(const std::function<void(Car *)> &fn) const
 {
     std::vector<Car *> fleet;
-    carIndex_.inOrderForEach([&](const std::string &, Car *car)
-                             { fleet.push_back(car); });
+    carIndex_.inOrderForEach([&](const std::string &, Car *car) { fleet.push_back(car); });
     std::sort(fleet.begin(), fleet.end(),
               [](const Car *a, const Car *b)
               {
@@ -322,12 +323,13 @@ std::vector<Car *> RentalManager::searchFleet(const std::string &keyword) const
     if (needle.empty())
         return matches;
 
-    forEachCar([&](Car *car)
-               {
-                   if (toLowerCopy(car->name()).find(needle) != std::string::npos ||
-                       toLowerCopy(car->brand()).find(needle) != std::string::npos)
-                       matches.push_back(car);
-               });
+    forEachCar(
+        [&](Car *car)
+        {
+            if (toLowerCopy(car->name()).find(needle) != std::string::npos ||
+                toLowerCopy(car->brand()).find(needle) != std::string::npos)
+                matches.push_back(car);
+        });
     return matches;
 }
 
@@ -337,11 +339,12 @@ std::vector<Car *> RentalManager::findAvailableCars(int start, int end) const
     if (start < Date::MIN_SERIAL || start > end)
         return out; // invalid window matches nothing
 
-    forEachCar([&](Car *car)
-               {
-                   if (car->isAvailableForBooking() && !car->hasOverlap(start, end))
-                       out.push_back(car);
-               });
+    forEachCar(
+        [&](Car *car)
+        {
+            if (car->isAvailableForBooking() && !car->hasOverlap(start, end))
+                out.push_back(car);
+        });
     return out;
 }
 
@@ -375,18 +378,16 @@ bool RentalManager::finishMaintenance(const std::string &carName)
  *  Customer operations
  * ============================================================ */
 
-Reservation *RentalManager::createBooking(Customer *customer, Car *car,
-                                          int startDate, int endDate)
+Reservation *RentalManager::createBooking(Customer *customer, Car *car, int startDate, int endDate)
 {
     const int newId = ++reservationCounter_; // unique id == arrival order
-    Reservation *r = new Reservation(customer, car, newId, newId,
-                                     startDate, endDate);
+    Reservation *r = new Reservation(customer, car, newId, newId, startDate, endDate);
     car->reserve(r);
     return r;
 }
 
-bool RentalManager::makeReservation(const std::string &carName, int startDate,
-                                    int endDate, std::string &errorOut)
+bool RentalManager::makeReservation(const std::string &carName, int startDate, int endDate,
+                                    std::string &errorOut)
 {
     Customer *customer = asCustomer();
     if (!customer)
@@ -418,8 +419,7 @@ bool RentalManager::makeReservation(const std::string &carName, int startDate,
     }
 
     createBooking(customer, car, startDate, endDate);
-    audit("reservation.made", carName + " " + Date::toISO(startDate)
-                                  + ".." + Date::toISO(endDate));
+    audit("reservation.made", carName + " " + Date::toISO(startDate) + ".." + Date::toISO(endDate));
     return true;
 }
 
@@ -427,10 +427,8 @@ bool RentalManager::makeReservation(const std::string &carName, int startDate,
  *  Recurring series (v3.0.0)
  * ============================================================ */
 
-bool RentalManager::makeRecurringReservation(const std::string &carName,
-                                             int startDate, int endDate,
-                                             RecurrencePlan plan, int times,
-                                             int &seriesIdOut,
+bool RentalManager::makeRecurringReservation(const std::string &carName, int startDate, int endDate,
+                                             RecurrencePlan plan, int times, int &seriesIdOut,
                                              std::string &errorOut)
 {
     seriesIdOut = 0;
@@ -461,14 +459,12 @@ bool RentalManager::makeRecurringReservation(const std::string &carName,
     // Every pickup day of the series — also rejects a series that
     // would collide with itself (duration longer than the plan step).
     std::vector<int> starts;
-    if (!buildSeriesStarts(plan, startDate, endDate - startDate + 1, times,
-                           starts))
+    if (!buildSeriesStarts(plan, startDate, endDate - startDate + 1, times, starts))
     {
-        errorOut = "Series is not bookable: need "
-                   + std::to_string(MIN_SERIES_OCCURRENCES) + ".."
-                   + std::to_string(MAX_SERIES_OCCURRENCES)
-                   + " bookings and each occurrence must fit inside the "
-                     "plan step.";
+        errorOut = "Series is not bookable: need " + std::to_string(MIN_SERIES_OCCURRENCES) + ".." +
+                   std::to_string(MAX_SERIES_OCCURRENCES) +
+                   " bookings and each occurrence must fit inside the "
+                   "plan step.";
         return false;
     }
 
@@ -480,10 +476,9 @@ bool RentalManager::makeRecurringReservation(const std::string &carName,
         const int end = starts[i] + durationDays - 1;
         if (car->hasOverlap(starts[i], end))
         {
-            errorOut = "Occurrence " + std::to_string(static_cast<int>(i) + 1)
-                       + " (" + Date::toISO(starts[i]) + ".."
-                       + Date::toISO(end)
-                       + ") overlaps an existing reservation - nothing booked.";
+            errorOut = "Occurrence " + std::to_string(static_cast<int>(i) + 1) + " (" +
+                       Date::toISO(starts[i]) + ".." + Date::toISO(end) +
+                       ") overlaps an existing reservation - nothing booked.";
             return false;
         }
     }
@@ -491,15 +486,13 @@ bool RentalManager::makeRecurringReservation(const std::string &carName,
     const int seriesId = ++seriesCounter_;
     for (const int start : starts)
     {
-        Reservation *r = createBooking(customer, car, start,
-                                       start + durationDays - 1);
+        Reservation *r = createBooking(customer, car, start, start + durationDays - 1);
         r->setSeriesId(seriesId);
     }
 
-    audit("recurring.created",
-          carName + " " + toString(plan) + " x" + std::to_string(times) + " "
-              + Date::toISO(startDate) + ".." + Date::toISO(endDate)
-              + " series #" + std::to_string(seriesId));
+    audit("recurring.created", carName + " " + toString(plan) + " x" + std::to_string(times) + " " +
+                                   Date::toISO(startDate) + ".." + Date::toISO(endDate) +
+                                   " series #" + std::to_string(seriesId));
     seriesIdOut = seriesId;
     return true;
 }
@@ -524,39 +517,35 @@ int RentalManager::cancelRecurringSeries(int seriesId, std::string &errorOut)
     // being served — cancelling it would strand a car that is out
     // with the customer, so it stays (and keeps its series tag).
     int removed = 0;
-    forEachCar([&](Car *car)
-               {
-                   Reservation *served =
-                       (car->status() == CarStatus::Rented)
-                           ? car->currentReservation()
-                           : nullptr;
-                   const std::vector<Reservation *> mine =
-                       car->reservationsOf(customer->username());
-                   for (Reservation *r : mine)
-                   {
-                       if (r == served)
-                           continue;
-                       if (r->seriesId() == seriesId)
-                       {
-                           // dropReservation removes it from the heap
-                           // AND frees it — do not delete again.
-                           car->dropReservation(r);
-                           ++removed;
-                       }
-                   }
-               });
+    forEachCar(
+        [&](Car *car)
+        {
+            Reservation *served =
+                (car->status() == CarStatus::Rented) ? car->currentReservation() : nullptr;
+            const std::vector<Reservation *> mine = car->reservationsOf(customer->username());
+            for (Reservation *r : mine)
+            {
+                if (r == served)
+                    continue;
+                if (r->seriesId() == seriesId)
+                {
+                    // dropReservation removes it from the heap
+                    // AND frees it — do not delete again.
+                    car->dropReservation(r);
+                    ++removed;
+                }
+            }
+        });
 
     if (removed == 0)
     {
-        errorOut = "No upcoming bookings from series #"
-                   + std::to_string(seriesId)
-                   + " - already served, already cancelled, or not yours.";
+        errorOut = "No upcoming bookings from series #" + std::to_string(seriesId) +
+                   " - already served, already cancelled, or not yours.";
         return 0;
     }
 
-    audit("recurring.cancelled", "series #" + std::to_string(seriesId)
-                                     + ": " + std::to_string(removed)
-                                     + " booking(s) removed");
+    audit("recurring.cancelled", "series #" + std::to_string(seriesId) + ": " +
+                                     std::to_string(removed) + " booking(s) removed");
     return removed;
 }
 
@@ -567,20 +556,19 @@ std::vector<Reservation *> RentalManager::myReservations() const
         return result;
 
     // The AVL in-order walk gives a stable, name-sorted listing.
-    carIndex_.inOrderForEach([&](const std::string &, Car *car)
-                             {
-                                 for (Reservation *r : car->reservationsOf(currentUser_->username()))
-                                     result.push_back(r);
-                             });
+    carIndex_.inOrderForEach(
+        [&](const std::string &, Car *car)
+        {
+            for (Reservation *r : car->reservationsOf(currentUser_->username()))
+                result.push_back(r);
+        });
 
-    std::sort(result.begin(), result.end(),
-              [](const Reservation *a, const Reservation *b)
+    std::sort(result.begin(), result.end(), [](const Reservation *a, const Reservation *b)
               { return a->startDate() < b->startDate(); });
     return result;
 }
 
-std::vector<PickupReminder> RentalManager::upcomingPickups(int horizonDays,
-                                                           int today) const
+std::vector<PickupReminder> RentalManager::upcomingPickups(int horizonDays, int today) const
 {
     std::vector<PickupReminder> result;
     if (!asCustomer())
@@ -588,27 +576,27 @@ std::vector<PickupReminder> RentalManager::upcomingPickups(int horizonDays,
 
     // The AVL in-order walk gives a stable, name-sorted walk; the
     // pure ordering in Recurring.h re-sorts by pickup day anyway.
-    carIndex_.inOrderForEach([&](const std::string &name, Car *car)
-    {
-        for (Reservation *r : car->reservationsOf(currentUser_->username()))
+    carIndex_.inOrderForEach(
+        [&](const std::string &name, Car *car)
         {
-            // The booking that is out right now was already handed
-            // over — it is not "upcoming". Its later series
-            // occurrences still remind.
-            if (car->status() == CarStatus::Rented &&
-                car->currentReservation() == r)
-                continue;
-            if (!isUpcomingPickup(r->startDate(), today, horizonDays))
-                continue;
-            PickupReminder rem;
-            rem.carName = name;
-            rem.reservationId = r->id();
-            rem.seriesId = r->seriesId();
-            rem.start = r->startDate();
-            rem.daysAway = r->startDate() - today;
-            result.push_back(rem);
-        }
-    });
+            for (Reservation *r : car->reservationsOf(currentUser_->username()))
+            {
+                // The booking that is out right now was already handed
+                // over — it is not "upcoming". Its later series
+                // occurrences still remind.
+                if (car->status() == CarStatus::Rented && car->currentReservation() == r)
+                    continue;
+                if (!isUpcomingPickup(r->startDate(), today, horizonDays))
+                    continue;
+                PickupReminder rem;
+                rem.carName = name;
+                rem.reservationId = r->id();
+                rem.seriesId = r->seriesId();
+                rem.start = r->startDate();
+                rem.daysAway = r->startDate() - today;
+                result.push_back(rem);
+            }
+        });
 
     sortReminders(result);
     return result;
@@ -618,8 +606,7 @@ std::vector<PickupReminder> RentalManager::upcomingPickups(int horizonDays,
  *  Change-of-plans moves (v3.2.0)
  * ============================================================ */
 
-bool RentalManager::rescheduleReservation(int reservationId, int newStart,
-                                          int newEnd, int today,
+bool RentalManager::rescheduleReservation(int reservationId, int newStart, int newEnd, int today,
                                           std::string &errorOut)
 {
     Customer *customer = asCustomer();
@@ -633,8 +620,7 @@ bool RentalManager::rescheduleReservation(int reservationId, int newStart,
         errorOut = "Invalid booking id.";
         return false;
     }
-    if (newStart < Date::MIN_SERIAL ||
-        !isValidMoveRange(newStart, newEnd, today))
+    if (newStart < Date::MIN_SERIAL || !isValidMoveRange(newStart, newEnd, today))
     {
         errorOut = "Invalid new dates (need start <= end, today or later).";
         return false;
@@ -645,20 +631,18 @@ bool RentalManager::rescheduleReservation(int reservationId, int newStart,
     // right now was handed over and cannot move.
     Car *owner = nullptr;
     Reservation *target = nullptr;
-    forEachCar([&](Car *car)
-               {
-                   Reservation *served =
-                       (car->status() == CarStatus::Rented)
-                           ? car->currentReservation()
-                           : nullptr;
-                   for (Reservation *r :
-                        car->reservationsOf(customer->username()))
-                       if (r != served && r->id() == reservationId)
-                       {
-                           owner = car;
-                           target = r;
-                       }
-               });
+    forEachCar(
+        [&](Car *car)
+        {
+            Reservation *served =
+                (car->status() == CarStatus::Rented) ? car->currentReservation() : nullptr;
+            for (Reservation *r : car->reservationsOf(customer->username()))
+                if (r != served && r->id() == reservationId)
+                {
+                    owner = car;
+                    target = r;
+                }
+        });
     if (!target)
     {
         errorOut = "No queued booking with that id - already handed "
@@ -677,8 +661,7 @@ bool RentalManager::rescheduleReservation(int reservationId, int newStart,
     if (owner->hasOverlap(newStart, newEnd))
     {
         owner->reinsertReservation(target);
-        errorOut =
-            "New dates overlap an existing reservation - booking unchanged.";
+        errorOut = "New dates overlap an existing reservation - booking unchanged.";
         return false;
     }
 
@@ -686,10 +669,9 @@ bool RentalManager::rescheduleReservation(int reservationId, int newStart,
     const int oldEnd = target->endDate();
     target->setRange(newStart, newEnd);
     owner->reinsertReservation(target);
-    audit("reservation.moved", owner->name() + " " + Date::toISO(oldStart)
-                                  + ".." + Date::toISO(oldEnd) + " -> "
-                                  + Date::toISO(newStart) + ".."
-                                  + Date::toISO(newEnd));
+    audit("reservation.moved", owner->name() + " " + Date::toISO(oldStart) + ".." +
+                                   Date::toISO(oldEnd) + " -> " + Date::toISO(newStart) + ".." +
+                                   Date::toISO(newEnd));
     return true;
 }
 
@@ -722,28 +704,24 @@ int RentalManager::rescheduleSeries(int seriesId, int newNextStart, int today,
         Reservation *r;
     };
     std::vector<Occurrence> occs;
-    forEachCar([&](Car *car)
-               {
-                   Reservation *served =
-                       (car->status() == CarStatus::Rented)
-                           ? car->currentReservation()
-                           : nullptr;
-                   for (Reservation *r :
-                        car->reservationsOf(customer->username()))
-                       if (r != served && r->seriesId() == seriesId)
-                           occs.push_back({car, r});
-               });
+    forEachCar(
+        [&](Car *car)
+        {
+            Reservation *served =
+                (car->status() == CarStatus::Rented) ? car->currentReservation() : nullptr;
+            for (Reservation *r : car->reservationsOf(customer->username()))
+                if (r != served && r->seriesId() == seriesId)
+                    occs.push_back({car, r});
+        });
     if (occs.empty())
     {
-        errorOut = "No upcoming bookings from series #"
-                   + std::to_string(seriesId)
-                   + " - already served, already cancelled, or not yours.";
+        errorOut = "No upcoming bookings from series #" + std::to_string(seriesId) +
+                   " - already served, already cancelled, or not yours.";
         return 0;
     }
 
     // The earliest queued pickup is the anchor the customer moved.
-    std::sort(occs.begin(), occs.end(),
-              [](const Occurrence &a, const Occurrence &b)
+    std::sort(occs.begin(), occs.end(), [](const Occurrence &a, const Occurrence &b)
               { return a.r->startDate() < b.r->startDate(); });
     if (!isMovablePickup(occs.front().r->startDate(), today))
     {
@@ -772,10 +750,10 @@ int RentalManager::rescheduleSeries(int seriesId, int newNextStart, int today,
         {
             for (Occurrence &o : occs)
                 o.car->reinsertReservation(o.r);
-            errorOut = "Occurrence " + std::to_string(static_cast<int>(i) + 1)
-                       + " (" + Date::toISO(s) + ".." + Date::toISO(e)
-                       + ") overlaps an existing reservation - series "
-                         "unchanged.";
+            errorOut = "Occurrence " + std::to_string(static_cast<int>(i) + 1) + " (" +
+                       Date::toISO(s) + ".." + Date::toISO(e) +
+                       ") overlaps an existing reservation - series "
+                       "unchanged.";
             return 0;
         }
     }
@@ -787,17 +765,15 @@ int RentalManager::rescheduleSeries(int seriesId, int newNextStart, int today,
     }
 
     const std::string sign = delta > 0 ? "+" : "";
-    audit("recurring.moved",
-          "series #" + std::to_string(seriesId) + ": "
-              + std::to_string(occs.size()) + " booking(s) shifted " + sign
-              + std::to_string(delta) + " day(s) -> "
-              + Date::toISO(occs.front().r->startDate()) + ".."
-              + Date::toISO(occs.front().r->endDate()));
+    audit("recurring.moved", "series #" + std::to_string(seriesId) + ": " +
+                                 std::to_string(occs.size()) + " booking(s) shifted " + sign +
+                                 std::to_string(delta) + " day(s) -> " +
+                                 Date::toISO(occs.front().r->startDate()) + ".." +
+                                 Date::toISO(occs.front().r->endDate()));
     return static_cast<int>(occs.size());
 }
 
-bool RentalManager::renewRental(const std::string &carName, int extraDays,
-                                std::string &errorOut)
+bool RentalManager::renewRental(const std::string &carName, int extraDays, std::string &errorOut)
 {
     Customer *customer = asCustomer();
     if (!customer || extraDays < 1)
@@ -850,8 +826,8 @@ double RentalManager::currentCustomerBalance() const
  *  Waitlist (v2.6.0)
  * ============================================================ */
 
-bool RentalManager::joinWaitlist(const std::string &carName, int startDate,
-                                 int endDate, std::string &errorOut)
+bool RentalManager::joinWaitlist(const std::string &carName, int startDate, int endDate,
+                                 std::string &errorOut)
 {
     Customer *customer = asCustomer();
     if (!customer)
@@ -881,29 +857,26 @@ bool RentalManager::joinWaitlist(const std::string &carName, int startDate,
     // One open wish per customer and car: overlapping duplicates
     // would be auto-booked twice once the window frees up.
     bool duplicate = false;
-    car->forEachWaitlistEntry([&](const WaitlistEntry *e)
-                              {
-                                  if (e->customer() == customer &&
-                                      Reservation::rangesOverlap(startDate, endDate,
-                                                                 e->startDate(), e->endDate()))
-                                      duplicate = true;
-                              });
+    car->forEachWaitlistEntry(
+        [&](const WaitlistEntry *e)
+        {
+            if (e->customer() == customer &&
+                Reservation::rangesOverlap(startDate, endDate, e->startDate(), e->endDate()))
+                duplicate = true;
+        });
     if (duplicate)
     {
         errorOut = "You are already waiting for this car in that range.";
         return false;
     }
 
-    WaitlistEntry *wish = new WaitlistEntry(customer, car, ++waitlistCounter_,
-                                            startDate, endDate);
+    WaitlistEntry *wish = new WaitlistEntry(customer, car, ++waitlistCounter_, startDate, endDate);
     car->enqueueWaitlistEntry(wish);
-    audit("waitlist.joined", carName + " " + Date::toISO(startDate)
-                                 + ".." + Date::toISO(endDate));
+    audit("waitlist.joined", carName + " " + Date::toISO(startDate) + ".." + Date::toISO(endDate));
     return true;
 }
 
-bool RentalManager::leaveWaitlist(const std::string &carName,
-                                  std::string &errorOut)
+bool RentalManager::leaveWaitlist(const std::string &carName, std::string &errorOut)
 {
     Customer *customer = asCustomer();
     if (!customer)
@@ -919,8 +892,7 @@ bool RentalManager::leaveWaitlist(const std::string &carName,
         return false;
     }
 
-    std::vector<WaitlistEntry *> removed =
-        car->takeWaitlistEntriesFor(customer->username());
+    std::vector<WaitlistEntry *> removed = car->takeWaitlistEntriesFor(customer->username());
     if (removed.empty())
     {
         errorOut = "You are not on the waitlist of this car.";
@@ -940,14 +912,16 @@ std::vector<WaitlistEntry *> RentalManager::myWaitlist() const
 
     // AVL in-order walk: same stable, name-sorted listing as
     // myReservations(); each car contributes its own heap entries.
-    carIndex_.inOrderForEach([&](const std::string &, Car *car)
-                             {
-                                 car->forEachWaitlistEntry([&](WaitlistEntry *e)
-                                                           {
-                                                               if (e->customer() == currentUser_)
-                                                                   result.push_back(e);
-                                                           });
-                             });
+    carIndex_.inOrderForEach(
+        [&](const std::string &, Car *car)
+        {
+            car->forEachWaitlistEntry(
+                [&](WaitlistEntry *e)
+                {
+                    if (e->customer() == currentUser_)
+                        result.push_back(e);
+                });
+        });
 
     std::sort(result.begin(), result.end(),
               [](const WaitlistEntry *a, const WaitlistEntry *b)
@@ -959,8 +933,7 @@ std::vector<WaitlistEntry *> RentalManager::myWaitlist() const
     return result;
 }
 
-bool RentalManager::serveWaitlist(const std::string &carName,
-                                  std::string &errorOut)
+bool RentalManager::serveWaitlist(const std::string &carName, std::string &errorOut)
 {
     if (!permitted(Permission::HANDLE_DELIVERIES, "waitlist.served"))
         return false;
@@ -985,18 +958,16 @@ bool RentalManager::serveWaitlist(const std::string &carName,
     }
 
     Reservation *booking = bookWaitlistEntry(car, wish);
-    audit("waitlist.served", carName + " -> "
-                                 + booking->customer()->username() + " "
-                                 + Date::toISO(booking->startDate()) + ".."
-                                 + Date::toISO(booking->endDate()));
+    audit("waitlist.served", carName + " -> " + booking->customer()->username() + " " +
+                                 Date::toISO(booking->startDate()) + ".." +
+                                 Date::toISO(booking->endDate()));
     return true;
 }
 
 std::size_t RentalManager::totalWaitlisted() const
 {
     std::size_t total = 0;
-    forEachCar([&](Car *car)
-               { total += car->waitlistCount(); });
+    forEachCar([&](Car *car) { total += car->waitlistCount(); });
     return total;
 }
 
@@ -1032,8 +1003,7 @@ double RentalManager::redeemPoints(int points, std::string &errorOut)
     }
     if (points > customer->loyaltyPoints())
     {
-        errorOut = "You only hold "
-                   + std::to_string(customer->loyaltyPoints()) + " points.";
+        errorOut = "You only hold " + std::to_string(customer->loyaltyPoints()) + " points.";
         return -1.0;
     }
     const double credit = pointsToValue(points);
@@ -1046,8 +1016,8 @@ double RentalManager::redeemPoints(int points, std::string &errorOut)
     {
         std::ostringstream oss;
         oss << std::fixed << std::setprecision(2) << customer->balance();
-        errorOut = "That credit exceeds your bill of " + oss.str()
-                   + " - redeem fewer points so none go to waste.";
+        errorOut = "That credit exceeds your bill of " + oss.str() +
+                   " - redeem fewer points so none go to waste.";
         return -1.0;
     }
 
@@ -1056,9 +1026,8 @@ double RentalManager::redeemPoints(int points, std::string &errorOut)
 
     std::ostringstream creditStr;
     creditStr << std::fixed << std::setprecision(2) << credit;
-    audit("loyalty.redeemed", customer->username() + " -"
-                                 + std::to_string(points) + " -> credit "
-                                 + creditStr.str());
+    audit("loyalty.redeemed",
+          customer->username() + " -" + std::to_string(points) + " -> credit " + creditStr.str());
     return credit;
 }
 
@@ -1079,22 +1048,21 @@ LoyaltyOverview RentalManager::computeLoyaltyOverview() const
     // Top member needs a deterministic winner: the HashTable walk
     // order is not, so collect and sort (points desc, name asc).
     std::vector<std::pair<std::string, int>> members;
-    userIndex_.forEach([&](const std::string &name, User *user)
-                       {
-                           if (user->role() != "Customer")
-                               return;
-                           const Customer *c = static_cast<const Customer *>(user);
-                           ++overview.totalMembers;
-                           ++overview.membersByTier[static_cast<int>(
-                               tierForLifetimePoints(c->lifetimePoints()))];
-                           overview.outstandingPoints += c->loyaltyPoints();
-                           members.emplace_back(name, c->lifetimePoints());
-                       });
+    userIndex_.forEach(
+        [&](const std::string &name, User *user)
+        {
+            if (user->role() != "Customer")
+                return;
+            const Customer *c = static_cast<const Customer *>(user);
+            ++overview.totalMembers;
+            ++overview.membersByTier[static_cast<int>(tierForLifetimePoints(c->lifetimePoints()))];
+            overview.outstandingPoints += c->loyaltyPoints();
+            members.emplace_back(name, c->lifetimePoints());
+        });
 
     overview.pointsLiability = pointsToValue(overview.outstandingPoints);
     std::sort(members.begin(), members.end(),
-              [](const std::pair<std::string, int> &a,
-                 const std::pair<std::string, int> &b)
+              [](const std::pair<std::string, int> &a, const std::pair<std::string, int> &b)
               {
                   if (a.second != b.second)
                       return a.second > b.second;
@@ -1108,28 +1076,25 @@ LoyaltyOverview RentalManager::computeLoyaltyOverview() const
     return overview;
 }
 
-void RentalManager::forEachCustomerSorted(
-    const std::function<void(const Customer *)> &fn) const
+void RentalManager::forEachCustomerSorted(const std::function<void(const Customer *)> &fn) const
 {
     std::vector<const Customer *> customers;
-    userIndex_.forEach([&](const std::string &, User *user)
-                       {
-                           if (user->role() == "Customer")
-                               customers.push_back(
-                                   static_cast<const Customer *>(user));
-                       });
+    userIndex_.forEach(
+        [&](const std::string &, User *user)
+        {
+            if (user->role() == "Customer")
+                customers.push_back(static_cast<const Customer *>(user));
+        });
     std::sort(customers.begin(), customers.end(),
-              [](const Customer *a, const Customer *b)
-              { return a->username() < b->username(); });
+              [](const Customer *a, const Customer *b) { return a->username() < b->username(); });
     for (const Customer *customer : customers)
         fn(customer);
 }
 
 Reservation *RentalManager::bookWaitlistEntry(Car *car, WaitlistEntry *entry)
 {
-    Reservation *booking = createBooking(entry->customer(), car,
-                                         entry->startDate(),
-                                         entry->endDate());
+    Reservation *booking =
+        createBooking(entry->customer(), car, entry->startDate(), entry->endDate());
     delete entry; // the wish is consumed
     return booking;
 }
@@ -1144,10 +1109,9 @@ void RentalManager::tryPromoteWaitlist(Car *car)
         return;
 
     Reservation *booking = bookWaitlistEntry(car, wish);
-    audit("waitlist.promoted",
-          car->name() + " -> " + booking->customer()->username() + " "
-              + Date::toISO(booking->startDate()) + ".."
-              + Date::toISO(booking->endDate()) + " (auto)");
+    audit("waitlist.promoted", car->name() + " -> " + booking->customer()->username() + " " +
+                                   Date::toISO(booking->startDate()) + ".." +
+                                   Date::toISO(booking->endDate()) + " (auto)");
 }
 
 /* ============================================================
@@ -1211,15 +1175,13 @@ bool RentalManager::returnCar(const std::string &carName, int actualReturnDay,
     // still recorded EXACTLY ONCE, on the discounted total.
     const Customer *invoicee = res->customer();
     const LoyaltyTier tierBefore =
-        invoicee ? tierForLifetimePoints(invoicee->lifetimePoints())
-                 : LoyaltyTier::Bronze;
+        invoicee ? tierForLifetimePoints(invoicee->lifetimePoints()) : LoyaltyTier::Bronze;
     int lateDays = 0;
     if (actualReturnDay > res->endDate())
         lateDays = actualReturnDay - res->endDate();
 
     const PriceBreakdown quote =
-        quoteRental(res->durationDays(), car->pricePerDay(), tierBefore,
-                    lateDays);
+        quoteRental(res->durationDays(), car->pricePerDay(), tierBefore, lateDays);
     const double total = quote.total;
 
     lastDiscountNote_.clear();
@@ -1235,11 +1197,10 @@ bool RentalManager::returnCar(const std::string &carName, int actualReturnDay,
     // (v3.0.0) The completed rental enters the history ledger with
     // its full invoice breakdown — the monthly report's raw data.
     Customer *cust = res->customer();
-    history_.add(RentalRecord(
-        carName, cust ? cust->username() : std::string("?"),
-        Date::toISO(res->startDate()), Date::toISO(res->endDate()),
-        Date::toISO(actualReturnDay), quote.base, quote.discount,
-        quote.penalty, quote.total));
+    history_.add(RentalRecord(carName, cust ? cust->username() : std::string("?"),
+                              Date::toISO(res->startDate()), Date::toISO(res->endDate()),
+                              Date::toISO(actualReturnDay), quote.base, quote.discount,
+                              quote.penalty, quote.total));
 
     // The customer owes the money until they pay their bill.
     if (cust)
@@ -1256,21 +1217,17 @@ bool RentalManager::returnCar(const std::string &carName, int actualReturnDay,
         if (earned > 0)
         {
             cust->awardLoyaltyPoints(earned);
-            audit("loyalty.earned",
-                  cust->username() + " +" + std::to_string(earned) + " -> "
-                      + toString(tierForLifetimePoints(cust->lifetimePoints())));
+            audit("loyalty.earned", cust->username() + " +" + std::to_string(earned) + " -> " +
+                                        toString(tierForLifetimePoints(cust->lifetimePoints())));
             // (v2.9.0) Crossing a threshold is a moment worth
             // announcing: the trail keeps the promotion, and the
             // notice is surfaced on the staff return screen.
-            const LoyaltyTier tierAfter =
-                tierForLifetimePoints(cust->lifetimePoints());
+            const LoyaltyTier tierAfter = tierForLifetimePoints(cust->lifetimePoints());
             if (tierAfter != tierBefore)
             {
-                lastRankUp_ = cust->username() + " crossed into "
-                              + toString(tierAfter);
+                lastRankUp_ = cust->username() + " crossed into " + toString(tierAfter);
                 audit("loyalty.rankup",
-                      cust->username() + " " + toString(tierBefore) + " -> "
-                          + toString(tierAfter));
+                      cust->username() + " " + toString(tierBefore) + " -> " + toString(tierAfter));
             }
         }
         cust->recordCompletedRental();
@@ -1282,16 +1239,14 @@ bool RentalManager::returnCar(const std::string &carName, int actualReturnDay,
     delete res;
 
     car->refreshStatus();
-    audit("car.returned",
-          carName + (lateDays > 0 ? " (late penalty applied)" : ""));
+    audit("car.returned", carName + (lateDays > 0 ? " (late penalty applied)" : ""));
     tryPromoteWaitlist(car); // the freed window may satisfy a wish
     return true;
 }
 
-bool RentalManager::recordMaintenance(const std::string &carName,
-                                      const std::string &date,
-                                      const std::string &description,
-                                      double cost, std::string &errorOut)
+bool RentalManager::recordMaintenance(const std::string &carName, const std::string &date,
+                                      const std::string &description, double cost,
+                                      std::string &errorOut)
 {
     Car *car = searchCar(carName);
     if (!car)
@@ -1323,8 +1278,7 @@ MonthlyReport RentalManager::monthlyReport(int year, int month) const
     return buildMonthlyReport(history_, year, month);
 }
 
-bool RentalManager::exportMonthlyReport(int year, int month,
-                                        const std::string &path,
+bool RentalManager::exportMonthlyReport(int year, int month, const std::string &path,
                                         std::string &errorOut) const
 {
     if (month < 1 || month > 12)
@@ -1334,8 +1288,7 @@ bool RentalManager::exportMonthlyReport(int year, int month,
     }
     if (!permitted(Permission::EXPORT_REPORTS, "export.monthly"))
         return false;
-    const std::filesystem::path parent =
-        std::filesystem::path(path).parent_path();
+    const std::filesystem::path parent = std::filesystem::path(path).parent_path();
     if (!parent.empty())
         std::filesystem::create_directories(parent);
 
@@ -1351,13 +1304,11 @@ bool RentalManager::exportMonthlyReport(int year, int month,
     // Three sections, in the order the screen shows them. Same
     // default double formatting as every other CSV report.
     file << "month,rentals,revenue,discounts,lateFees\n"
-         << report.month << ',' << report.rentalsCompleted << ','
-         << report.revenue << ',' << report.discountGiven << ','
-         << report.lateFees << '\n';
+         << report.month << ',' << report.rentalsCompleted << ',' << report.revenue << ','
+         << report.discountGiven << ',' << report.lateFees << '\n';
     file << "car,rentals,revenue\n";
     for (const CarRevenue &car : report.perCar)
-        file << car.name << ',' << car.rentals << ',' << car.revenue
-             << '\n';
+        file << car.name << ',' << car.rentals << ',' << car.revenue << '\n';
     file << "day,rentals\n";
     for (const NamedCount &day : report.perDay)
         file << day.label << ',' << day.count << '\n';
@@ -1370,33 +1321,29 @@ void RentalManager::printIncomeReport() const
 {
     double totalIncome = 0.0, totalCosts = 0.0;
     std::cout << "\n  ----------------- INCOME REPORT -----------------\n";
-    std::cout << "  " << std::left << std::setw(16) << "CAR"
-              << std::right << std::setw(12) << "INCOME"
-              << std::setw(14) << "MAINTENANCE"
-              << std::setw(12) << "NET"
+    std::cout << "  " << std::left << std::setw(16) << "CAR" << std::right << std::setw(12)
+              << "INCOME" << std::setw(14) << "MAINTENANCE" << std::setw(12) << "NET"
               << "\n";
     std::cout << "  " << std::string(54, '-') << "\n";
 
-    forEachCar([&](Car *car)
-               {
-                   totalIncome += car->totalIncome();
-                   totalCosts += car->maintenanceCost();
-                   std::cout << "  " << std::left << std::setw(16) << car->name()
-                             << std::right << std::fixed << std::setprecision(2)
-                             << std::setw(12) << car->totalIncome()
-                             << std::setw(14) << car->maintenanceCost()
-                             << std::setw(12) << car->netRevenue()
-                             << "\n";
-               });
+    forEachCar(
+        [&](Car *car)
+        {
+            totalIncome += car->totalIncome();
+            totalCosts += car->maintenanceCost();
+            std::cout << "  " << std::left << std::setw(16) << car->name() << std::right
+                      << std::fixed << std::setprecision(2) << std::setw(12) << car->totalIncome()
+                      << std::setw(14) << car->maintenanceCost() << std::setw(12)
+                      << car->netRevenue() << "\n";
+        });
 
     std::cout << "  " << std::string(54, '-') << "\n";
-    std::cout << "  " << std::left << std::setw(28) << "  Gross income"
-              << std::right << std::fixed << std::setprecision(2) << totalIncome << "\n";
-    std::cout << "  " << std::left << std::setw(28) << "  Maintenance costs"
-              << std::right << std::fixed << std::setprecision(2) << totalCosts << "\n";
-    std::cout << "  " << std::left << std::setw(28) << "  NET revenue"
-              << std::right << std::fixed << std::setprecision(2)
-              << (totalIncome - totalCosts) << "\n";
+    std::cout << "  " << std::left << std::setw(28) << "  Gross income" << std::right << std::fixed
+              << std::setprecision(2) << totalIncome << "\n";
+    std::cout << "  " << std::left << std::setw(28) << "  Maintenance costs" << std::right
+              << std::fixed << std::setprecision(2) << totalCosts << "\n";
+    std::cout << "  " << std::left << std::setw(28) << "  NET revenue" << std::right << std::fixed
+              << std::setprecision(2) << (totalIncome - totalCosts) << "\n";
 }
 
 /* ============================================================
@@ -1408,36 +1355,37 @@ FleetStats RentalManager::computeStats() const
     FleetStats stats;
     const Car *best = nullptr;
 
-    forEachCar([&](Car *car)
-               {
-                   ++stats.totalCars;
-                   switch (car->status())
-                   {
-                   case CarStatus::Available:
-                       ++stats.availableCars;
-                       break;
-                   case CarStatus::Reserved:
-                       ++stats.reservedCars;
-                       break;
-                   case CarStatus::Rented:
-                       ++stats.rentedCars;
-                       break;
-                   case CarStatus::Maintenance:
-                       ++stats.maintenanceCars;
-                       break;
-                   }
-                   stats.activeBookings += car->reservationCount();
-                   stats.grossIncome += car->totalIncome();
-                   stats.maintenanceSpend += car->maintenanceCost();
+    forEachCar(
+        [&](Car *car)
+        {
+            ++stats.totalCars;
+            switch (car->status())
+            {
+            case CarStatus::Available:
+                ++stats.availableCars;
+                break;
+            case CarStatus::Reserved:
+                ++stats.reservedCars;
+                break;
+            case CarStatus::Rented:
+                ++stats.rentedCars;
+                break;
+            case CarStatus::Maintenance:
+                ++stats.maintenanceCars;
+                break;
+            }
+            stats.activeBookings += car->reservationCount();
+            stats.grossIncome += car->totalIncome();
+            stats.maintenanceSpend += car->maintenanceCost();
 
-                   if (!best || car->totalIncome() > best->totalIncome())
-                       best = car;
-               });
+            if (!best || car->totalIncome() > best->totalIncome())
+                best = car;
+        });
 
     stats.netRevenue = stats.grossIncome - stats.maintenanceSpend;
     if (stats.totalCars > 0)
-        stats.utilization = 100.0 * static_cast<double>(stats.rentedCars + stats.reservedCars)
-                            / static_cast<double>(stats.totalCars);
+        stats.utilization = 100.0 * static_cast<double>(stats.rentedCars + stats.reservedCars) /
+                            static_cast<double>(stats.totalCars);
     if (best && best->totalIncome() > 0.0)
         stats.topEarner = best->name();
     return stats;
@@ -1447,8 +1395,7 @@ bool RentalManager::exportFleetReport(const std::string &path) const
 {
     if (!permitted(Permission::EXPORT_REPORTS, "export.fleet"))
         return false;
-    const std::filesystem::path parent =
-        std::filesystem::path(path).parent_path();
+    const std::filesystem::path parent = std::filesystem::path(path).parent_path();
     if (!parent.empty())
         std::filesystem::create_directories(parent);
 
@@ -1459,14 +1406,13 @@ bool RentalManager::exportFleetReport(const std::string &path) const
     // Name-sorted via the AVL in-order walk, so two exports of the
     // same state are byte-identical (diff-friendly).
     file << "name,brand,pricePerDay,status,income,maintenanceCost,netRevenue\n";
-    forEachCarSorted([&](Car *car)
-                     {
-                         file << car->name() << ',' << car->brand() << ','
-                              << car->pricePerDay() << ',' << toString(car->status())
-                              << ',' << car->totalIncome() << ','
-                              << car->maintenanceCost() << ',' << car->netRevenue()
-                              << '\n';
-                     });
+    forEachCarSorted(
+        [&](Car *car)
+        {
+            file << car->name() << ',' << car->brand() << ',' << car->pricePerDay() << ','
+                 << toString(car->status()) << ',' << car->totalIncome() << ','
+                 << car->maintenanceCost() << ',' << car->netRevenue() << '\n';
+        });
     audit("export.fleet", path);
     return true;
 }
@@ -1475,20 +1421,16 @@ bool RentalManager::exportBookingReport(const std::string &path) const
 {
     if (!permitted(Permission::EXPORT_REPORTS, "export.bookings"))
         return false;
-    const std::filesystem::path parent =
-        std::filesystem::path(path).parent_path();
+    const std::filesystem::path parent = std::filesystem::path(path).parent_path();
     if (!parent.empty())
         std::filesystem::create_directories(parent);
 
     // The per-car heaps expose bookings in bucket order, not service
     // order — flatten, then sort for a stable, diff-friendly report.
     std::vector<const Reservation *> bookings;
-    forEachCarSorted([&](Car *car)
-                     {
-                         car->forEachReservation(
-                             [&](const Reservation *r)
-                             { bookings.push_back(r); });
-                     });
+    forEachCarSorted(
+        [&](Car *car)
+        { car->forEachReservation([&](const Reservation *r) { bookings.push_back(r); }); });
     std::sort(bookings.begin(), bookings.end(),
               [](const Reservation *a, const Reservation *b)
               {
@@ -1503,9 +1445,9 @@ bool RentalManager::exportBookingReport(const std::string &path) const
 
     file << "id,carName,customer,startDate,endDate,durationDays\n";
     for (const Reservation *r : bookings)
-        file << r->id() << ',' << r->car()->name() << ','
-             << r->customer()->username() << ',' << Date::toISO(r->startDate())
-             << ',' << Date::toISO(r->endDate()) << ',' << r->durationDays() << '\n';
+        file << r->id() << ',' << r->car()->name() << ',' << r->customer()->username() << ','
+             << Date::toISO(r->startDate()) << ',' << Date::toISO(r->endDate()) << ','
+             << r->durationDays() << '\n';
     audit("export.bookings", path);
     return true;
 }
@@ -1514,8 +1456,7 @@ bool RentalManager::exportLoyaltyReport(const std::string &path) const
 {
     if (!permitted(Permission::EXPORT_REPORTS, "export.loyalty"))
         return false;
-    const std::filesystem::path parent =
-        std::filesystem::path(path).parent_path();
+    const std::filesystem::path parent = std::filesystem::path(path).parent_path();
     if (!parent.empty())
         std::filesystem::create_directories(parent);
 
@@ -1528,21 +1469,17 @@ bool RentalManager::exportLoyaltyReport(const std::string &path) const
     // sheet and the JSON report's member array).
     file << "username,tier,points,lifetimePoints,"
             "completedRentals,pointsToNextTier\n";
-    forEachCustomerSorted([&](const Customer *customer)
-                          {
-                              LoyaltyProfile profile;
-                              profile.points = customer->loyaltyPoints();
-                              profile.lifetimePoints =
-                                  customer->lifetimePoints();
-                              profile.completedRentals =
-                                  customer->completedRentals();
-                              file << customer->username() << ','
-                                   << toString(profile.tier()) << ','
-                                   << profile.points << ','
-                                   << profile.lifetimePoints << ','
-                                   << profile.completedRentals << ','
-                                   << profile.pointsToNextTier() << '\n';
-                          });
+    forEachCustomerSorted(
+        [&](const Customer *customer)
+        {
+            LoyaltyProfile profile;
+            profile.points = customer->loyaltyPoints();
+            profile.lifetimePoints = customer->lifetimePoints();
+            profile.completedRentals = customer->completedRentals();
+            file << customer->username() << ',' << toString(profile.tier()) << ',' << profile.points
+                 << ',' << profile.lifetimePoints << ',' << profile.completedRentals << ','
+                 << profile.pointsToNextTier() << '\n';
+        });
     audit("export.loyalty", path);
     return true;
 }
@@ -1568,26 +1505,24 @@ bool RentalManager::saveData(const std::string &dataDir) const
             return false;
         file << "username,salt,hash,role,blocked,failedLogins,balance"
                 ",loyaltyPoints,lifetimePoints,completedRentals\n";
-        userIndex_.forEach([&](const std::string &, User *u)
-                           {
-                               double balance = 0.0;
-                               int points = 0, lifetime = 0, rentals = 0;
-                               if (u->role() == "Customer")
-                               {
-                                   const Customer *c =
-                                       static_cast<const Customer *>(u);
-                                   balance = c->balance();
-                                   points = c->loyaltyPoints();
-                                   lifetime = c->lifetimePoints();
-                                   rentals = c->completedRentals();
-                               }
-                               file << u->username() << ',' << u->salt() << ','
-                                    << u->passwordHash() << ',' << u->role() << ','
-                                    << (u->isBlocked() ? 1 : 0) << ','
-                                    << u->failedLogins() << ',' << balance << ','
-                                    << points << ',' << lifetime << ',' << rentals
-                                    << '\n';
-                           });
+        userIndex_.forEach(
+            [&](const std::string &, User *u)
+            {
+                double balance = 0.0;
+                int points = 0, lifetime = 0, rentals = 0;
+                if (u->role() == "Customer")
+                {
+                    const Customer *c = static_cast<const Customer *>(u);
+                    balance = c->balance();
+                    points = c->loyaltyPoints();
+                    lifetime = c->lifetimePoints();
+                    rentals = c->completedRentals();
+                }
+                file << u->username() << ',' << u->salt() << ',' << u->passwordHash() << ','
+                     << u->role() << ',' << (u->isBlocked() ? 1 : 0) << ',' << u->failedLogins()
+                     << ',' << balance << ',' << points << ',' << lifetime << ',' << rentals
+                     << '\n';
+            });
     }
 
     /* ---- cars.csv ---- */
@@ -1596,18 +1531,17 @@ bool RentalManager::saveData(const std::string &dataDir) const
         if (!file)
             return false;
         file << "name,brand,pricePerDay,status,income,maintenanceCost\n";
-        carOrder_.forEach([&](const std::string &name)
-                          {
-                              Car *const *slot = carIndex_.find(name);
-                              if (!slot)
-                                  return;
-                              Car *c = *slot;
-                              file << c->name() << ',' << c->brand() << ','
-                                   << c->pricePerDay() << ','
-                                   << static_cast<int>(c->status()) << ','
-                                   << c->totalIncome() << ','
-                                   << c->maintenanceCost() << '\n';
-                          });
+        carOrder_.forEach(
+            [&](const std::string &name)
+            {
+                Car *const *slot = carIndex_.find(name);
+                if (!slot)
+                    return;
+                Car *c = *slot;
+                file << c->name() << ',' << c->brand() << ',' << c->pricePerDay() << ','
+                     << static_cast<int>(c->status()) << ',' << c->totalIncome() << ','
+                     << c->maintenanceCost() << '\n';
+            });
     }
 
     /* ---- reservations.csv ---- */
@@ -1616,21 +1550,20 @@ bool RentalManager::saveData(const std::string &dataDir) const
         if (!file)
             return false;
         file << "id,carName,customer,requestTime,startDate,endDate,seriesId\n";
-        carOrder_.forEach([&](const std::string &name)
-                          {
-                              const Car *const *slot = carIndex_.find(name);
-                              if (!slot)
-                                  return;
-                              (*slot)->forEachReservation([&](const Reservation *r)
-                                                          {
-                                                              file << r->id() << ',' << name << ','
-                                                                   << r->customer()->username() << ','
-                                                                   << r->requestTime() << ','
-                                                                   << Date::toISO(r->startDate()) << ','
-                                                                   << Date::toISO(r->endDate()) << ','
-                                                                   << r->seriesId() << '\n';
-                                                          });
-                          });
+        carOrder_.forEach(
+            [&](const std::string &name)
+            {
+                const Car *const *slot = carIndex_.find(name);
+                if (!slot)
+                    return;
+                (*slot)->forEachReservation(
+                    [&](const Reservation *r)
+                    {
+                        file << r->id() << ',' << name << ',' << r->customer()->username() << ','
+                             << r->requestTime() << ',' << Date::toISO(r->startDate()) << ','
+                             << Date::toISO(r->endDate()) << ',' << r->seriesId() << '\n';
+                    });
+            });
     }
 
     /* ---- audit_log.csv (append-only trail, v2.5.0) ---- */
@@ -1646,21 +1579,20 @@ bool RentalManager::saveData(const std::string &dataDir) const
             return false;
         file << "carName,customer,startDate,endDate,joinOrder\n";
         // Insertion order + heap order: a stable, reproducible dump.
-        carOrder_.forEach([&](const std::string &name)
-                          {
-                              const Car *const *slot = carIndex_.find(name);
-                              if (!slot)
-                                  return;
-                              (*slot)->forEachWaitlistEntry(
-                                  [&](const WaitlistEntry *e)
-                                  {
-                                      file << name << ','
-                                           << e->customer()->username() << ','
-                                           << Date::toISO(e->startDate()) << ','
-                                           << Date::toISO(e->endDate()) << ','
-                                           << e->joinOrder() << '\n';
-                                  });
-                          });
+        carOrder_.forEach(
+            [&](const std::string &name)
+            {
+                const Car *const *slot = carIndex_.find(name);
+                if (!slot)
+                    return;
+                (*slot)->forEachWaitlistEntry(
+                    [&](const WaitlistEntry *e)
+                    {
+                        file << name << ',' << e->customer()->username() << ','
+                             << Date::toISO(e->startDate()) << ',' << Date::toISO(e->endDate())
+                             << ',' << e->joinOrder() << '\n';
+                    });
+            });
     }
 
     return true;
@@ -1669,7 +1601,7 @@ bool RentalManager::saveData(const std::string &dataDir) const
 bool RentalManager::loadData(const std::string &dataDir)
 {
     clearAll();
-    auditLog_.loadCSV(dataDir + "/audit_log.csv"); // absent on fresh runs
+    auditLog_.loadCSV(dataDir + "/audit_log.csv");     // absent on fresh runs
     history_.loadCSV(dataDir + "/rental_history.csv"); // absent on pre-3.0.0 saves
 
     /* ---- users first (reservations reference them) ---- */
@@ -1685,8 +1617,8 @@ bool RentalManager::loadData(const std::string &dataDir)
             if (line.empty())
                 continue;
             std::stringstream ss(line);
-            std::string username, salt, hash, role, blockedStr, failedStr,
-                balanceStr, pointsStr, lifetimeStr, rentalsStr;
+            std::string username, salt, hash, role, blockedStr, failedStr, balanceStr, pointsStr,
+                lifetimeStr, rentalsStr;
             std::getline(ss, username, ',');
             std::getline(ss, salt, ',');
             std::getline(ss, hash, ',');
@@ -1728,9 +1660,7 @@ bool RentalManager::loadData(const std::string &dataDir)
             else
                 continue;
 
-            user->restoreCredentials(salt, hash,
-                                     blockedStr == "1",
-                                     std::stoi(failedStr));
+            user->restoreCredentials(salt, hash, blockedStr == "1", std::stoi(failedStr));
             userIndex_.insert(username, user);
         }
     }
@@ -1801,13 +1731,12 @@ bool RentalManager::loadData(const std::string &dataDir)
             // startDate/endDate: ISO dates since 2.3.0, day numbers
             // before that — accept both so old data files keep loading.
             int start = 0, end = 0;
-            if (!Date::parseFlexible(startStr, start) ||
-                !Date::parseFlexible(endStr, end) || start > end)
+            if (!Date::parseFlexible(startStr, start) || !Date::parseFlexible(endStr, end) ||
+                start > end)
                 continue; // corrupt row -> drop it, don't crash
 
-            Reservation *r = new Reservation(static_cast<Customer *>(*userSlot),
-                                             *carSlot, id, std::stoi(reqStr),
-                                             start, end);
+            Reservation *r = new Reservation(static_cast<Customer *>(*userSlot), *carSlot, id,
+                                             std::stoi(reqStr), start, end);
             const int seriesId = seriesStr.empty() ? 0 : std::stoi(seriesStr);
             r->setSeriesId(seriesId);
             seriesCounter_ = std::max(seriesCounter_, seriesId);
@@ -1837,20 +1766,19 @@ bool RentalManager::loadData(const std::string &dataDir)
 
             Car **carSlot = carIndex_.find(carName);
             User **userSlot = userIndex_.find(customerName);
-            if (!carSlot || !userSlot ||
-                (*userSlot)->role() != "Customer")
+            if (!carSlot || !userSlot || (*userSlot)->role() != "Customer")
                 continue; // dangling wish -> drop it, don't crash
 
             int start = 0, end = 0;
-            if (!Date::parseFlexible(startStr, start) ||
-                !Date::parseFlexible(endStr, end) || start > end)
+            if (!Date::parseFlexible(startStr, start) || !Date::parseFlexible(endStr, end) ||
+                start > end)
                 continue; // corrupt row -> drop it, don't crash
 
             const int order = std::stoi(orderStr);
             waitlistCounter_ = std::max(waitlistCounter_, order);
 
-            WaitlistEntry *wish = new WaitlistEntry(
-                static_cast<Customer *>(*userSlot), *carSlot, order, start, end);
+            WaitlistEntry *wish =
+                new WaitlistEntry(static_cast<Customer *>(*userSlot), *carSlot, order, start, end);
             (*carSlot)->reinsertWaitlistEntry(wish);
         }
     }
@@ -1881,15 +1809,10 @@ void RentalManager::seedDemoData()
         const char *name, *brand;
         double price;
     };
-    const SeedCar fleet[] = {
-        {"Pride 131", "Saipa", 30.0},
-        {"Quick R", "Saipa", 35.0},
-        {"Peugeot 206", "Peugeot", 45.0},
-        {"Peugeot Pars", "Peugeot", 60.0},
-        {"Samand LX", "IKCO", 50.0},
-        {"Dena Plus", "IKCO", 55.0},
-        {"Benz C200", "Mercedes", 180.0},
-        {"Tucson 2023", "Hyundai", 120.0}};
+    const SeedCar fleet[] = {{"Pride 131", "Saipa", 30.0},     {"Quick R", "Saipa", 35.0},
+                             {"Peugeot 206", "Peugeot", 45.0}, {"Peugeot Pars", "Peugeot", 60.0},
+                             {"Samand LX", "IKCO", 50.0},      {"Dena Plus", "IKCO", 55.0},
+                             {"Benz C200", "Mercedes", 180.0}, {"Tucson 2023", "Hyundai", 120.0}};
 
     for (const SeedCar &s : fleet)
         addCar(new Car(s.name, s.brand, s.price));

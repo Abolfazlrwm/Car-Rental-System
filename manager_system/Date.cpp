@@ -23,10 +23,9 @@ int daysFromCivil(int y, unsigned m, unsigned d)
 {
     y -= (m <= 2);
     const int era = (y >= 0 ? y : y - 399) / 400;
-    const unsigned yoe = static_cast<unsigned>(y - era * 400);      // [0, 399]
-    const unsigned doy =
-        (153u * (m + (m > 2 ? -3u : 9u)) + 2u) / 5u + d - 1;        // [0, 365]
-    const unsigned doe = yoe * 365u + yoe / 4u - yoe / 100u + doy;  // [0, 146096]
+    const unsigned yoe = static_cast<unsigned>(y - era * 400);                // [0, 399]
+    const unsigned doy = (153u * (m + (m > 2 ? -3u : 9u)) + 2u) / 5u + d - 1; // [0, 365]
+    const unsigned doe = yoe * 365u + yoe / 4u - yoe / 100u + doy;            // [0, 146096]
     return era * 146097 + static_cast<int>(doe) - 719468;
 }
 
@@ -35,14 +34,13 @@ void civilFromDays(int z, int &yOut, unsigned &mOut, unsigned &dOut)
 {
     z += 719468;
     const int era = (z >= 0 ? z : z - 146096) / 146097;
-    const unsigned doe = static_cast<unsigned>(z - era * 146097);   // [0, 146096]
-    const unsigned yoe =
-        (doe - doe / 1460u + doe / 36524u - doe / 146096u) / 365u;  // [0, 399]
+    const unsigned doe = static_cast<unsigned>(z - era * 146097);                   // [0, 146096]
+    const unsigned yoe = (doe - doe / 1460u + doe / 36524u - doe / 146096u) / 365u; // [0, 399]
     const int y = static_cast<int>(yoe) + era * 400;
     const unsigned doy = doe - (365u * yoe + yoe / 4u - yoe / 100u);
-    const unsigned mp = (5u * doy + 2u) / 153u;                     // [0, 11]
-    dOut = doy - (153u * mp + 2u) / 5u + 1u;                        // [1, 31]
-    mOut = (mp < 10u) ? mp + 3u : mp - 9u;                          // [1, 12]
+    const unsigned mp = (5u * doy + 2u) / 153u; // [0, 11]
+    dOut = doy - (153u * mp + 2u) / 5u + 1u;    // [1, 31]
+    mOut = (mp < 10u) ? mp + 3u : mp - 9u;      // [1, 12]
     yOut = y + ((mOut <= 2) ? 1 : 0);
 }
 
@@ -53,8 +51,7 @@ bool isLeapYear(int y)
 
 unsigned daysInMonth(int y, unsigned m)
 {
-    static const unsigned kDays[12] = {31, 28, 31, 30, 31, 30,
-                                       31, 31, 30, 31, 30, 31};
+    static const unsigned kDays[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
     if (m == 2 && isLeapYear(y))
         return 29;
     return kDays[m - 1];
@@ -65,8 +62,7 @@ bool Date::isValid(int year, int month, int day)
 {
     if (year < 1 || year > 9999 || month < 1 || month > 12)
         return false;
-    return day >= 1 && day <= static_cast<int>(daysInMonth(year,
-                                                           static_cast<unsigned>(month)));
+    return day >= 1 && day <= static_cast<int>(daysInMonth(year, static_cast<unsigned>(month)));
 }
 
 bool Date::parseISO(const std::string &text, int &serialOut)
@@ -86,8 +82,7 @@ bool Date::parseISO(const std::string &text, int &serialOut)
     if (!isValid(y, m, d))
         return false;
 
-    const int serial = daysFromCivil(y, static_cast<unsigned>(m),
-                                     static_cast<unsigned>(d));
+    const int serial = daysFromCivil(y, static_cast<unsigned>(m), static_cast<unsigned>(d));
     if (serial < MIN_SERIAL) // business floor: nothing before 1970-01-01
         return false;
 
@@ -157,7 +152,6 @@ int Date::todaySerial()
 #else
     localtime_r(&now, &local);
 #endif
-    return daysFromCivil(local.tm_year + 1900,
-                         static_cast<unsigned>(local.tm_mon + 1),
+    return daysFromCivil(local.tm_year + 1900, static_cast<unsigned>(local.tm_mon + 1),
                          static_cast<unsigned>(local.tm_mday));
 }
