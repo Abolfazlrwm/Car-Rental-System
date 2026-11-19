@@ -31,8 +31,10 @@ jobs:
       - name: Configure (CMake)
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
+      # --config Release matters on Windows, where the default Visual
+      # Studio generator is multi-config and builds Debug by default.
       - name: Build
-        run: cmake --build build -j
+        run: cmake --build build --config Release -j
 
       - name: Package (Linux / macOS)
         if: runner.os != 'Windows'
