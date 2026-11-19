@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live demo — Car Rental Management System (C++17 → WebAssembly)</title>
+<meta name="description" content="The real Car Rental Management System binary — the same C++17 sources, compiled to WebAssembly — running in your browser. No install, no server: log in and manage the fleet right here.">
+<link rel="stylesheet" href="demo/vendor/xterm.css">
+<style>
+  :root {
+    --bg: #0b1020;
+    --panel: #121a30;
+    --panel2: #0f1628;
+    --line: #1f2b4a;
+    --text: #dbe4ff;
+    --muted: #8ea0c4;
+    --accent: #4cc9f0;
+    --accent2: #f0a44c;
+    --green: #3ddc97;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background:
+      radial-gradient(1200px 500px at 80% -10%, rgba(76,201,240,.14), transparent 60%),
+      radial-gradient(900px 420px at 10% 110%, rgba(240,164,76,.10), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 20px; }
+  header.top {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+    justify-content: space-between;
+    padding: 18px 0; border-bottom: 1px solid var(--line);
+  }
+  .brand { font-weight: 700; font-size: clamp(1rem, 2.5vw, 1.15rem); }
+  .brand span { color: var(--accent); }
+  .topnav { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn {
+    display: inline-block; padding: 8px 16px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--panel);
+    color: var(--text); text-decoration: none; font-size: .92rem;
+    cursor: pointer; transition: border-color .15s, color .15s;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #08101d; font-weight: 700; }
+  .btn.primary:hover { filter: brightness(1.08); color: #08101d; }
+  main { padding: 26px 0 60px; }
+  h1 { font-size: clamp(1.4rem, 4vw, 2rem); margin-bottom: 8px; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--muted); max-width: 760px; margin-bottom: 20px; }
+  .terminal-card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 14px; box-shadow: 0 18px 50px rgba(0,0,0,.35);
+  }
+  .term-head {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    justify-content: space-between; padding: 0 4px 12px;
+  }
+  .dots { display: flex; gap: 6px; }
+  .dots i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+  .dots i:nth-child(1) { background: #ff5f57; }
+  .dots i:nth-child(2) { background: #febc2e; }
+  .dots i:nth-child(3) { background: #28c840; }
+  .term-title {
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-size: .8rem; color: var(--muted);
+  }
+  #terminal { padding: 6px; background: #0a0f1e; border-radius: 10px; overflow: hidden; }
+  .hint {
+    margin-top: 14px; color: var(--muted); font-size: .92rem;
+  }
+  .hint code, .kbd {
+    background: var(--panel2); border: 1px solid var(--line);
+    padding: 1px 7px; border-radius: 6px; color: var(--text);
+    font-family: ui-monospace, Consolas, monospace; font-size: .85rem;
+  }
+  .cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); margin-top: 26px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 16px 18px; font-size: .95rem;
+  }
+  .card b { color: var(--accent); }
+  footer {
+    border-top: 1px solid var(--line); padding: 18px 0 30px;
+    color: var(--muted); font-size: .88rem;
+  }
+  @media (max-width: 640px) {
+    header.top { justify-content: center; text-align: center; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap brand">Car Rental System <span>· live demo</span></div>
+  <nav class="topnav">
+    <a class="btn" href="index.html">← Back to the overview</a>
+    <a class="btn" href="https://github.com/Abolfazlrwm/Car-Rental-System" target="_blank" rel="noopener">Read the source</a>
+  </nav>
+</header>
+
+<main class="wrap">
+  <h1>Run the <span>real C++ binary</span> — right here, no install</h1>
+  <p class="sub">
+    This is not a mock-up. The same <code style="font-family:ui-monospace,Consolas,monospace">mainApp.cpp</code>
+    you can read in the repository was compiled to WebAssembly with Emscripten and is
+    running in this page: same menus, same data structures, same hand-built AVL tree,
+    hash table, priority queue and persistence — with an in-memory fleet that seeds
+    itself on load.
+  </p>
+
+  <div class="terminal-card">
+    <div class="term-head">
+      <div class="dots"><i></i><i></i><i></i></div>
+      <div class="term-title">car_rental — WebAssembly (Emscripten 3.1) — data/ lives in memory</div>
+      <button class="btn" id="restart" type="button">↺ Restart demo (fresh fleet)</button>
+    </div>
+    <div id="terminal"></div>
+  </div>
+
+  <p class="hint">
+    Demo accounts, seeded on load: manager <span class="kbd">admin / manager123</span> ·
+    staff <span class="kbd">sara / staff123</span> ·
+    customer <span class="kbd">ali / customer123</span> — type the number at
+    <code>Choice:</code> and press Enter. On a phone, wide tables scroll sideways.
+  </p>
+
+  <div class="cards">
+    <div class="card"><b>Same sources</b> — <code>mainApp.cpp</code> + <code>manager_system/*.cpp</code>, no fork, no JavaScript re-implementation. The browser build only swaps <code>readLine</code>'s input backend.</div>
+    <div class="card"><b>Same features</b> — fleet &amp; search, reservations, waitlist, loyalty ranks, recurring series, pickup reminders and change-a-booking moves all work live.</div>
+    <div class="card"><b>Zero dependencies</b> — the binary keeps its zero-dependency promise; xterm.js is vendored and only draws the terminal.</div>
+  </div>
+</main>
+
+<footer class="wrap">
+  C++17 · hand-built data structures · <a style="color:var(--accent)" href="https://github.com/Abolfazlrwm/Car-Rental-System" target="_blank" rel="noopener">github.com/Abolfazlrwm/Car-Rental-System</a>
+</footer>
+
+<script src="demo/vendor/xterm.js"></script>
+<script src="demo/vendor/addon-fit.js"></script>
+<script>
+  var term = new Terminal({
+    fontFamily: 'ui-monospace, "Cascadia Mono", Consolas, monospace',
+    fontSize: 14,
+    theme: {
+      background: '#0a0f1e',
+      foreground: '#dbe4ff',
+      cursor: '#4cc9f0',
+      selectionBackground: '#1f2b4a'
+    },
+    cursorBlink: true,
+    scrollback: 5000
+  });
+  var fit = new FitAddon.FitAddon();
+  term.loadAddon(fit);
+  term.open(document.getElementById('terminal'));
+  try { fit.fit(); } catch (e) { /* small screens: fixed size is fine */ }
+  window.addEventListener('resize', function () { try { fit.fit(); } catch (e) {} });
+
+  /* UTF-8-aware byte writer: the program emits bytes (prompts, ANSI
+   * colors, the ASCII banner); the streaming decoder reassembles
+   * multi-byte characters across writes. Bare \n is expanded to
+   * \r\n because xterm keeps the cursor column otherwise (the
+   * staircase effect). */
+  var __dec = new TextDecoder('utf-8');
+  var Module = {
+    termByte: function (b) {
+      if (b === 10) { term.write('\r\n'); return; }
+      term.write(__dec.decode(new Uint8Array([b]), { stream: true }));
+    },
+    onRuntimeInitialized: function () {
+      term.write('\x1b[2m— booting car_rental (WebAssembly) —\x1b[0m\r\n\r\n');
+      Module.callMain([]);
+    }
+  };
+
+  /* Keyboard: the program does not echo input, so the page does.
+   * Backspace is resolved in the page (the program receives only
+   * finished lines); Enter submits the line as \n. */
+  var __lineBuf = '';
+  term.onData(function (d) {
+    for (var i = 0; i < d.length; i++) {
+      var ch = d[i];
+      if (ch === '\r') {
+        Module.pushInput(__lineBuf + '\n');
+        __lineBuf = '';
+        term.write('\r\n');
+      } else if (ch === '\x7f') {
+        if (__lineBuf.length) {
+          __lineBuf = __lineBuf.slice(0, -1);
+          term.write('\b \b');
+        }
+      } else if (ch >= ' ') {
+        __lineBuf += ch;
+        term.write(ch);
+      }
+    }
+  });
+
+  document.getElementById('restart').addEventListener('click', function () {
+    location.reload();
+  });
+</script>
+<script src="demo/car_rental.js"></script>
+</body>
+</html>

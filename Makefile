@@ -6,6 +6,7 @@
 #    make run      build & start the app
 #    make bench    build & run the container benchmarks
 #    make asan     build & run the tests under AddressSanitizer + UBSan
+#    make wasm     compile the app to WebAssembly for the browser demo
 #    make format   reformat all sources with clang-format
 #    make clean    remove build artifacts
 # ------------------------------------------------------------------
@@ -57,7 +58,25 @@ format:
             { echo "clang-format is not installed"; exit 1; }
 	clang-format -i mainApp.cpp manager_system/*.cpp tests/*.cpp basic_structures/*.h
 
+# Run the REAL binary in the browser (v3.3.0): Emscripten compiles the
+# same sources to WebAssembly and lands the artifacts in docs-site/demo/,
+# which GitHub Pages serves at /demo.html. The demo page speaks to the
+# program through docs-site/demo/pre.js (Asyncify-backed stdin). Build
+# with emsdk 3.1.x on PATH as `emcc` — https://emscripten.org
+wasm: docs-site/demo/car_rental.js
+
+docs-site/demo/car_rental.js: $(SRC) docs-site/demo/pre.js
+	@command -v emcc >/dev/null 2>&1 || \
+            { echo "emcc is not installed — https://emscripten.org"; exit 1; }
+	emcc -std=c++17 -O2 $(SRC) \
+            -o docs-site/demo/car_rental.js \
+            -sASYNCIFY -sFORCE_FILESYSTEM -sALLOW_MEMORY_GROWTH=1 \
+            -sINVOKE_RUN=0 -sEXIT_RUNTIME=0 \
+            -sEXPORTED_RUNTIME_METHODS=callMain,HEAPU8 \
+            -sENVIRONMENT=web \
+            --pre-js docs-site/demo/pre.js
+
 clean:
 	rm -f car_rental unit_tests unit_tests_asan bench_containers
 
-.PHONY: all test run bench asan format clean
+.PHONY: all test run bench asan wasm format clean
