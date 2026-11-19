@@ -1,0 +1,92 @@
+name: Release assets
+
+# On every version tag: build native binaries for the three OSes the
+# README promises plus the browser (WebAssembly) bundle, and attach
+# them all to the GitHub Release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  native:
+    name: ${{ matrix.os }} binary
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: car_rental-linux-x64.tar.gz
+          - os: macos-latest
+            asset: car_rental-macos.tar.gz
+          - os: windows-latest
+            asset: car_rental-windows-x64.zip
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configure (CMake)
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Package (Linux / macOS)
+        if: runner.os != 'Windows'
+        run: |
+          tar czf "${{ matrix.asset }}" -C build car_rental
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path build/Release/car_rental.exe -DestinationPath "${{ matrix.asset }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+
+  wasm:
+    name: browser bundle (WebAssembly)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.74
+
+      - name: Build the browser demo
+        run: make wasm
+
+      - name: Bundle
+        run: |
+          cd docs-site
+          zip -r ../../car_rental-wasm-demo.zip demo.html demo/car_rental.js demo/car_rental.wasm demo/pre.js demo/vendor
+          cd ..
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: car_rental-wasm-demo.zip
+          path: car_rental-wasm-demo.zip
+
+  publish:
+    name: Attach assets to the release
+    needs: [native, wasm]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all built assets
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Attach to the tagged release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

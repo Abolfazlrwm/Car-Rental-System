@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-and-test:
-    name: ${{ matrix.compiler }} / C++17
+    name: ${{ matrix.compiler }} / C++17 / ubuntu
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -44,6 +44,37 @@ jobs:
                manager_system/*.cpp -o car_rental_raw
           ./build/unit_tests >/dev/null && echo "tests green"
 
+      # The binary answers its own CLI contract on every push.
+      - name: CLI contract (--help / --version / --no-color / unknown)
+        run: |
+          ./build/car_rental --version | grep -q "Car Rental Management System"
+          ./build/car_rental --help | grep -q -- "--no-color"
+          NO_COLOR=1 ./build/car_rental -v | grep -q "zero dependencies"
+          if ./build/car_rental --bogus 2>/dev/null; then
+            echo "unknown option must fail"; exit 1
+          fi
+
+  # The README promises Linux | macOS | Windows — prove all three.
+  cross-platform:
+    name: ${{ matrix.os }} / CMake + ctest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configure (CMake, default toolchain)
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Unit tests
+        run: ctest --test-dir build --output-on-failure
+
   # The README promises leak-free code — prove it on every push.
   sanitizers:
     name: AddressSanitizer + UBSan
@@ -58,3 +89,46 @@ jobs:
 
       - name: Run suite under sanitizers
         run: ./unit_tests_asan
+
+  # The browser demo ships the compiled binary; every push re-proves
+  # that the same sources still compile to WebAssembly and serve a
+  # scripted session end to end.
+  wasm:
+    name: WebAssembly build (Emscripten)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up emsdk
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.74
+
+      - name: Build the browser demo binary
+        run: make wasm
+
+      - name: Smoke-test the compiled app in Node
+        run: |
+          emcc -std=c++17 -O1 mainApp.cpp manager_system/*.cpp \
+               -o /tmp/wasm_smoke.js \
+               -sASYNCIFY -sFORCE_FILESYSTEM -sALLOW_MEMORY_GROWTH=1 \
+               -sINVOKE_RUN=0 -sEXIT_RUNTIME=0 \
+               -sEXPORTED_RUNTIME_METHODS=callMain,HEAPU8 \
+               -sENVIRONMENT=node \
+               --pre-js scripts/wasm_smoke_pre.js
+          timeout 120 node /tmp/wasm_smoke.js
+
+  # House style is applied with `make format` (clang-format 23); this
+  # job only reports drift so PRs stay tidy.
+  format:
+    name: clang-format check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: clang-format (no changes expected)
+        run: |
+          pip install clang-format==23.1.5
+          clang-format --dry-run -Werror \
+              mainApp.cpp manager_system/*.cpp basic_structures/*.h \
+              tests/*.cpp
