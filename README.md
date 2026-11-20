@@ -349,12 +349,14 @@ Car-Rental-System/
 │   ├── Reservation.{h,cpp}  # booking + priority rule
 │   ├── Date.{h,cpp}         # ISO calendar layer (leap years included)
 │   └── SHA256.{h,cpp}       # FIPS 180-4, dependency-free
+│                           # passwords: PBKDF2-HMAC-SHA256 (100k iters,
+│                           # CSPRNG 16-byte salt, constant-time compare)
 ├── basic_structures/        # hand-written generic containers (header-only)
 │   ├── AVLTree.h            # self-balancing BST (LL/RR/LR/RL rotations)
 │   ├── HashTable.h          # separate chaining + rehashing
 │   ├── PriorityQueue.h      # binary min-heap, auto-growing
 │   └── DoublyLinkedList.h   # O(1) pushes at both ends
-├── tests/test_main.cpp      # 5,416 checks, dependency-free framework
+├── tests/test_main.cpp      # 5,471 checks, dependency-free framework
 ├── scripts/demo.sh          # scripted end-to-end walkthrough
 ├── benchmarks/
 │   └── bench_containers.cpp # `make bench` — ours vs std, measured

@@ -12,10 +12,12 @@
  *  Role hierarchy of the rental system.
  *
  *  Security model:
- *  - Passwords are NEVER stored in plain text. Each user gets
- *    a random 8-byte salt; the stored value is
- *        SHA256(salt + password)
- *    so identical passwords still produce different digests.
+ *  - Passwords are NEVER stored in plain text. Each user gets a
+ *    random 16-byte salt drawn from the OS CSPRNG; the stored value
+ *    is PBKDF2-HMAC-SHA256(password, salt) over 100,000 iterations
+ *    (RFC 2898, built on the repo's own SHA-256 primitive), so the
+ *    cost of an offline guess is 100k hash calls per candidate and
+ *    identical passwords still produce different digests.
  *  - After 3 failed login attempts the account is blocked and
  *    must be re-enabled by a Manager.
  *
@@ -43,8 +45,14 @@ public:
 
     /* ---------------- Password handling ---------------- */
 
-    /// Hash + store a new password with a fresh random salt.
+    /// Hash + store a new password with a fresh CSPRNG salt.
     void setPassword(const std::string &plainPassword);
+
+    /// Deterministic derivation used for stored credentials:
+    /// PBKDF2-HMAC-SHA256(password, salt), hex encoded. Static so the CSV
+    /// fixture tests can build rows exactly the way setPassword does.
+    static std::string deriveHash(const std::string &salt,
+                                  const std::string &plainPassword);
 
     /// Constant-shape comparison against the stored digest.
     bool verifyPassword(const std::string &plainPassword) const;

@@ -4,6 +4,22 @@ All notable changes to the Car Rental System are documented in this file.
 The detailed v1.0 → v2.0 story lives in
 [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md).
 
+## [Unreleased] — password hashing hardening
+
+- Password storage upgraded from `SHA256(salt + password)` to
+  **PBKDF2-HMAC-SHA256** (RFC 2898) over 100,000 iterations, built on the
+  repo's own SHA-256 primitive (HMAC per RFC 2104) — no new dependencies.
+- The per-user salt is now 16 raw bytes from the OS CSPRNG
+  (`std::random_device`), hex encoded; the old code seeded an mt19937_64
+  generator from it, which is not CSPRNG output.
+- `verifyPassword` uses a byte-wise constant-time comparison.
+- Known-answer vectors (independently computed with Python
+  `hashlib.pbkdf2_hmac`) pin the derivation in the test suite.
+- Migration note: rows in `users.csv` written by older versions used the
+  single-hash format and will no longer verify; reset those passwords
+  (they re-derive on next `setPassword`).
+
+
 ## [3.3.1] — 2026-11-20
 
 ### Added

@@ -139,6 +139,32 @@ static void testSHA256()
     CHECK(a.salt() != b.salt());
 }
 
+// ============================================================
+//  Password derivation hardening (PBKDF2-HMAC-SHA256)
+// ============================================================
+static void testPasswordDerivation()
+{
+    // RFC 2898 PBKDF2-HMAC-SHA256, 100000 iterations, 32-byte key,
+    // independently computed (Python hashlib.pbkdf2_hmac) — pins the
+    // derivation against accidental changes.
+    CHECK_EQ(User::deriveHash("0123456789abcdef", "pass1234"),
+             std::string("f422a27f1e1098c8fa1877a68e080021547a972d297a1993ba6fbecd0619d8ac"));
+    CHECK_EQ(User::deriveHash("salt", "password"),
+             std::string("0394a2ede332c9a13eb82e9b24631604c31df978b4e2f0fbd2c549944f9d79a5"));
+
+    // The stored digest must not equal SHA256(salt + password) anymore.
+    const std::string salt = "0123456789abcdef";
+    CHECK(User::deriveHash(salt, "pass1234") != SHA256::hash(salt + "pass1234"));
+
+    // The runtime salt is 16 CSPRNG bytes, hex encoded.
+    Customer c("crypto");
+    c.setPassword("whatever");
+    CHECK_EQ(c.salt().size(), std::string::size_type(32)); // 16 bytes hex
+    for (char ch : c.salt())
+        CHECK(std::isdigit(static_cast<unsigned char>(ch)) ||
+              (ch >= 'a' && ch <= 'f'));
+}
+
 /* ============================================================
  *  DoublyLinkedList
  * ============================================================ */
@@ -2477,17 +2503,17 @@ static void testLoyaltyOverview()
         std::ofstream users(dir + "/users.csv");
         users << "username,salt,hash,role,blocked,failedLogins,balance"
                  ",loyaltyPoints,lifetimePoints,completedRentals\n";
-        users << "nima," << salt << ',' << SHA256::hash(salt + "pass1234")
+        users << "nima," << salt << ',' << User::deriveHash(salt, "pass1234")
               << ",Customer,0,0,50.00,40,40,1\n";
-        users << "sahar," << salt << ',' << SHA256::hash(salt + "pass1234")
+        users << "sahar," << salt << ',' << User::deriveHash(salt, "pass1234")
               << ",Customer,0,0,0.00,250,250,2\n";
-        users << "behrad," << salt << ',' << SHA256::hash(salt + "pass1234")
+        users << "behrad," << salt << ',' << User::deriveHash(salt, "pass1234")
               << ",Customer,0,0,12.50,2600,2600,9\n";
-        users << "zara," << salt << ',' << SHA256::hash(salt + "pass1234")
+        users << "zara," << salt << ',' << User::deriveHash(salt, "pass1234")
               << ",Customer,0,0,99.00,2600,2600,9\n";
-        users << "olduser," << salt << ',' << SHA256::hash(salt + "pass1234")
+        users << "olduser," << salt << ',' << User::deriveHash(salt, "pass1234")
               << ",Customer,0,0,12.50\n"; // pre-2.7.0 row shape
-        users << "st," << salt << ',' << SHA256::hash(salt + "pass1234")
+        users << "st," << salt << ',' << User::deriveHash(salt, "pass1234")
               << ",Staff,0,0,0.00,0,0,0\n";
     }
 
@@ -3593,6 +3619,7 @@ int main()
     std::cout << "==== Car Rental System — unit tests ====\n";
 
     runSuite("SHA256 + password hashing", testSHA256);
+    runSuite("PBKDF2 password derivation", testPasswordDerivation);
     runSuite("DoublyLinkedList", testDoublyLinkedList);
     runSuite("PriorityQueue", testPriorityQueue);
     runSuite("AVLTree (self-balancing)", testAVLTree);
