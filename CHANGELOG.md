@@ -4,6 +4,36 @@ All notable changes to the Car Rental System are documented in this file.
 The detailed v1.0 → v2.0 story lives in
 [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md).
 
+## [3.3.1] — 2026-11-20
+
+### Added
+
+- **Unit-test coverage, measured and published** — a new `make coverage`
+  target builds the suite with GCC `--coverage` instrumentation, runs
+  ctest and writes `build-cov/coverage.txt` + a Cobertura XML via gcovr:
+  **92% line coverage** across the `manager_system` modules and headers
+  (the interactive console layer is proven by the CLI-contract job). A
+  CI job re-proves it on every push and publishes the per-file report
+  as a build artifact.
+- **Version-consistency gate** — `scripts/check_versions.sh` fails the
+  build if the CHANGELOG release heading, the CMake `project()` version,
+  `CITATION.cff` and the app's `--version` string disagree; CI runs it
+  on every push, so a release can never ship with mismatched versions.
+- **Fresh demo GIF** — the README hero animation is re-recorded from the
+  live WebAssembly demo (book → change-a-booking → deliver → late
+  return with penalty → manager income & monthly reports), so it shows
+  the v3.x features instead of the v2-era build.
+- **`.editorconfig`** — shared editor basics (UTF-8, LF, indentation per
+  file type) for every contributor.
+
+### Changed
+
+- The Emscripten smoke test in CI now runs through `make wasm-test` —
+  the same recipe contributors can run locally — instead of an inline
+  compiler invocation.
+- README: table of contents, a coverage badge, the stale test count in
+  the suite transcript (5416 → 5435) and new `make` one-liners.
+
 ## [3.3.0] — 2026-11-19
 
 ### Added

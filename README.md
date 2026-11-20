@@ -4,6 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/Abolfazlrwm/Car-Rental-System)](https://github.com/Abolfazlrwm/Car-Rental-System/releases)
 ![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-5%2C435%20checks-3AAFA9)
+![Coverage](https://img.shields.io/badge/coverage-92%25-6EB744)
 ![Memory](https://img.shields.io/badge/AddressSanitizer-leak--free-4C6EF5)
 ![License](https://img.shields.io/badge/license-MIT-64748B)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)
@@ -28,6 +29,13 @@ There is also a live landing page, deployed automatically on every push:
 
 ![Car Rental System — GitHub Pages landing page: dark hero with the project stats](docs/landing.png)
 
+**Contents** — [Live demo](#-run-it-in-your-browser--live-demo) ·
+[Architecture](#-architecture) · [Features](#-features) ·
+[Demo](#-demo) · [Build & Run](#-build--run) ·
+[Project structure](#-project-structure) · [Testing](#-testing) ·
+[Roadmap](#-roadmap) · [Documentation](#-documentation) ·
+[Contributing](#-contributing) · [License](#-license)
+
 ## 🌐 Run it in your browser — live demo
 
 No clone, no compiler, no install: the landing page's **[live demo](https://abolfazlrwm.github.io/Car-Rental-System/demo.html)**
@@ -39,7 +47,8 @@ against an in-memory fleet that seeds itself on load. Log in as
 `admin / manager123` (manager). The desktop build only swaps the input
 backend of `readLine`; everything else is the exact same code.
 
-<p align="center"><img src="assets/demo.gif" alt="demo" width="100%"></p>
+<p align="center"><img src="assets/demo.gif" alt="A live recorded session of the WebAssembly demo: the customer checks pickup reminders, books a Benz C200, moves the booking to new dates with a re-quoted price, the staff hands the car over and processes a late return with penalty, and the manager reads the income and monthly reports" width="100%"></p>
+<p align="center"><sub>▲ One full shift, recorded live in the browser demo — book → change → deliver → late return → manager reports</sub></p>
 
 
 ---
@@ -289,6 +298,9 @@ Run it yourself:
 make            # builds car_rental + unit_tests
 ./car_rental    # start the app
 make test       # run the unit tests
+make coverage   # unit-test coverage report (needs gcovr)
+make wasm       # compile the browser demo (needs Emscripten)
+make wasm-test  # run the browser binary end-to-end in Node
 ```
 
 ### Option 2 — CMake
@@ -412,7 +424,7 @@ The suite needs no external framework and runs in milliseconds:
   [ ok ] Monthly report: builder maths
   [ ok ] RentalManager: monthly report flow
 
-5416 checks, 0 failure(s)
+5435 checks, 0 failure(s)
 ALL TESTS PASSED
 ```
 
@@ -421,6 +433,15 @@ v1.0: segfault on unknown login, income double-count, fake renewal,
 self-registered managers, silent drops on a full heap.
 
 Memory safety is verified with `g++ -fsanitize=address,undefined`.
+
+**Line coverage: 92%** — measured with gcovr (`make coverage`) over the
+`manager_system` modules and headers on a `--coverage` build; the
+interactive `mainApp.cpp` console layer is proven separately by the
+CLI-contract job (`--help` / `--version` / `--no-color` / unknown
+options). CI publishes the full per-file Cobertura report as a build
+artifact on every push, alongside the WebAssembly smoke test
+(`make wasm-test`) that runs the compiled browser binary through a
+scripted session in Node.
 
 ---
 
