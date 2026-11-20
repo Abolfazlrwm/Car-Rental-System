@@ -137,7 +137,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: check_versions.sh
-        run: ./scripts/check_versions.sh
+        run: bash scripts/check_versions.sh
 
   # Unit-test coverage with gcovr on a Debug + --coverage build; publishes
   # a Cobertura XML artifact and prints the per-file summary into the job
