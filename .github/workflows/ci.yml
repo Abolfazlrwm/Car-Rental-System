@@ -164,7 +164,11 @@ jobs:
       - name: Coverage report (gcovr)
         run: |
           pip install gcovr
+          # suspicious_hits.warn: gcov can emit bogus hit counters for inline
+          # functions compiled under --coverage (observed on SHA256.cpp rotr);
+          # without this flag gcovr aborts the whole report (exit 64).
           gcovr -r . --filter manager_system/ \
+                --gcov-ignore-parse-errors suspicious_hits.warn \
                 --xml build-cov/coverage.xml --txt build-cov/coverage.txt
           echo "## Coverage — gcovr (manager_system modules)" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"

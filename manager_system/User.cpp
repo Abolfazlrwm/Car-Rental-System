@@ -41,7 +41,8 @@ std::string hexDecode(const std::string &hex)
 {
     auto nibble = [](char c) -> unsigned char
     {
-        if (c >= '0' && c <= '9') return static_cast<unsigned char>(c - '0');
+        if (c >= '0' && c <= '9')
+            return static_cast<unsigned char>(c - '0');
         return static_cast<unsigned char>(c - 'a' + 10);
     };
     std::string raw;

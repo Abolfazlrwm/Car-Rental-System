@@ -161,8 +161,7 @@ static void testPasswordDerivation()
     c.setPassword("whatever");
     CHECK_EQ(c.salt().size(), std::string::size_type(32)); // 16 bytes hex
     for (char ch : c.salt())
-        CHECK(std::isdigit(static_cast<unsigned char>(ch)) ||
-              (ch >= 'a' && ch <= 'f'));
+        CHECK(std::isdigit(static_cast<unsigned char>(ch)) || (ch >= 'a' && ch <= 'f'));
 }
 
 /* ============================================================
