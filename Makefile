@@ -76,7 +76,36 @@ docs-site/demo/car_rental.js: $(SRC) docs-site/demo/pre.js
             -sENVIRONMENT=web \
             --pre-js docs-site/demo/pre.js
 
+# The CI wasm smoke test, on your machine: compile the same sources to a
+# Node-runnable bundle (scripts/wasm_smoke_pre.js feeds the scripted
+# session) and run it. Needs emcc on PATH (emsdk_env.sh).
+wasm-test:
+	@command -v emcc >/dev/null 2>&1 || \
+            { echo "emcc is not installed — https://emscripten.org"; exit 1; }
+	@mkdir -p build
+	emcc -std=c++17 -O1 $(SRC) \
+            -o build/wasm_smoke.js \
+            -sASYNCIFY -sFORCE_FILESYSTEM -sALLOW_MEMORY_GROWTH=1 \
+            -sINVOKE_RUN=0 -sEXIT_RUNTIME=0 \
+            -sEXPORTED_RUNTIME_METHODS=callMain,HEAPU8 \
+            -sENVIRONMENT=node \
+            --pre-js scripts/wasm_smoke_pre.js
+	timeout 120 node build/wasm_smoke.js
+
+# Debug build with GCC coverage instrumentation; runs the suite and writes
+# build-cov/coverage.txt + coverage.xml. Needs `pip install gcovr`.
+# Coverage covers the manager_system modules + headers (mainApp.cpp is the
+# interactive main() and is proven by the CLI-contract job instead).
+coverage:
+	cmake -S . -B build-cov -DCMAKE_BUILD_TYPE=Debug \
+              -DCMAKE_CXX_FLAGS=--coverage -DCMAKE_EXE_LINKER_FLAGS=--coverage
+	cmake --build build-cov -j
+	ctest --test-dir build-cov --output-on-failure
+	gcovr -r . --filter manager_system/ \
+              --xml build-cov/coverage.xml --txt build-cov/coverage.txt
+	@echo "--- coverage ---"; cat build-cov/coverage.txt
+
 clean:
 	rm -f car_rental unit_tests unit_tests_asan bench_containers
 
-.PHONY: all test run bench asan wasm format clean
+.PHONY: all test run bench asan wasm wasm-test coverage format clean

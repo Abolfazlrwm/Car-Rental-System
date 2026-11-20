@@ -111,15 +111,7 @@ jobs:
         run: make wasm
 
       - name: Smoke-test the compiled app in Node
-        run: |
-          emcc -std=c++17 -O1 mainApp.cpp manager_system/*.cpp \
-               -o /tmp/wasm_smoke.js \
-               -sASYNCIFY -sFORCE_FILESYSTEM -sALLOW_MEMORY_GROWTH=1 \
-               -sINVOKE_RUN=0 -sEXIT_RUNTIME=0 \
-               -sEXPORTED_RUNTIME_METHODS=callMain,HEAPU8 \
-               -sENVIRONMENT=node \
-               --pre-js scripts/wasm_smoke_pre.js
-          timeout 120 node /tmp/wasm_smoke.js
+        run: make wasm-test
 
   # House style is applied with `make format` (clang-format 23); this
   # job only reports drift so PRs stay tidy.
@@ -135,3 +127,53 @@ jobs:
           clang-format --dry-run -Werror \
               mainApp.cpp manager_system/*.cpp basic_structures/*.h \
               tests/*.cpp
+
+  # The version declared in CHANGELOG.md (release notes) must match the
+  # project() version, CITATION.cff and the --version output of the app.
+  versions:
+    name: Version declarations agree
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: check_versions.sh
+        run: ./scripts/check_versions.sh
+
+  # Unit-test coverage with gcovr on a Debug + --coverage build; publishes
+  # a Cobertura XML artifact and prints the per-file summary into the job
+  # page. Same recipe as `make coverage`. Coverage covers the manager_system
+  # modules + headers; mainApp.cpp is the interactive main() and is proven
+  # by the CLI-contract job instead.
+  coverage:
+    name: Unit-test coverage (gcovr)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configure coverage build
+        run: >
+          cmake -B build-cov -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_FLAGS=--coverage -DCMAKE_EXE_LINKER_FLAGS=--coverage
+
+      - name: Build
+        run: cmake --build build-cov -j
+
+      - name: Run the test suite
+        run: ctest --test-dir build-cov --output-on-failure
+
+      - name: Coverage report (gcovr)
+        run: |
+          pip install gcovr
+          gcovr -r . --filter manager_system/ \
+                --xml build-cov/coverage.xml --txt build-cov/coverage.txt
+          echo "## Coverage — gcovr (manager_system modules)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat build-cov/coverage.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            build-cov/coverage.xml
+            build-cov/coverage.txt
