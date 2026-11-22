@@ -3,7 +3,9 @@ name: Deploy docs site
 on:
   push:
     branches: [main]
-    paths: [docs-site/**, '.github/workflows/docs.yml']
+    # Rebuild+redeploy when the site changes OR when the sources behind
+    # the embedded WebAssembly demo binary change.
+    paths: [docs-site/**, mainApp.cpp, manager_system/**, Makefile, '.github/workflows/docs.yml']
   workflow_dispatch:
 
 permissions:
@@ -24,6 +26,17 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
+
+      # The demo page serves the REAL binary, so it is compiled fresh at
+      # deploy time from HEAD — the live demo always matches the repo,
+      # and features like the ▶ Auto-play demo button (callMain with
+      # --demo) work against the current sources, not a stale bundle.
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.74
+
+      - name: Build the WebAssembly demo binary
+        run: make wasm
 
       - uses: actions/configure-pages@v6
 

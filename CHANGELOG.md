@@ -47,6 +47,10 @@ The detailed v1.0 → v2.0 story lives in
   the AddressSanitizer job from ~30 minutes back to seconds; the
   constant-time comparison also no longer reads past the shorter
   string's bytes.
+- The GitHub Pages deploy now rebuilds the embedded WebAssembly demo
+  binary at deploy time (emsdk, `make wasm`) and triggers on source
+  changes, so the live demo — including the ▶ Auto-play button — always
+  runs the current HEAD, never a stale bundle.
 
 
 ## [3.3.1] — 2026-11-20
