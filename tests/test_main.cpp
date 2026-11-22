@@ -144,6 +144,10 @@ static void testSHA256()
 // ============================================================
 static void testPasswordDerivation()
 {
+    // The KAT vectors are pinned at the production count; restore it for
+    // the few derivations here, then hand the fast count back.
+    User::setIterationsForTesting(100000);
+
     // RFC 2898 PBKDF2-HMAC-SHA256, 100000 iterations, 32-byte key,
     // independently computed (Python hashlib.pbkdf2_hmac) — pins the
     // derivation against accidental changes.
@@ -162,6 +166,9 @@ static void testPasswordDerivation()
     CHECK_EQ(c.salt().size(), std::string::size_type(32)); // 16 bytes hex
     for (char ch : c.salt())
         CHECK(std::isdigit(static_cast<unsigned char>(ch)) || (ch >= 'a' && ch <= 'f'));
+
+    // Back to the fast suite count for the login-heavy suites.
+    User::setIterationsForTesting(2000);
 }
 
 /* ============================================================
@@ -3630,6 +3637,12 @@ static void testCli()
 int main()
 {
     std::cout << "==== Car Rental System — unit tests ====\n";
+
+    // Login/lockout/CSV suites do hundreds of password derivations; at the
+    // production 100,000 iterations the ASan job alone would take ~30
+    // minutes. 2,000 keeps every suite honest and fast; the PBKDF2 KAT
+    // vectors below temporarily restore the production count.
+    User::setIterationsForTesting(2000);
 
     runSuite("SHA256 + password hashing", testSHA256);
     runSuite("PBKDF2 password derivation", testPasswordDerivation);

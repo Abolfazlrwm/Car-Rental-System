@@ -19,6 +19,11 @@ namespace
 // anything user-facing at scale.
 constexpr int kPbkdf2Iterations = 100000;
 
+/// Live iteration count; the test suite lowers it (see
+/// User::setIterationsForTesting) so its many login attempts stay fast
+/// under the sanitizers. Production code never calls the setter.
+int g_pbkdf2Iterations = kPbkdf2Iterations;
+
 /// Random 16-byte salt drawn directly from the OS CSPRNG (std::random_device
 /// is the only standard-library entropy source that is allowed to be and,
 /// on every supported platform, is a real CSPRNG; seeding a deterministic
@@ -83,7 +88,7 @@ std::string pbkdf2SHA256(const std::string &salt, const std::string &password)
     // U1 = HMAC(P, S || INT(1)) with the big-endian 1 as its last byte.
     std::string u = hexDecode(hmacSHA256(password, salt + std::string("\x00\x00\x00\x01", 4)));
     std::string accumulator = u;
-    for (int i = 1; i < kPbkdf2Iterations; ++i)
+    for (int i = 1; i < g_pbkdf2Iterations; ++i)
     {
         u = hexDecode(hmacSHA256(password, u));
         for (std::size_t j = 0; j < accumulator.size(); ++j)
@@ -102,13 +107,18 @@ std::string pbkdf2SHA256(const std::string &salt, const std::string &password)
 bool constantTimeEquals(const std::string &a, const std::string &b)
 {
     // Compare against both lengths; a mismatch in length still walks a full
-    // pass so timing does not reveal how much of the digest matched.
+    // pass so timing does not reveal how much of the digest matched. Indices
+    // are clamped so no byte beyond either string's own size is ever read.
     const unsigned char *x = reinterpret_cast<const unsigned char *>(a.data());
     const unsigned char *y = reinterpret_cast<const unsigned char *>(b.data());
     const std::size_t n = a.size() > b.size() ? a.size() : b.size();
     unsigned char diff = static_cast<unsigned char>(a.size() ^ b.size());
     for (std::size_t i = 0; i < n; ++i)
-        diff |= static_cast<unsigned char>(x[i] ^ y[i]);
+    {
+        const unsigned char xi = i < a.size() ? static_cast<unsigned char>(x[i]) : 0U;
+        const unsigned char yi = i < b.size() ? static_cast<unsigned char>(y[i]) : 0U;
+        diff |= static_cast<unsigned char>(xi ^ yi);
+    }
     return diff == 0;
 }
 
@@ -123,6 +133,12 @@ void User::setPassword(const std::string &plainPassword)
 std::string User::deriveHash(const std::string &salt, const std::string &plainPassword)
 {
     return pbkdf2SHA256(salt, plainPassword);
+}
+
+void User::setIterationsForTesting(int iterations)
+{
+    if (iterations >= 1 && iterations <= kPbkdf2Iterations)
+        g_pbkdf2Iterations = iterations;
 }
 
 bool User::verifyPassword(const std::string &plainPassword) const

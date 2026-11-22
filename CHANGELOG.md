@@ -41,6 +41,12 @@ The detailed v1.0 → v2.0 story lives in
 
 - CI: clang-format cleanups at the new SHA-256 call sites; the gcovr
   coverage job tolerates suspicious-hit quirks so coverage stays green.
+- The suite lowers the PBKDF2 iteration count through a clamped test
+  hook (`User::setIterationsForTesting`) — its hundreds of login
+  attempts no longer run at the production 100,000 iterations, taking
+  the AddressSanitizer job from ~30 minutes back to seconds; the
+  constant-time comparison also no longer reads past the shorter
+  string's bytes.
 
 
 ## [3.3.1] — 2026-11-20

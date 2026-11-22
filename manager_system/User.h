@@ -54,6 +54,11 @@ public:
     static std::string deriveHash(const std::string &salt,
                                   const std::string &plainPassword);
 
+    /// Test hook: lower the PBKDF2 iteration count so the suite's many
+    /// login attempts stay fast under the sanitizers. Clamped to
+    /// [1, 100000]; production code never calls it.
+    static void setIterationsForTesting(int iterations);
+
     /// Constant-shape comparison against the stored digest.
     bool verifyPassword(const std::string &plainPassword) const;
 
