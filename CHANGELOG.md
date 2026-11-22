@@ -4,7 +4,25 @@ All notable changes to the Car Rental System are documented in this file.
 The detailed v1.0 → v2.0 story lives in
 [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md).
 
-## [Unreleased] — password hashing hardening
+## [3.4.0] — 2026-11-22
+
+### Added
+
+- **Guided demo (`--demo`)** — the binary now explains itself: one
+  narrated, self-playing walkthrough of a full shift (book →
+  change-a-booking → deliver → late return with penalty → manager
+  income & monthly reports), built on the same `readLine()` a human
+  types into. Dates derive from today's clock so the booking is always
+  fresh; the fleet is fresh and in-memory, so `./data` is never read or
+  written; narration banners separate the beats. One implementation
+  serves desktop and browser (thread sleep vs Asyncify sleep), the demo
+  page grows a **▶ Auto-play demo** button that starts the program with
+  the same flag, and CI plays the demo on every push — which also locks
+  the script to the menus (any drift fails the build).
+- **docs/DESIGN.md** — why each data structure was chosen and the
+  complexity trade-offs behind them.
+
+### Security
 
 - Password storage upgraded from `SHA256(salt + password)` to
   **PBKDF2-HMAC-SHA256** (RFC 2898) over 100,000 iterations, built on the
@@ -18,6 +36,11 @@ The detailed v1.0 → v2.0 story lives in
 - Migration note: rows in `users.csv` written by older versions used the
   single-hash format and will no longer verify; reset those passwords
   (they re-derive on next `setPassword`).
+
+### Fixed
+
+- CI: clang-format cleanups at the new SHA-256 call sites; the gcovr
+  coverage job tolerates suspicious-hit quirks so coverage stays green.
 
 
 ## [3.3.1] — 2026-11-20

@@ -106,7 +106,7 @@
     </p>
     <div class="badges">
       <span class="badge">C++17</span>
-      <span class="badge"><b>5,435</b> checks</span>
+      <span class="badge"><b>5,476</b> checks</span>
       <span class="badge"><b>92%</b> line coverage</span>
       <span class="badge">ASan leak-free</span>
       <span class="badge">GCC · Clang · MSVC</span>
@@ -157,7 +157,7 @@
       <div class="card"><h3>Change of plans, not a cancellation</h3><p>Since 3.2.0 option 13 moves a booking instead of killing it: one booking to a new window, or a whole series shifted in one step with its plan spacing and length intact. The schedule is re-checked with the booking lifted out first — its old slot never blocks its own new dates — refusals change nothing and say why, and a series shift is atomic (<code>Occurrence 3</code> names the clash). The id and arrival order survive, the price is re-quoted at the current rank, the reminders follow the new dates on their own, and <code>reservation.moved</code> / <code>recurring.moved</code> land in the audit trail.</p></div>
       <div class="card"><h3>Money with an audit trail</h3><p>Automatic invoicing priced by one pure engine, 1.5× late-day penalties charged exactly once, customer balances, per-car income ledger — every privileged action audited.</p></div>
       <div class="card"><h3>CSV everything</h3><p>Full state round-trip in <code>data/*.csv</code>, plus manager-exported fleet &amp; bookings reports into <code>reports/</code> — and one <code>report.json</code> holding stats, fleet, bookings and the loyalty program.</p></div>
-      <div class="card"><h3>Tested like it matters</h3><p>5,435 dependency-free checks — every v1.0 bug is now a regression test — green under AddressSanitizer + UBSan on every push.</p></div>
+      <div class="card"><h3>Tested like it matters</h3><p>5,476 dependency-free checks — every v1.0 bug is now a regression test — green under AddressSanitizer + UBSan on every push.</p></div>
     </div>
   </div>
 </section>

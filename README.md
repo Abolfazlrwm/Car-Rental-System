@@ -3,7 +3,7 @@
 [![CI](https://github.com/Abolfazlrwm/Car-Rental-System/actions/workflows/ci.yml/badge.svg)](https://github.com/Abolfazlrwm/Car-Rental-System/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Abolfazlrwm/Car-Rental-System)](https://github.com/Abolfazlrwm/Car-Rental-System/releases)
 ![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-5%2C435%20checks-3AAFA9)
+![Tests](https://img.shields.io/badge/tests-5%2C476%20checks-3AAFA9)
 ![Coverage](https://img.shields.io/badge/coverage-92%25-6EB744)
 ![Memory](https://img.shields.io/badge/AddressSanitizer-leak--free-4C6EF5)
 ![License](https://img.shields.io/badge/license-MIT-64748B)
@@ -45,7 +45,10 @@ hand-built AVL tree, hash table, priority queue, same audit trail —
 against an in-memory fleet that seeds itself on load. Log in as
 `ali / customer123` (customer), `sara / staff123` (staff) or
 `admin / manager123` (manager). The desktop build only swaps the input
-backend of `readLine`; everything else is the exact same code.
+backend of `readLine`; everything else is the exact same code. New in
+v3.4.0 — the **▶ Auto-play demo** button plays a narrated full shift by
+itself, no typing: it starts the program with the same `--demo` flag
+the desktop binary takes.
 
 <p align="center"><img src="assets/demo.gif" alt="A live recorded session of the WebAssembly demo: the customer checks pickup reminders, books a Benz C200, moves the booking to new dates with a re-quoted price, the staff hands the car over and processes a late return with penalty, and the manager reads the income and monthly reports" width="100%"></p>
 <p align="center"><sub>▲ One full shift, recorded live in the browser demo — book → change → deliver → late return → manager reports</sub></p>
@@ -326,6 +329,12 @@ prints the version banner and `--help` lists the flags. Plain output
 is available everywhere — `--no-color` for pipes, logs and CI, or a
 `NO_COLOR` environment variable ([no-color.org](https://no-color.org)).
 
+**Guided demo:** `./car_rental --demo` plays one narrated, self-running
+shift — book → change a booking → deliver → late return with penalty →
+manager reports — with dates derived from today's clock, on a fresh
+in-memory fleet (`data/` is never read or written). No compiler? The
+browser demo's **▶ Auto-play demo** button runs the same walkthrough.
+
 ---
 
 ## 📁 Project structure
@@ -426,7 +435,7 @@ The suite needs no external framework and runs in milliseconds:
   [ ok ] Monthly report: builder maths
   [ ok ] RentalManager: monthly report flow
 
-5435 checks, 0 failure(s)
+5476 checks, 0 failure(s)
 ALL TESTS PASSED
 ```
 
