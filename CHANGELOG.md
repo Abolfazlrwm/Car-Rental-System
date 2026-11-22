@@ -17,9 +17,9 @@ The detailed v1.0 → v2.0 story lives in
   (Apple Silicon, native runner) and `car_rental-macos-x64.tar.gz`
   (Intel, zig cross-compile) replace the single `macos.tar.gz`.
 - The release matrix is now **seven assets**: Windows x64, Linux x64,
-  macOS arm64 + x64, Android ARM64 static, and the WebAssembly browser
-  bundle — one download story for every platform, plus the in-browser
-  demo that needs nothing at all.
+  Linux ARM64 static, macOS arm64 + x64, Android ARM64 static, and the
+  WebAssembly browser bundle — one download story for every platform,
+  plus the in-browser demo that needs nothing at all.
 
 ### Changed
 
