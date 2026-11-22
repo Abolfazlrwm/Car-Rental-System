@@ -3575,6 +3575,20 @@ static void testCli()
         char *argv[] = {(char *)"car_rental", (char *)"-v"};
         CHECK(cli::parse(2, argv).showVersion);
     }
+    // --demo (v3.4.0): the guided walkthrough flag, alone and composed.
+    {
+        char *argv[] = {(char *)"car_rental", (char *)"--demo"};
+        const cli::Options o = cli::parse(2, argv);
+        CHECK(o.demo);
+        CHECK(!o.showHelp && !o.showVersion && !o.noColor);
+        CHECK(o.error.empty());
+    }
+    {
+        char *argv[] = {(char *)"car_rental", (char *)"--demo", (char *)"--no-color"};
+        const cli::Options o = cli::parse(3, argv);
+        CHECK(o.demo && o.noColor);
+        CHECK(o.error.empty());
+    }
     // --no-color, alone and beside other flags.
     {
         char *argv[] = {(char *)"car_rental", (char *)"--no-color"};

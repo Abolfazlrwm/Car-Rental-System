@@ -16,6 +16,8 @@
  *                   environment state is not argv and stays out of
  *                   this parser.
  *    - precedence : --version beats --help when both are given
+ *    - --demo     : (v3.4.0) plays the narrated guided walkthrough of
+ *                   one full shift on a fresh in-memory fleet
  *    - unknown    : error carries the offending argument; the
  *                   caller prints a hint and exits 1
  * ============================================================
@@ -32,6 +34,7 @@ struct Options
     bool showHelp = false;    /// -h / --help: print usage, exit 0
     bool showVersion = false; /// -v / --version: print version, exit 0
     bool noColor = false;     /// --no-color: plain output for pipes, logs, CI
+    bool demo = false;        /// --demo (v3.4.0): narrated guided walkthrough
     std::string error;        /// non-empty -> usage error, names the argument
 };
 
@@ -47,6 +50,8 @@ inline Options parse(int argc, char *argv[])
             opts.showVersion = true;
         else if (arg == "--no-color")
             opts.noColor = true;
+        else if (arg == "--demo")
+            opts.demo = true;
         else
         {
             opts.error = "unknown option '" + arg + "'";

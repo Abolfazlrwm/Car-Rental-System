@@ -43,7 +43,7 @@
 #include "manager_system/RentalManager.h"
 
 /* Program version, reported by --version / --help. */
-static const char *APP_VERSION = "3.3.1";
+static const char *APP_VERSION = "3.4.0";
 
 /* ============================================================
  *  Terminal colors (no-ops when stdout is piped)
@@ -80,6 +80,163 @@ static std::string cyan(const std::string &s)
 }
 
 /* ============================================================
+ *  Guided demo (v3.4.0) — `--demo` plays one full shift at the
+ *  rental desk by feeding the very same readLine() a scripted
+ *  sequence of keystrokes, with a narration banner before each
+ *  beat and small pauses: book -> change a booking -> deliver ->
+ *  late return with penalty -> manager reports.
+ *
+ *  Design notes:
+ *    - one implementation serves desktop and browser: the pause
+ *      is a thread sleep on desktop and an Asyncify sleep in the
+ *      wasm build, and the script flows through the same
+ *      readLine() a human types into;
+ *    - it runs on a FRESH in-memory fleet — nothing is loaded
+ *      from ./data and nothing is written back, so a presenter
+ *      can run it anywhere without side effects;
+ *    - if the script ever runs dry (menu drift), readLine falls
+ *      through to normal interactive input — the demo hands the
+ *      keyboard back instead of hanging or crashing.
+ * ============================================================ */
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#else
+#include <chrono>
+#include <thread>
+#endif
+#include <cstddef>
+#include <vector>
+
+struct DemoStep
+{
+    std::string narration; /// banner printed BEFORE this input ("" = none)
+    std::string line;      /// line fed to readLine (as if typed)
+};
+
+static bool g_demoOn = false; /// --demo was requested
+static std::vector<DemoStep> g_demoScript;
+static std::size_t g_demoCursor = 0;
+
+/// Portable pause: Asyncify sleep in the browser, thread sleep on desktop.
+static void demoPause(int ms)
+{
+#ifdef __EMSCRIPTEN__
+    emscripten_sleep(ms);
+#else
+    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+#endif
+}
+
+/// Narration between beats: multi-line blocks print as-is, single
+/// lines get the "DEMO ·" banner.
+static void demoSay(const std::string &scene)
+{
+    if (scene.find('\n') != std::string::npos)
+        std::cout << cyan(scene) << "\n";
+    else
+        std::cout << "\n" << cyan("  ===== DEMO · " + scene + " =====") << "\n";
+    std::cout.flush();
+    demoPause(1100);
+}
+
+/// Pop the next scripted line, narrating and echoing it like a real
+/// keystroke. False when not in demo mode or the script is over.
+static bool demoNext(const std::string &prompt, std::string &out)
+{
+    if (!g_demoOn || g_demoCursor >= g_demoScript.size())
+        return false;
+    const DemoStep &st = g_demoScript[g_demoCursor++];
+    if (!st.narration.empty())
+        demoSay(st.narration);
+    std::cout << prompt;
+    std::cout.flush();
+    demoPause(420);
+    std::cout << yellow(st.line) << "\n"; // echo the scripted keystrokes
+    std::cout.flush();
+    demoPause(280);
+    out = st.line;
+    while (!out.empty() && out.back() == ' ')
+        out.pop_back();
+    return true;
+}
+
+/// Build the scripted shift. Dates derive from today's clock so the
+/// booking is always fresh: pickup = today+3, hand-back = today+6,
+/// moved pickup = today+4, processed two days late = today+8 (the
+/// monthly report then reads that month).
+static void demoBuildScript()
+{
+    const int today = Date::todaySerial();
+    const std::string start = Date::toISO(today + 3);
+    const std::string end = Date::toISO(today + 6);
+    const std::string movedStart = Date::toISO(today + 4);
+    const std::string movedEnd = Date::toISO(today + 7);
+    const std::string processed = Date::toISO(today + 8); // 2 days late
+    const std::string repYear = processed.substr(0, 4);
+    const std::string repMonth = processed.substr(5, 2);
+
+    const std::string intro =
+        "\n"
+        "  ==================================================================\n"
+        "   GUIDED DEMO — one full shift at the rental desk, zero typing:\n"
+        "   book -> change a booking -> deliver -> late return with penalty\n"
+        "   -> manager reports.  Fresh in-memory fleet: ./data is never read\n"
+        "   or written; the monthly report's CSV export still runs as usual.\n"
+        "   Yellow lines are the scripted keystrokes; sit back and watch.\n"
+        "  ==================================================================\n";
+    const std::string outro =
+        "\n"
+        "  ==================================================================\n"
+        "   THAT'S ONE FULL SHIFT — every number above came out of the same\n"
+        "   hand-built AVL / hash table / heap / linked-list core.\n"
+        "   Your turn — start the interactive app and log in:\n"
+        "       manager  admin / manager123\n"
+        "       staff    sara  / staff123\n"
+        "       customer ali   / customer123\n"
+        "  ==================================================================\n";
+
+    const DemoStep steps[] = {
+        {intro, "2"},
+        {"THE CUSTOMER — Ali checks in", "ali"},
+        {"", "customer123"},
+        {"PICKUP REMINDERS — the week ahead, as the desk would say it", "3"},
+        {"A NEW BOOKING — the Benz C200, pickup three days out", "4"},
+        {"", "Benz C200"},
+        {"", start},
+        {"", end},
+        {"THE ESTIMATE — long-rental x rank discount stack, pay on delivery", "0"},
+        {"CHANGE A BOOKING — option 13 moves ONE booking, the schedule is "
+         "re-checked",
+         "13"},
+        {"", "1"},
+        {"", "1"},
+        {"", movedStart},
+        {"RE-QUOTED — new dates, new price, everything else untouched", movedEnd},
+        {"LOYALTY CARD — rank, progress bar, earning rate", "10"},
+        {"", "12"},
+        {"THE STAFF — Sara takes over the desk", "2"},
+        {"", "sara"},
+        {"", "staff123"},
+        {"HANDOVER — keys out the door", "3"},
+        {"", "Benz C200"},
+        {"THE RETURN — two days late: the penalty lands on the invoice", "4"},
+        {"", "Benz C200"},
+        {"", processed},
+        {"", "9"},
+        {"THE MANAGER — admin opens the books", "2"},
+        {"", "admin"},
+        {"", "manager123"},
+        {"INCOME REPORT — gross, maintenance, net per car", "9"},
+        {"MONTHLY REPORT — revenue, per-car bars, busiest day", "17"},
+        {"", repYear},
+        {"", repMonth},
+        {outro, "15"},
+        {"", "3"},
+    };
+    g_demoScript.assign(std::begin(steps), std::end(steps));
+}
+
+/* ============================================================
  *  Input helpers — the anti-segfault, anti-infinite-loop layer
  * ============================================================ */
 
@@ -99,6 +256,8 @@ EM_JS(int, web_line_take, (int buf, int maxlen), { return __crsTakeLine(buf, max
 
 static bool readLine(const std::string &prompt, std::string &out)
 {
+    if (demoNext(prompt, out))
+        return true; // scripted guided demo fed this line
     std::cout << prompt;
     std::cout.flush();
     out.clear();
@@ -116,6 +275,8 @@ static bool readLine(const std::string &prompt, std::string &out)
 /// Read one line; returns false on EOF (input exhausted).
 static bool readLine(const std::string &prompt, std::string &out)
 {
+    if (demoNext(prompt, out))
+        return true; // scripted guided demo fed this line
     std::cout << prompt;
     std::cout.flush();
     if (!std::getline(std::cin, out))
@@ -1380,17 +1541,24 @@ static void managerMenu(RentalManager &system, bool &running)
         break;
     }
     case 14:
-        std::cout << (system.saveData() ? green("  Data saved to ./data\n")
-                                        : red("  Could not write data files.\n"));
+        if (g_demoOn)
+            std::cout << yellow("  Guided demo: the fleet lives in memory — nothing to save.\n");
+        else
+            std::cout << (system.saveData() ? green("  Data saved to ./data\n")
+                                            : red("  Could not write data files.\n"));
         break;
     case 15:
-        system.saveData();
+        if (!g_demoOn)
+            system.saveData();
         system.logout();
-        std::cout << yellow("  Data saved. Logged out.\n");
+        std::cout << (g_demoOn ? yellow("  Demo fleet kept in memory. Logged out.\n")
+                               : yellow("  Data saved. Logged out.\n"));
         break;
     case 16:
-        system.saveData();
-        std::cout << yellow("  Data saved. Goodbye!\n");
+        if (!g_demoOn)
+            system.saveData();
+        std::cout << (g_demoOn ? yellow("  Demo fleet kept in memory. Goodbye!\n")
+                               : yellow("  Data saved. Goodbye!\n"));
         running = false;
         break;
     case 17:
@@ -1443,6 +1611,14 @@ int main(int argc, char *argv[])
     if (opts.noColor)
         g_colors = false;
 
+    // The guided demo (--demo): build the scripted shift up front; from
+    // here on readLine() pops its lines until the walkthrough ends.
+    if (opts.demo)
+    {
+        g_demoOn = true;
+        demoBuildScript();
+    }
+
     if (opts.showVersion)
     {
         std::cout << "Car Rental Management System v" << APP_VERSION
@@ -1460,6 +1636,8 @@ int main(int argc, char *argv[])
                      "  -v, --version  print version and exit\n"
                      "  -h, --help     show this help and exit\n"
                      "  --no-color     plain output (pipes, logs, CI)\n"
+                     "  --demo         guided walkthrough: one full shift,\n"
+                     "                 narrated, no typing (fresh in-memory fleet)\n"
                      "\n"
                      "Plain output also follows the NO_COLOR environment\n"
                      "variable (no-color.org).\n"
@@ -1480,7 +1658,14 @@ int main(int argc, char *argv[])
     printBanner();
 
     // Load persisted state; a fresh clone gets a ready-to-demo fleet.
-    if (system.loadData())
+    if (g_demoOn)
+    {
+        // The guided demo plays on a fresh in-memory fleet: ./data is
+        // neither read nor written, so it can run anywhere, any time.
+        system.seedDemoData();
+        std::cout << yellow("  Guided demo fleet: fresh, in-memory — ./data is untouched.\n");
+    }
+    else if (system.loadData())
         std::cout << green("  Loaded saved state from ./data\n");
     else
     {
@@ -1529,6 +1714,8 @@ int main(int argc, char *argv[])
     }
 
     // Persist everything so the next run continues where we left off.
-    system.saveData();
+    // (--demo never writes: its fleet was in-memory by design.)
+    if (!g_demoOn)
+        system.saveData();
     return 0;
 }

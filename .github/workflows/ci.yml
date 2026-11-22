@@ -54,6 +54,18 @@ jobs:
             echo "unknown option must fail"; exit 1
           fi
 
+      # v3.4.0: the guided demo plays a whole shift unattended — this
+      # also locks the demo script to the menus (any drift fails here).
+      - name: Guided demo (--demo) plays a full shift
+        run: |
+          NO_COLOR=1 ./build/car_rental --demo | tee /tmp/demo.log > /dev/null
+          grep -q "GUIDED DEMO" /tmp/demo.log
+          grep -q "RE-QUOTED" /tmp/demo.log
+          grep -q "LOYALTY CARD" /tmp/demo.log
+          grep -q "INCOME REPORT" /tmp/demo.log
+          grep -q "MONTHLY REPORT" /tmp/demo.log
+          grep -q "Goodbye" /tmp/demo.log
+
   # The README promises Linux | macOS | Windows — prove all three.
   cross-platform:
     name: ${{ matrix.os }} / CMake + ctest

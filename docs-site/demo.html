@@ -116,6 +116,7 @@
       <div class="dots"><i></i><i></i><i></i></div>
       <div class="term-title">car_rental — WebAssembly (Emscripten 3.1) — data/ lives in memory</div>
       <button class="btn" id="restart" type="button">↺ Restart demo (fresh fleet)</button>
+      <button class="btn" id="autoplay" type="button">▶ Auto-play demo</button>
     </div>
     <div id="terminal"></div>
   </div>
@@ -124,7 +125,8 @@
     Demo accounts, seeded on load: manager <span class="kbd">admin / manager123</span> ·
     staff <span class="kbd">sara / staff123</span> ·
     customer <span class="kbd">ali / customer123</span> — type the number at
-    <code>Choice:</code> and press Enter. On a phone, wide tables scroll sideways.
+    <code>Choice:</code> and press Enter — or press <b>▶ Auto-play demo</b>
+    and watch a narrated full shift run by itself. On a phone, wide tables scroll sideways.
   </p>
 
   <div class="cards">
@@ -165,6 +167,13 @@
    * \r\n because xterm keeps the cursor column otherwise (the
    * staircase effect). */
   var __dec = new TextDecoder('utf-8');
+  /* Guided demo (v3.4.0): the --demo flag plays a narrated, self-running
+   * walkthrough inside the compiled program itself. The request crosses
+   * the reload via sessionStorage, then callMain starts the program with
+   * the flag — the C++ side does the narration, pacing and the shift. */
+  var autoplayRequested = sessionStorage.getItem('crsAutoPlay') === '1';
+  if (autoplayRequested) sessionStorage.removeItem('crsAutoPlay');
+
   var Module = {
     termByte: function (b) {
       if (b === 10) { term.write('\r\n'); return; }
@@ -172,7 +181,7 @@
     },
     onRuntimeInitialized: function () {
       term.write('\x1b[2m— booting car_rental (WebAssembly) —\x1b[0m\r\n\r\n');
-      Module.callMain([]);
+      Module.callMain(autoplayRequested ? ['--demo'] : []);
     }
   };
 
@@ -200,6 +209,11 @@
   });
 
   document.getElementById('restart').addEventListener('click', function () {
+    location.reload();
+  });
+
+  document.getElementById('autoplay').addEventListener('click', function () {
+    sessionStorage.setItem('crsAutoPlay', '1');
     location.reload();
   });
 </script>
