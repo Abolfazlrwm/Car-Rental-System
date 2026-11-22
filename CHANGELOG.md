@@ -4,6 +4,28 @@ All notable changes to the Car Rental System are documented in this file.
 The detailed v1.0 → v2.0 story lives in
 [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md).
 
+## [3.5.0] — 2026-11-22
+
+### Added
+
+- **Android / Termux asset** — a fully static ARM64 build
+  (`car_rental-android-arm64.tar.gz`, ~0.9 MB, zig + musl): copy it to
+  Termux and run — no packaging, no dependencies, no install step. CI
+  cross-compiles it and smoke-tests the binary under qemu (version
+  banner, seeded fleet, clean Exit).
+- **macOS split by architecture** — `car_rental-macos-arm64.tar.gz`
+  (Apple Silicon, native runner) and `car_rental-macos-x64.tar.gz`
+  (Intel, zig cross-compile) replace the single `macos.tar.gz`.
+- The release matrix is now **seven assets**: Windows x64, Linux x64,
+  macOS arm64 + x64, Android ARM64 static, and the WebAssembly browser
+  bundle — one download story for every platform, plus the in-browser
+  demo that needs nothing at all.
+
+### Changed
+
+- LICENSE copyright years (2025–2026); the repo description and topics
+  now reflect the 5,476-check suite and the platform matrix.
+
 ## [3.4.0] — 2026-11-22
 
 ### Added

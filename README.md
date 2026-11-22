@@ -335,6 +335,14 @@ manager reports — with dates derived from today's clock, on a fresh
 in-memory fleet (`data/` is never read or written). No compiler? The
 browser demo's **▶ Auto-play demo** button runs the same walkthrough.
 
+**Downloads:** prebuilt binaries on the
+[Releases](https://github.com/Abolfazlrwm/Car-Rental-System/releases)
+page — `windows-x64.zip`, `linux-x64.tar.gz`, `macos-arm64.tar.gz`
+(Apple Silicon), `macos-x64.tar.gz` (Intel), a **fully static
+`android-arm64.tar.gz`** that runs directly on Android/Termux (no
+install step) and on any ARM64 Linux, plus `wasm-demo.zip` for
+offline browser use. No compiler needed anywhere.
+
 ---
 
 ## 📁 Project structure

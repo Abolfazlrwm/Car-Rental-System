@@ -1,6 +1,6 @@
 name: Release assets
 
-# On every version tag: build native binaries for the three OSes the
+# On every version tag: build native binaries for every platform the
 # README promises plus the browser (WebAssembly) bundle, and attach
 # them all to the GitHub Release.
 on:
@@ -21,7 +21,7 @@ jobs:
           - os: ubuntu-latest
             asset: car_rental-linux-x64.tar.gz
           - os: macos-latest
-            asset: car_rental-macos.tar.gz
+            asset: car_rental-macos-arm64.tar.gz
           - os: windows-latest
             asset: car_rental-windows-x64.zip
 
@@ -52,6 +52,54 @@ jobs:
           name: ${{ matrix.asset }}
           path: ${{ matrix.asset }}
 
+  cross:
+    name: cross builds (Android ARM64 static + macOS Intel)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # zig ships musl libc + libc++ for every target, so one pinned
+      # toolchain cross-compiles both assets with no SDK downloads.
+      - name: Install zig 0.13.0
+        run: |
+          curl -sL https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz -o /tmp/zig.tar.xz
+          mkdir -p /tmp/zig && tar xJf /tmp/zig.tar.xz -C /tmp/zig --strip-components=1
+          echo "/tmp/zig" >> "$GITHUB_PATH"
+
+      - name: Android / Termux — static ARM64
+        run: |
+          zig c++ -target aarch64-linux-musl -O2 -std=c++17 -s \
+            mainApp.cpp manager_system/*.cpp -o car_rental
+          file car_rental | grep -q "ARM aarch64"
+          file car_rental | grep -q "statically linked"
+
+      - name: Smoke-test the ARM64 binary under qemu
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-user-static
+          qemu-aarch64-static ./car_rental --version | grep -q "Car Rental Management System"
+          printf '3\n' | qemu-aarch64-static ./car_rental > /dev/null # seed fleet -> Exit
+
+      - name: Package (Android)
+        run: |
+          cp README.md README-Termux.txt
+          tar czf car_rental-android-arm64.tar.gz car_rental README-Termux.txt
+
+      - name: macOS Intel — Mach-O x86_64
+        run: |
+          zig c++ -target x86_64-macos -O2 -std=c++17 -s \
+            mainApp.cpp manager_system/*.cpp -o car_rental
+          file car_rental | grep -q "Mach-O 64-bit x86_64"
+          tar czf car_rental-macos-x64.tar.gz car_rental
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-assets
+          path: |
+            car_rental-android-arm64.tar.gz
+            car_rental-macos-x64.tar.gz
+
   wasm:
     name: browser bundle (WebAssembly)
     runs-on: ubuntu-latest
@@ -80,7 +128,7 @@ jobs:
 
   publish:
     name: Attach assets to the release
-    needs: [native, wasm]
+    needs: [native, cross, wasm]
     runs-on: ubuntu-latest
     steps:
       - name: Download all built assets

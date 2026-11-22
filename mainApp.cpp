@@ -43,7 +43,7 @@
 #include "manager_system/RentalManager.h"
 
 /* Program version, reported by --version / --help. */
-static const char *APP_VERSION = "3.4.0";
+static const char *APP_VERSION = "3.5.0";
 
 /* ============================================================
  *  Terminal colors (no-ops when stdout is piped)
