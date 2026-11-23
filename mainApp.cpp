@@ -1602,11 +1602,14 @@ static void managerMenu(RentalManager &system, bool &running)
         const std::string path = "reports/monthly_" + r.month + ".png";
         std::string error;
         if (png::writeMonthlyReportPng(r, year, month, path, error))
+        {
             std::cout << green(L("  Saved to ") + path + "\n");
 #ifdef __EMSCRIPTEN__
-        offerReportDownload(path); // browser demo: one-click download
+            offerReportDownload(path); // browser demo: one-click download
 #endif
-        else std::cout << red(L("  Could not write ") + path + ": " + error + "\n");
+        }
+        else
+            std::cout << red(L("  Could not write ") + path + ": " + error + "\n");
         break;
     }
     case 19:
@@ -1616,11 +1619,14 @@ static void managerMenu(RentalManager &system, bool &running)
         const std::string path = "reports/loyalty_overview.png";
         std::string error;
         if (png::writeLoyaltyOverviewPng(o, path, error))
+        {
             std::cout << green(L("  Saved to ") + path + "\n");
 #ifdef __EMSCRIPTEN__
-        offerReportDownload(path); // browser demo: one-click download
+            offerReportDownload(path); // browser demo: one-click download
 #endif
-        else std::cout << red(L("  Could not write ") + path + ": " + error + "\n");
+        }
+        else
+            std::cout << red(L("  Could not write ") + path + ": " + error + "\n");
         break;
     }
     case 20:
@@ -1631,11 +1637,14 @@ static void managerMenu(RentalManager &system, bool &running)
         const std::string path = "reports/dashboard.png";
         std::string error;
         if (png::writeDashboardPng(report, path, error))
+        {
             std::cout << green(L("  Saved to ") + path + "\n");
 #ifdef __EMSCRIPTEN__
-        offerReportDownload(path); // browser demo: one-click download
+            offerReportDownload(path); // browser demo: one-click download
 #endif
-        else std::cout << red(L("  Could not write ") + path + ": " + error + "\n");
+        }
+        else
+            std::cout << red(L("  Could not write ") + path + ": " + error + "\n");
         break;
     }
     case 21:
@@ -1650,11 +1659,14 @@ static void managerMenu(RentalManager &system, bool &running)
         std::string error;
         if (pdf::writeAllReportsPdf(r, year, month, system.loyaltyOverview(),
                                     buildAnalytics(system, Date::todaySerial()), path, error))
+        {
             std::cout << green(L("  Saved to ") + path + "\n");
 #ifdef __EMSCRIPTEN__
-        offerReportDownload(path); // browser demo: one-click download
+            offerReportDownload(path); // browser demo: one-click download
 #endif
-        else std::cout << red(L("  Could not write ") + path + ": " + error + "\n");
+        }
+        else
+            std::cout << red(L("  Could not write ") + path + ": " + error + "\n");
         break;
     }
     default:
