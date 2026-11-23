@@ -372,6 +372,12 @@ rasterised from DejaVu at build time) — no image library anywhere:
 Each render reads the same struct its console screen shows, so image
 and screen can never drift apart.
 
+**One consolidated PDF (v3.9.0):** option 21 saves every report as a
+single printable `reports/all_reports_YYYY-MM.pdf` — a cover page plus
+one full page per report, the pages embedded straight from the same
+renderers, xref/trailer hand-rolled: still zero dependencies, and the
+bytes are deterministic (no timestamps), so the suite pins them.
+
 **Guided demo:** `./car_rental --demo` plays one narrated, self-running
 shift — book → change a booking → deliver → late return with penalty →
 manager reports — with dates derived from today's clock, on a fresh
@@ -408,6 +414,10 @@ numbers as JSON:
 | `GET /audit?limit=N` | newest audit entries (1..500) |
 | `GET /pickups?days=N` | upcoming pickups (1..30) |
 | `GET /monthly?year=Y&month=M` | the monthly report |
+| `GET /reports/monthly.png?year=Y&month=M` | the monthly report as PNG (v3.9.0) |
+| `GET /reports/loyalty.png` | the loyalty overview as PNG (v3.9.0) |
+| `GET /reports/dashboard.png` | the analytics dashboard as PNG (v3.9.0) |
+| `GET /reports/all.pdf?year=Y&month=M` | all three reports as one consolidated PDF (v3.9.0) |
 
 ```bash
 ./car_rental --serve 8080 &
@@ -523,7 +533,7 @@ The suite needs no external framework and runs in milliseconds:
   [ ok ] Monthly report: builder maths
   [ ok ] RentalManager: monthly report flow
 
-5562 checks, 0 failure(s)
+5584 checks, 0 failure(s)
 ALL TESTS PASSED
 ```
 

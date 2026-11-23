@@ -16,6 +16,10 @@
  *    GET /audit?limit=N             newest audit entries (cap 500)
  *    GET /pickups?days=N            upcoming pickups (1..30)
  *    GET /monthly?year=Y&month=M    the monthly report
+ *    GET /reports/monthly.png?year=Y&month=M   monthly as image
+ *    GET /reports/loyalty.png       the loyalty raster as image
+ *    GET /reports/dashboard.png     the dashboard raster as image
+ *    GET /reports/all.pdf?year=Y&month=M   one consolidated PDF
  *
  *  Design contract:
  *    - READ-ONLY on purpose: mutations stay in the TUI where every

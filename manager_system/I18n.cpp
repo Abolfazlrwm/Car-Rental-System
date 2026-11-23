@@ -391,7 +391,8 @@ const Pair kTable[] = {
      " logout\n 16. Exit program\n 17. Monthly report "
      "(revenue & bookings)\n 18. Save monthly report as"
      " PNG\n 19. Save loyalty overview as PNG\n 20. Save"
-     " analytics dashboard as PNG\n",
+     " analytics dashboard as PNG\n 21. Save all three "
+     "reports as one PDF\n",
      "  1. افزودن خودرو\n  2. مشاهدهٔ"
      " ناوگان (ترتیب افزودن)\n  3. "
      "مشاهدهٔ ناوگان (مرتب بر "
@@ -413,7 +414,8 @@ const Pair kTable[] = {
      "به‌صورت PNG\n 19. ذخیرهٔ نمای "
      "وفاداری به‌صورت PNG\n 20. "
      "ذخیرهٔ داشبورد تحلیلی "
-     "به‌صورت PNG\n"},
+     "به‌صورت PNG\n 21. ذخیرهٔ هر "
+     "سهٔ گزارش در یک PDF\n"},
     {"\n===== MANAGER MENU | ", "\n===== منوی مدیر | "},
     {"  Brand: ", "  برند: "},
     {"  Price per day: ", "  قیمت روزانه: "},

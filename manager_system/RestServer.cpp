@@ -24,6 +24,8 @@
 #include "JsonExport.h" // jsonEscape
 #include "Loyalty.h"    // LoyaltyOverview, tier names
 #include "MonthlyReport.h"
+#include "Pdf.h" // consolidated report bytes
+#include "Png.h" // Canvas, render*, encodePng
 #include "RentalManager.h"
 
 #ifdef _WIN32
@@ -368,6 +370,62 @@ Response routeGet(RentalManager &manager, const std::string &path, const std::st
         }
         oss << "]}";
         return json(200, oss.str());
+    }
+
+    // (v3.9.0) Binary report endpoints: the very renderers the TUI
+    // and the consolidated PDF use, served straight from memory.
+    if (path == "/reports/monthly.png" || path == "/reports/all.pdf")
+    {
+        const std::string yearText = queryParam(query, "year");
+        const std::string monthText = queryParam(query, "month");
+        if (yearText.empty() || monthText.empty())
+            return errorJson(400, "year and month are required");
+        int year = 0, month = 0;
+        try
+        {
+            year = std::stoi(yearText);
+            month = std::stoi(monthText);
+        }
+        catch (...)
+        {
+            return errorJson(400, "year and month must be integers");
+        }
+        if (month < 1 || month > 12 || year < 1)
+            return errorJson(400, "month must be 1..12 and year positive");
+        const MonthlyReport r = manager.monthlyReport(year, month);
+        std::string err;
+        if (path == "/reports/monthly.png")
+        {
+            png::Canvas cv(1, 1);
+            png::renderMonthlyReport(r, year, month, cv, err);
+            const std::vector<unsigned char> bytes = png::encodePng(cv);
+            Response resp;
+            resp.contentType = "image/png";
+            resp.body.assign(bytes.begin(), bytes.end());
+            return resp;
+        }
+        std::string bytes;
+        pdf::buildAllReportsPdf(r, year, month, manager.loyaltyOverview(),
+                                buildAnalytics(manager, Date::todaySerial()), bytes, err);
+        Response resp;
+        resp.contentType = "application/pdf";
+        resp.body = bytes;
+        return resp;
+    }
+
+    if (path == "/reports/loyalty.png" || path == "/reports/dashboard.png")
+    {
+        png::Canvas cv(1, 1);
+        std::string err;
+        if (path == "/reports/loyalty.png")
+            png::renderLoyaltyOverview(manager.loyaltyOverview(), cv, err);
+        else
+            png::renderDashboard(buildAnalytics(manager, Date::todaySerial()), cv, err);
+        const std::vector<unsigned char> bytes = png::encodePng(cv);
+        Response resp;
+        resp.contentType = "image/png";
+        resp.body.assign(bytes.begin(), bytes.end());
+        return resp;
     }
 
     return errorJson(404, "unknown endpoint");

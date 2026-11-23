@@ -51,6 +51,7 @@
 #include "../manager_system/I18n.h"
 #include "../manager_system/JsonExport.h"
 #include "../manager_system/Loyalty.h"
+#include "../manager_system/Pdf.h"
 #include "../manager_system/Permissions.h"
 #include "../manager_system/Png.h"
 #include "../manager_system/RentalManager.h"
@@ -3743,7 +3744,8 @@ static void testI18n()
                           " 17. Monthly report (revenue & bookings)\n"
                           " 18. Save monthly report as PNG\n"
                           " 19. Save loyalty overview as PNG\n"
-                          " 20. Save analytics dashboard as PNG\n"),
+                          " 20. Save analytics dashboard as PNG\n"
+                          " 21. Save all three reports as one PDF\n"),
                  "  1. Add car\n  2. View fleet (insertion order)\n"
                  "  3. View fleet (sorted by name - AVL index)\n"
                  "  4. Search fleet by keyword\n  5. Fleet statistics\n"
@@ -3757,7 +3759,8 @@ static void testI18n()
                  " 17. Monthly report (revenue & bookings)\n"
                  " 18. Save monthly report as PNG\n"
                  " 19. Save loyalty overview as PNG\n"
-                 " 20. Save analytics dashboard as PNG\n") != 0);
+                 " 20. Save analytics dashboard as PNG\n"
+                 " 21. Save all three reports as one PDF\n") != 0);
 
     // Persistence round-trip through ./data/lang.txt.
     std::filesystem::create_directories("data");
@@ -3919,6 +3922,45 @@ static void testPng()
 }
 
 /* ============================================================
+ *  Pdf (v3.9.0): the consolidated four-page report
+ * ============================================================ */
+static void testPdf()
+{
+    RentalManager r;
+    r.seedDemoData();
+    const MonthlyReport m = r.monthlyReport(2026, 11);
+    const LoyaltyOverview o = r.loyaltyOverview();
+    const AnalyticsReport dash = buildAnalytics(r, Date::todaySerial());
+    const std::string pdfPath = "reports/all_unit.pdf";
+    std::string err;
+    CHECK(pdf::writeAllReportsPdf(m, 2026, 11, o, dash, pdfPath, err));
+    CHECK(err.empty());
+    CHECK(!pdf::writeAllReportsPdf(m, 2026, 13, o, dash, pdfPath + ".bad", err));
+    CHECK(err == "invalid year/month");
+
+    std::ifstream f(pdfPath, std::ios::binary);
+    std::string bytes((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    CHECK(bytes.size() > 800000); // three uncompressed full-page rasters
+    CHECK(bytes.compare(0, 8, "%PDF-1.4") == 0);
+    CHECK(bytes.substr(bytes.size() - 6) == "%%EOF\n");
+    std::size_t images = 0, at = std::string::npos;
+    while ((at = bytes.find("/Subtype /Image", at + 1)) != std::string::npos)
+        ++images;
+    CHECK(images == 3);
+    CHECK(bytes.find("/Count 4") != std::string::npos);
+    CHECK(bytes.find("trailer << /Size 16 /Root 1 0 R >>") != std::string::npos);
+    CHECK(bytes.find("/ColorSpace /DeviceRGB /BitsPerComponent 8") != std::string::npos);
+
+    CHECK(pdf::writeAllReportsPdf(m, 2026, 11, o, dash, pdfPath + ".2", err));
+    std::ifstream f2(pdfPath + ".2", std::ios::binary);
+    std::string bytes2((std::istreambuf_iterator<char>(f2)), std::istreambuf_iterator<char>());
+    CHECK(bytes == bytes2); // deterministic bytes: no timestamps anywhere
+    std::filesystem::remove(pdfPath);
+    std::filesystem::remove(pdfPath + ".2");
+    std::filesystem::remove(pdfPath + ".bad");
+}
+
+/* ============================================================
  *  Rest (v3.7.0): the read-only router over the facade
  * ============================================================ */
 static void testRest()
@@ -3971,6 +4013,22 @@ static void testRest()
     CHECK(wire.rfind("HTTP/1.1 200 OK\r\n", 0) == 0);
     CHECK(wire.find("Content-Length: " + std::to_string(health.body.size())) != std::string::npos);
     CHECK(wire.find("Connection: close") != std::string::npos);
+
+    // (v3.9.0) Binary report endpoints: PNG/PDF bytes on the wire.
+    const rest::Response pngRep = rest::routeGet(m, "/reports/monthly.png", "year=2026&month=11");
+    CHECK(pngRep.status == 200 && pngRep.contentType == "image/png");
+    CHECK(pngRep.body.size() > 1000 && pngRep.body[0] == '\x89' && pngRep.body[1] == 'P');
+    const rest::Response loyRep = rest::routeGet(m, "/reports/loyalty.png", "");
+    CHECK(loyRep.status == 200 && loyRep.contentType == "image/png" && loyRep.body.size() > 1000);
+    const rest::Response dashRep = rest::routeGet(m, "/reports/dashboard.png", "");
+    CHECK(dashRep.status == 200 && dashRep.contentType == "image/png" &&
+          dashRep.body.size() > 1000);
+    CHECK(rest::routeGet(m, "/reports/monthly.png", "year=2026&month=13").status == 400);
+    CHECK(rest::routeGet(m, "/reports/all.pdf", "").status == 400);
+    const rest::Response pdfRep = rest::routeGet(m, "/reports/all.pdf", "year=2026&month=11");
+    CHECK(pdfRep.status == 200 && pdfRep.contentType == "application/pdf");
+    CHECK(pdfRep.body.compare(0, 8, "%PDF-1.4") == 0 && pdfRep.body.size() > 800000);
+    CHECK(rest::routeGet(m, "/reports/logo.png", "").status == 404);
 }
 
 int main()
@@ -4027,6 +4085,7 @@ int main()
     runSuite("Cli: argument parsing", testCli);
     runSuite("I18n: string table & language", testI18n);
     runSuite("Png: encoder & report raster", testPng);
+    runSuite("Pdf: consolidated report", testPdf);
     runSuite("Rest: router & serialisation", testRest);
 
     std::cout << "\n" << g_checks << " checks, " << g_failures << " failure(s)\n";

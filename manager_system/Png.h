@@ -49,6 +49,10 @@ class Canvas
     /// Raw byte at index i of the RGB buffer (encoder + tests).
     unsigned char pixel(std::size_t index) const { return px_.at(index); }
 
+    /// The whole RGB buffer (embedders such as the PDF report).
+    ///                                             (v3.9.0)
+    const std::vector<unsigned char> &pixels() const { return px_; }
+
     void fill(unsigned char r, unsigned char g, unsigned char b);
     /// Bounds-checked single pixel (no-op outside the canvas).
     void set(int x, int y, unsigned char r, unsigned char g, unsigned char b);
@@ -89,6 +93,26 @@ bool writeLoyaltyOverviewPng(const LoyaltyOverview &overview,
 /// pickups, chase-ups).                    (v3.8.0)
 bool writeDashboardPng(const AnalyticsReport &report,
                        const std::string &path, std::string &errorOut);
+
+/// Encode the canvas as PNG bytes in memory (no file I/O) — the
+/// REST layer serves report images straight from this. (v3.9.0)
+std::vector<unsigned char> encodePng(const Canvas &canvas);
+
+/// Build (without encoding) the monthly report canvas — the
+/// renderer shared by the PNG file, the consolidated PDF and the
+/// REST image endpoints.             (v3.9.0)
+bool renderMonthlyReport(const MonthlyReport &report, int year,
+                         int month, Canvas &out, std::string &errorOut);
+
+/// Build the loyalty snapshot canvas (shared the same way).
+///                                             (v3.9.0)
+bool renderLoyaltyOverview(const LoyaltyOverview &overview,
+                           Canvas &out, std::string &errorOut);
+
+/// Build the analytics dashboard canvas (shared the same way).
+///                                             (v3.9.0)
+bool renderDashboard(const AnalyticsReport &report, Canvas &out,
+                     std::string &errorOut);
 
 } // namespace png
 

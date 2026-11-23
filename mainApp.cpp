@@ -41,6 +41,7 @@
 #include "manager_system/JsonExport.h"
 #include "manager_system/Loyalty.h"
 #include "manager_system/MonthlyReport.h"
+#include "manager_system/Pdf.h"
 #include "manager_system/Png.h"
 #include "manager_system/Pricing.h"
 #include "manager_system/Recurring.h"
@@ -48,7 +49,7 @@
 #include "manager_system/RestServer.h"
 
 /* Program version, reported by --version / --help. */
-static const char *APP_VERSION = "3.8.0";
+static const char *APP_VERSION = "3.9.0";
 
 /* ============================================================
  *  Terminal colors (no-ops when stdout is piped)
@@ -1406,11 +1407,11 @@ static void managerMenu(RentalManager &system, bool &running)
         "staff account\n 14. Save data to disk\n 15. Save & logout\n 16. Exit program\n 17. "
         "Monthly report (revenue & bookings)\n 18. Save monthly report as PNG\n"
         " 19. Save loyalty overview as PNG\n 20. Save analytics dashboard as "
-        "PNG\n")
+        "PNG\n 21. Save all three reports as one PDF\n")
 
         ;
 
-    switch (readMenuChoice(L("  Choice: "), 1, 20))
+    switch (readMenuChoice(L("  Choice: "), 1, 21))
     {
     case 1:
     {
@@ -1601,6 +1602,23 @@ static void managerMenu(RentalManager &system, bool &running)
         const std::string path = "reports/dashboard.png";
         std::string error;
         if (png::writeDashboardPng(report, path, error))
+            std::cout << green(L("  Saved to ") + path + "\n");
+        else
+            std::cout << red(L("  Could not write ") + path + ": " + error + "\n");
+        break;
+    }
+    case 21:
+    {
+        // (v3.9.0) All three reports consolidated into one PDF.
+        int year;
+        if (!readInt(L("  Year (e.g. 2026): "), year))
+            return;
+        const int month = readMenuChoice(L("  Month (1-12): "), 1, 12);
+        const MonthlyReport r = system.monthlyReport(year, month);
+        const std::string path = "reports/all_reports_" + r.month + ".pdf";
+        std::string error;
+        if (pdf::writeAllReportsPdf(r, year, month, system.loyaltyOverview(),
+                                    buildAnalytics(system, Date::todaySerial()), path, error))
             std::cout << green(L("  Saved to ") + path + "\n");
         else
             std::cout << red(L("  Could not write ") + path + ": " + error + "\n");

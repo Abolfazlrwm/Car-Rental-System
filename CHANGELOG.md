@@ -4,6 +4,29 @@ All notable changes to the Car Rental System are documented in this file.
 The detailed v1.0 → v2.0 story lives in
 [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md).
 
+## [3.9.0] — 2026-11-23
+
+### Added
+
+- **Consolidated PDF report (manager option 21)** — one printable
+  `reports/all_reports_YYYY-MM.pdf`: a cover page plus one full page
+  per report (monthly, loyalty, dashboard), each embedded from the
+  very same `png::render*` functions the PNG files use. Hand-rolled
+  writer (objects, xref, trailer): still zero dependencies, ASCII
+  text contract, deterministic bytes — no timestamps.
+- **Binary REST endpoints** — `GET /reports/monthly.png`,
+  `GET /reports/loyalty.png`, `GET /reports/dashboard.png` and
+  `GET /reports/all.pdf` serve the same rasters straight from
+  memory (`image/png`, `application/pdf`), sharing the 400/404
+  parameter discipline of the JSON routes.
+- **Renderer refactor** — Png now exposes `render*` builders and
+  `encodePng`, so the TUI, the PDF and REST share one code path
+  per report; nothing can drift apart.
+- **22 new suite checks** (5,562 → **5,584**): the PDF structure
+  (four pages, three embedded images, xref/trailer, byte
+  determinism), invalid-month rejection, and every binary
+  endpoint over the seeded fleet.
+
 ## [3.8.0] — 2026-11-23
 
 ### Added

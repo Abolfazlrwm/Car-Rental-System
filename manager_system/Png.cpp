@@ -129,7 +129,7 @@ const unsigned char kSignature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'
 
 } // namespace
 
-bool writePng(const std::string &path, const Canvas &canvas)
+std::vector<unsigned char> encodePng(const Canvas &canvas)
 {
     // raw scanlines: one filter byte (0 = None) per row
     std::vector<unsigned char> raw;
@@ -180,7 +180,12 @@ bool writePng(const std::string &path, const Canvas &canvas)
     chunk(file, "IHDR", ihdr);
     chunk(file, "IDAT", idat);
     chunk(file, "IEND", std::vector<unsigned char>());
+    return file;
+}
 
+bool writePng(const std::string &path, const Canvas &canvas)
+{
+    const std::vector<unsigned char> file = encodePng(canvas);
     std::error_code ec;
     std::filesystem::path p(path);
     if (p.has_parent_path())
@@ -223,8 +228,8 @@ void drawBarRow(Canvas &cv, int x, int y, const std::string &label, double value
 
 } // namespace
 
-bool writeMonthlyReportPng(const MonthlyReport &report, int year, int month,
-                           const std::string &path, std::string &errorOut)
+bool renderMonthlyReport(const MonthlyReport &report, int year, int month, Canvas &out,
+                         std::string &errorOut)
 {
     errorOut.clear(); // success contract: empty unless this call failed
     if (month < 1 || month > 12 || year < 1)
@@ -301,6 +306,16 @@ bool writeMonthlyReportPng(const MonthlyReport &report, int year, int month,
         y += 12;
     }
 
+    out = cv;
+    return true;
+}
+
+bool writeMonthlyReportPng(const MonthlyReport &report, int year, int month,
+                           const std::string &path, std::string &errorOut)
+{
+    Canvas cv(1, 1);
+    if (!renderMonthlyReport(report, year, month, cv, errorOut))
+        return false;
     if (!writePng(path, cv))
     {
         errorOut = "cannot open the file for writing";
@@ -311,8 +326,7 @@ bool writeMonthlyReportPng(const MonthlyReport &report, int year, int month,
 
 /* ------------- loyalty + dashboard rasters (v3.8.0) ------------- */
 
-bool writeLoyaltyOverviewPng(const LoyaltyOverview &overview, const std::string &path,
-                             std::string &errorOut)
+bool renderLoyaltyOverview(const LoyaltyOverview &overview, Canvas &out, std::string &errorOut)
 {
     errorOut.clear(); // success contract: empty unless this call failed
     const int maxTier = std::max(std::max(overview.membersByTier[0], overview.membersByTier[1]),
@@ -352,6 +366,16 @@ bool writeLoyaltyOverviewPng(const LoyaltyOverview &overview, const std::string 
         y += 12;
     }
 
+    out = cv;
+    return true;
+}
+
+bool writeLoyaltyOverviewPng(const LoyaltyOverview &overview, const std::string &path,
+                             std::string &errorOut)
+{
+    Canvas cv(1, 1);
+    if (!renderLoyaltyOverview(overview, cv, errorOut))
+        return false;
     if (!writePng(path, cv))
     {
         errorOut = "cannot open the file for writing";
@@ -360,8 +384,7 @@ bool writeLoyaltyOverviewPng(const LoyaltyOverview &overview, const std::string 
     return true;
 }
 
-bool writeDashboardPng(const AnalyticsReport &report, const std::string &path,
-                       std::string &errorOut)
+bool renderDashboard(const AnalyticsReport &report, Canvas &out, std::string &errorOut)
 {
     errorOut.clear(); // success contract: empty unless this call failed
     int maxStatus = 0, maxBucket = 0, maxBookings = 0, maxWait = 0;
@@ -476,6 +499,16 @@ bool writeDashboardPng(const AnalyticsReport &report, const std::string &path,
                 std::to_string(report.totalActiveBookings) + " active bookings",
             kInk, kInk, kInk, 1);
 
+    out = cv;
+    return true;
+}
+
+bool writeDashboardPng(const AnalyticsReport &report, const std::string &path,
+                       std::string &errorOut)
+{
+    Canvas cv(1, 1);
+    if (!renderDashboard(report, cv, errorOut))
+        return false;
     if (!writePng(path, cv))
     {
         errorOut = "cannot open the file for writing";
