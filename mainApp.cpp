@@ -48,7 +48,7 @@
 #include "manager_system/RestServer.h"
 
 /* Program version, reported by --version / --help. */
-static const char *APP_VERSION = "3.7.0";
+static const char *APP_VERSION = "3.8.0";
 
 /* ============================================================
  *  Terminal colors (no-ops when stdout is piped)
@@ -1404,11 +1404,13 @@ static void managerMenu(RentalManager &system, bool &running)
         "dashboard\n  7. Audit log (who did what)\n  8. Loyalty program overview\n  9. Income "
         "report\n 10. Export CSV & JSON reports\n 11. Block user\n 12. Unblock user\n 13. Create "
         "staff account\n 14. Save data to disk\n 15. Save & logout\n 16. Exit program\n 17. "
-        "Monthly report (revenue & bookings)\n 18. Save monthly report as PNG\n")
+        "Monthly report (revenue & bookings)\n 18. Save monthly report as PNG\n"
+        " 19. Save loyalty overview as PNG\n 20. Save analytics dashboard as "
+        "PNG\n")
 
         ;
 
-    switch (readMenuChoice(L("  Choice: "), 1, 18))
+    switch (readMenuChoice(L("  Choice: "), 1, 20))
     {
     case 1:
     {
@@ -1574,6 +1576,31 @@ static void managerMenu(RentalManager &system, bool &running)
         const std::string path = "reports/monthly_" + r.month + ".png";
         std::string error;
         if (png::writeMonthlyReportPng(r, year, month, path, error))
+            std::cout << green(L("  Saved to ") + path + "\n");
+        else
+            std::cout << red(L("  Could not write ") + path + ": " + error + "\n");
+        break;
+    }
+    case 19:
+    {
+        // (v3.8.0) The loyalty snapshot as a dependency-free PNG.
+        const LoyaltyOverview o = system.loyaltyOverview();
+        const std::string path = "reports/loyalty_overview.png";
+        std::string error;
+        if (png::writeLoyaltyOverviewPng(o, path, error))
+            std::cout << green(L("  Saved to ") + path + "\n");
+        else
+            std::cout << red(L("  Could not write ") + path + ": " + error + "\n");
+        break;
+    }
+    case 20:
+    {
+        // (v3.8.0) The analytics dashboard as a dependency-free PNG:
+        // the same AnalyticsReport the console screen renders.
+        const AnalyticsReport report = buildAnalytics(system, Date::todaySerial());
+        const std::string path = "reports/dashboard.png";
+        std::string error;
+        if (png::writeDashboardPng(report, path, error))
             std::cout << green(L("  Saved to ") + path + "\n");
         else
             std::cout << red(L("  Could not write ") + path + ": " + error + "\n");

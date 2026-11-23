@@ -4,6 +4,24 @@ All notable changes to the Car Rental System are documented in this file.
 The detailed v1.0 → v2.0 story lives in
 [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md).
 
+## [3.8.0] — 2026-11-23
+
+### Added
+
+- **Loyalty overview as PNG (manager option 19)** — the program
+  snapshot (totals, top member, members per rank) as
+  `reports/loyalty_overview.png`, from the same `LoyaltyOverview`
+  the console screen renders.
+- **Analytics dashboard as PNG (manager option 20)** — the same
+  `AnalyticsReport` as the screen (fleet composition, price buckets,
+  active bookings per car, waitlist depth, upcoming pickups,
+  chase-ups) as `reports/dashboard.png`.
+- **API contract hardened:** every PNG writer clears `errorOut` on
+  success — a stale error can no longer leak into a later call.
+- **14 new suite checks** (5,548 → **5,562**): both new rasters
+  (deterministic bytes, signature, empty-state renders) and the
+  dashboard slices verified against a live booking.
+
 ## [3.7.0] — 2026-11-23
 
 ### Added

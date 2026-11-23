@@ -356,12 +356,21 @@ RTL rendering. By design the domain strings returned by the core
 (booking-conflict errors, discount notes, the audit table) stay
 English — the unit suite pins their exact bytes.
 
-**PNG reports (v3.7.0):** manager option 18 saves the monthly report
-as `reports/monthly_YYYY-MM.png` — the same figures as the screen plus
-per-car and per-day bars, drawn and encoded by a dependency-free PNG
-writer (hand-rolled CRC32/Adler32, stored-deflate zlib framing, an
-8x8 glyph table rasterised from DejaVu at build time). No image
-library anywhere.
+**PNG reports (v3.7.0 + v3.8.0):** the manager saves three reports as
+real images with the dependency-free PNG writer (hand-rolled
+CRC32/Adler32, stored-deflate zlib framing, an 8x8 glyph table
+rasterised from DejaVu at build time) — no image library anywhere:
+
+- option 18 — the monthly report as `reports/monthly_YYYY-MM.png`
+  (figures plus per-car and per-day bars);
+- option 19 — the loyalty snapshot as `reports/loyalty_overview.png`
+  (totals, top member, members per rank);
+- option 20 — the analytics dashboard as `reports/dashboard.png`
+  (composition, price buckets, bookings per car, waitlist depth,
+  upcoming pickups, chase-ups).
+
+Each render reads the same struct its console screen shows, so image
+and screen can never drift apart.
 
 **Guided demo:** `./car_rental --demo` plays one narrated, self-running
 shift — book → change a booking → deliver → late return with penalty →
@@ -514,7 +523,7 @@ The suite needs no external framework and runs in milliseconds:
   [ ok ] Monthly report: builder maths
   [ ok ] RentalManager: monthly report flow
 
-5548 checks, 0 failure(s)
+5562 checks, 0 failure(s)
 ALL TESTS PASSED
 ```
 

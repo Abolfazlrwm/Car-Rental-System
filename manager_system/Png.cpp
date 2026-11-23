@@ -17,6 +17,7 @@
 #include <filesystem>
 #include <fstream>
 
+#include "Loyalty.h" // LoyaltyOverview
 #include "PngFont.h"
 
 namespace png
@@ -225,6 +226,7 @@ void drawBarRow(Canvas &cv, int x, int y, const std::string &label, double value
 bool writeMonthlyReportPng(const MonthlyReport &report, int year, int month,
                            const std::string &path, std::string &errorOut)
 {
+    errorOut.clear(); // success contract: empty unless this call failed
     if (month < 1 || month > 12 || year < 1)
     {
         errorOut = "invalid year/month";
@@ -298,6 +300,181 @@ bool writeMonthlyReportPng(const MonthlyReport &report, int year, int month,
                    static_cast<double>(maxDay), std::to_string(day.count), 140);
         y += 12;
     }
+
+    if (!writePng(path, cv))
+    {
+        errorOut = "cannot open the file for writing";
+        return false;
+    }
+    return true;
+}
+
+/* ------------- loyalty + dashboard rasters (v3.8.0) ------------- */
+
+bool writeLoyaltyOverviewPng(const LoyaltyOverview &overview, const std::string &path,
+                             std::string &errorOut)
+{
+    errorOut.clear(); // success contract: empty unless this call failed
+    const int maxTier = std::max(std::max(overview.membersByTier[0], overview.membersByTier[1]),
+                                 std::max(overview.membersByTier[2], overview.membersByTier[3]));
+    // fixed layout: 170px of content + bottom margin
+    Canvas cv(620, 184);
+    cv.fill(kBg, kBg, kBg);
+
+    int y = 10;
+    cv.text(16, y, "LOYALTY PROGRAM OVERVIEW", kInk, kInk, kInk, 2);
+    y += 26;
+    cv.fillRect(16, y, 588, 1, 200, 200, 200);
+    y += 8;
+    cv.text(16, y, "Total members      : " + std::to_string(overview.totalMembers), kInk, kInk,
+            kInk, 1);
+    y += 12;
+    cv.text(16, y, "Outstanding points : " + std::to_string(overview.outstandingPoints), kInk, kInk,
+            kInk, 1);
+    y += 12;
+    cv.text(16, y, "Potential credits  : " + money2(overview.pointsLiability), kInk, kInk, kInk, 1);
+    y += 12;
+    const std::string topLine = overview.topMember.empty()
+                                    ? "Top member         : (none yet)"
+                                    : "Top member         : " + overview.topMember + "  (" +
+                                          std::to_string(overview.topMemberLifetime) +
+                                          " lifetime points)";
+    cv.text(16, y, topLine, kInk, kInk, kInk, 1);
+    y += 18;
+
+    cv.text(16, y, "Members per rank", kSoft, kSoft, kSoft, 1);
+    y += 12;
+    const char *tiers[4] = {"Bronze", "Silver", "Gold", "Platinum"};
+    for (int i = 0; i < 4; ++i)
+    {
+        drawBarRow(cv, 16, y, tiers[i], static_cast<double>(overview.membersByTier[i]),
+                   static_cast<double>(maxTier), std::to_string(overview.membersByTier[i]), 140);
+        y += 12;
+    }
+
+    if (!writePng(path, cv))
+    {
+        errorOut = "cannot open the file for writing";
+        return false;
+    }
+    return true;
+}
+
+bool writeDashboardPng(const AnalyticsReport &report, const std::string &path,
+                       std::string &errorOut)
+{
+    errorOut.clear(); // success contract: empty unless this call failed
+    int maxStatus = 0, maxBucket = 0, maxBookings = 0, maxWait = 0;
+    for (const NamedCount &s : report.fleetByStatus)
+        maxStatus = std::max(maxStatus, s.count);
+    for (const NamedCount &b : report.priceBuckets)
+        maxBucket = std::max(maxBucket, b.count);
+    for (const NamedCount &b : report.bookingsPerCar)
+        maxBookings = std::max(maxBookings, b.count);
+    for (const NamedCount &w : report.waitlistPerCar)
+        maxWait = std::max(maxWait, w.count);
+
+    // content height grows with the per-car rows; every section
+    // renders at least one row (its empty-state line)
+    const int nStatus = static_cast<int>(report.fleetByStatus.size());
+    const int nBucket = static_cast<int>(report.priceBuckets.size());
+    const int nBook = std::max<std::size_t>(1, report.bookingsPerCar.size());
+    const int nWait = std::max<std::size_t>(1, report.waitlistPerCar.size());
+    const int nUp = std::max<std::size_t>(1, report.upcoming.size());
+    const int height = 160 + nStatus + nBucket + nBook + nWait + nUp;
+    Canvas cv(620, height);
+    cv.fill(kBg, kBg, kBg);
+
+    int y = 10;
+    cv.text(16, y, "FLEET ANALYTICS DASHBOARD", kInk, kInk, kInk, 2);
+    y += 26;
+    cv.fillRect(16, y, 588, 1, 200, 200, 200);
+    y += 8;
+
+    cv.text(16, y, "Fleet composition", kSoft, kSoft, kSoft, 1);
+    y += 12;
+    for (const NamedCount &s : report.fleetByStatus)
+    {
+        drawBarRow(cv, 16, y, s.label, static_cast<double>(s.count), static_cast<double>(maxStatus),
+                   std::to_string(s.count), 140);
+        y += 12;
+    }
+    y += 6;
+
+    cv.text(16, y, "Fleet by daily-rate bucket", kSoft, kSoft, kSoft, 1);
+    y += 12;
+    for (const NamedCount &b : report.priceBuckets)
+    {
+        drawBarRow(cv, 16, y, b.label, static_cast<double>(b.count), static_cast<double>(maxBucket),
+                   std::to_string(b.count), 140);
+        y += 12;
+    }
+    y += 6;
+
+    cv.text(16, y, "Active bookings per car", kSoft, kSoft, kSoft, 1);
+    y += 12;
+    if (report.bookingsPerCar.empty())
+    {
+        cv.text(16, y, "   (no live bookings)", kSoft, kSoft, kSoft, 1);
+        y += 12;
+    }
+    else
+    {
+        for (const NamedCount &b : report.bookingsPerCar)
+        {
+            drawBarRow(cv, 16, y, b.label, static_cast<double>(b.count),
+                       static_cast<double>(maxBookings), std::to_string(b.count), 140);
+            y += 12;
+        }
+    }
+    y += 6;
+
+    cv.text(16, y, "Waitlist depth per car", kSoft, kSoft, kSoft, 1);
+    y += 12;
+    if (report.waitlistPerCar.empty())
+    {
+        cv.text(16, y, "   (nobody is waiting)", kSoft, kSoft, kSoft, 1);
+        y += 12;
+    }
+    else
+    {
+        for (const NamedCount &w : report.waitlistPerCar)
+        {
+            drawBarRow(cv, 16, y, w.label, static_cast<double>(w.count),
+                       static_cast<double>(maxWait), std::to_string(w.count), 140);
+            y += 12;
+        }
+    }
+    y += 6;
+
+    cv.text(16, y, "Upcoming pickups", kSoft, kSoft, kSoft, 1);
+    y += 12;
+    if (report.upcoming.empty())
+    {
+        cv.text(16, y, "   (nothing scheduled)", kSoft, kSoft, kSoft, 1);
+        y += 12;
+    }
+    else
+    {
+        for (const UpcomingPickup &p : report.upcoming)
+        {
+            std::string when = "in " + std::to_string(p.daysAway) + " days";
+            if (p.daysAway == 0)
+                when = "today";
+            else if (p.daysAway == 1)
+                when = "tomorrow";
+            cv.text(16, y, "  " + p.carName + " -> " + p.startDate + "  (" + when + ")", kInk, kInk,
+                    kInk, 1);
+            y += 12;
+        }
+    }
+    y += 6;
+
+    cv.text(16, y,
+            "Chase-up: " + std::to_string(report.overdueReturns) + " overdue | " +
+                std::to_string(report.totalWaitlisted) + " waiting fleet-wide | " +
+                std::to_string(report.totalActiveBookings) + " active bookings",
+            kInk, kInk, kInk, 1);
 
     if (!writePng(path, cv))
     {

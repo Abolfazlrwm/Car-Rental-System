@@ -24,6 +24,8 @@
 #include <string>
 #include <vector>
 
+#include "Analytics.h"     // AnalyticsReport, NamedCount, UpcomingPickup
+#include "Loyalty.h"       // LoyaltyOverview
 #include "MonthlyReport.h" // CarRevenue, MonthlyReport
 
 namespace png
@@ -72,6 +74,21 @@ bool writePng(const std::string &path, const Canvas &canvas);
 bool writeMonthlyReportPng(const MonthlyReport &report, int year,
                            int month, const std::string &path,
                            std::string &errorOut);
+
+/// Render the loyalty program snapshot as `path` (totals, top
+/// member and members per rank as bars). An empty program still
+/// produces a valid image. False with the reason in `errorOut`.
+///                                             (v3.8.0)
+bool writeLoyaltyOverviewPng(const LoyaltyOverview &overview,
+                             const std::string &path,
+                             std::string &errorOut);
+
+/// Render the fleet analytics dashboard as `path` — the same
+/// AnalyticsReport slices the console screen shows (composition,
+/// price buckets, bookings per car, waitlist depth, upcoming
+/// pickups, chase-ups).                    (v3.8.0)
+bool writeDashboardPng(const AnalyticsReport &report,
+                       const std::string &path, std::string &errorOut);
 
 } // namespace png
 

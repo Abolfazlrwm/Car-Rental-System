@@ -3741,7 +3741,9 @@ static void testI18n()
                           " 14. Save data to disk\n 15. Save & logout\n"
                           " 16. Exit program\n"
                           " 17. Monthly report (revenue & bookings)\n"
-                          " 18. Save monthly report as PNG\n"),
+                          " 18. Save monthly report as PNG\n"
+                          " 19. Save loyalty overview as PNG\n"
+                          " 20. Save analytics dashboard as PNG\n"),
                  "  1. Add car\n  2. View fleet (insertion order)\n"
                  "  3. View fleet (sorted by name - AVL index)\n"
                  "  4. Search fleet by keyword\n  5. Fleet statistics\n"
@@ -3753,7 +3755,9 @@ static void testI18n()
                  " 14. Save data to disk\n 15. Save & logout\n"
                  " 16. Exit program\n"
                  " 17. Monthly report (revenue & bookings)\n"
-                 " 18. Save monthly report as PNG\n") != 0);
+                 " 18. Save monthly report as PNG\n"
+                 " 19. Save loyalty overview as PNG\n"
+                 " 20. Save analytics dashboard as PNG\n") != 0);
 
     // Persistence round-trip through ./data/lang.txt.
     std::filesystem::create_directories("data");
@@ -3858,6 +3862,60 @@ static void testPng()
     CHECK(!png::writeMonthlyReportPng(r, 2026, 13, "reports/bad.png", err));
     std::filesystem::remove(p1);
     std::filesystem::remove(p1 + ".2");
+
+    // (v3.8.0) Loyalty snapshot raster: synthetic data, deterministic
+    // bytes, and the empty program still renders a valid image.
+    LoyaltyOverview o;
+    o.membersByTier[0] = 3;
+    o.membersByTier[1] = 1;
+    o.membersByTier[2] = 1;
+    o.totalMembers = 5;
+    o.outstandingPoints = 260;
+    o.pointsLiability = 26.0;
+    o.topMember = "parisa";
+    o.topMemberLifetime = 310;
+    const std::string loy = "reports/loyalty_unit.png";
+    CHECK(png::writeLoyaltyOverviewPng(o, loy, err));
+    CHECK(err.empty());
+    CHECK(png::writeLoyaltyOverviewPng(o, loy + ".2", err));
+    {
+        std::ifstream a(loy, std::ios::binary), b(loy + ".2", std::ios::binary);
+        std::string sa((std::istreambuf_iterator<char>(a)), std::istreambuf_iterator<char>());
+        std::string sb((std::istreambuf_iterator<char>(b)), std::istreambuf_iterator<char>());
+        CHECK(sa == sb && sa.size() > 1000 && sa[0] == '\x89' && sa[1] == 'P');
+    }
+    LoyaltyOverview emptyLoyalty;
+    CHECK(png::writeLoyaltyOverviewPng(emptyLoyalty, loy + ".3", err));
+    std::filesystem::remove(loy);
+    std::filesystem::remove(loy + ".2");
+    std::filesystem::remove(loy + ".3");
+
+    // (v3.8.0) Dashboard raster over a live seeded fleet with one
+    // booking: slices reflect the reservation, bytes deterministic.
+    RentalManager dm;
+    dm.seedDemoData();
+    CHECK(dm.login("ali", "customer123"));
+    const int todaySerial = Date::todaySerial();
+    CHECK(dm.makeReservation("Peugeot 206", todaySerial + 1, todaySerial + 3, err));
+    dm.logout();
+    const AnalyticsReport dash = buildAnalytics(dm, todaySerial);
+    CHECK(dash.totalActiveBookings == 1);
+    CHECK(dash.bookingsPerCar.size() == 1);
+    const std::string dpath = "reports/dashboard_unit.png";
+    CHECK(png::writeDashboardPng(dash, dpath, err));
+    CHECK(err.empty());
+    CHECK(png::writeDashboardPng(dash, dpath + ".2", err));
+    {
+        std::ifstream a(dpath, std::ios::binary), b(dpath + ".2", std::ios::binary);
+        std::string sa((std::istreambuf_iterator<char>(a)), std::istreambuf_iterator<char>());
+        std::string sb((std::istreambuf_iterator<char>(b)), std::istreambuf_iterator<char>());
+        CHECK(sa == sb && sa.size() > 1000 && sa[0] == '\x89' && sa[1] == 'P');
+    }
+    AnalyticsReport emptyDash; // all-zero report still renders
+    CHECK(png::writeDashboardPng(emptyDash, dpath + ".3", err));
+    std::filesystem::remove(dpath);
+    std::filesystem::remove(dpath + ".2");
+    std::filesystem::remove(dpath + ".3");
 }
 
 /* ============================================================
