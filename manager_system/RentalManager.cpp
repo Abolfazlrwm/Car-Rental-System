@@ -1,4 +1,5 @@
 #include "RentalManager.h"
+#include "I18n.h"
 
 #include "Date.h"
 
@@ -1320,8 +1321,8 @@ bool RentalManager::exportMonthlyReport(int year, int month, const std::string &
 void RentalManager::printIncomeReport() const
 {
     double totalIncome = 0.0, totalCosts = 0.0;
-    std::cout << "\n  ----------------- INCOME REPORT -----------------\n";
-    std::cout << "  " << std::left << std::setw(16) << "CAR" << std::right << std::setw(12)
+    std::cout << L("\n  ----------------- INCOME REPORT -----------------\n");
+    std::cout << "  " << std::left << std::setw(16) << L("CAR") << std::right << std::setw(12)
               << "INCOME" << std::setw(14) << "MAINTENANCE" << std::setw(12) << "NET"
               << "\n";
     std::cout << "  " << std::string(54, '-') << "\n";
@@ -1338,12 +1339,12 @@ void RentalManager::printIncomeReport() const
         });
 
     std::cout << "  " << std::string(54, '-') << "\n";
-    std::cout << "  " << std::left << std::setw(28) << "  Gross income" << std::right << std::fixed
-              << std::setprecision(2) << totalIncome << "\n";
-    std::cout << "  " << std::left << std::setw(28) << "  Maintenance costs" << std::right
+    std::cout << "  " << std::left << std::setw(28) << L("  Gross income") << std::right
+              << std::fixed << std::setprecision(2) << totalIncome << "\n";
+    std::cout << "  " << std::left << std::setw(28) << L("  Maintenance costs") << std::right
               << std::fixed << std::setprecision(2) << totalCosts << "\n";
-    std::cout << "  " << std::left << std::setw(28) << "  NET revenue" << std::right << std::fixed
-              << std::setprecision(2) << (totalIncome - totalCosts) << "\n";
+    std::cout << "  " << std::left << std::setw(28) << L("  NET revenue") << std::right
+              << std::fixed << std::setprecision(2) << (totalIncome - totalCosts) << "\n";
 }
 
 /* ============================================================

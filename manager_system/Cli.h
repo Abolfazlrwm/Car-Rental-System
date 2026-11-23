@@ -8,7 +8,7 @@
  *  touching data/.
  *
  *  Conventions:
- *    - long forms : --help  --version  --no-color
+ *    - long forms : --help  --version  --no-color  --lang fa|en
  *    - short forms: -h      -v
  *    - NO_COLOR   : honored as an environment variable by main()
  *                   (the https://no-color.org convention — present
@@ -18,6 +18,9 @@
  *    - precedence : --version beats --help when both are given
  *    - --demo     : (v3.4.0) plays the narrated guided walkthrough of
  *                   one full shift on a fresh in-memory fleet
+ *    - --lang     : (v3.6.0) UI language for the interactive layer,
+ *                   "fa" or "en", either "--lang fa" or "--lang=fa";
+ *                   the value is validated (and persisted) by main()
  *    - unknown    : error carries the offending argument; the
  *                   caller prints a hint and exits 1
  * ============================================================
@@ -35,6 +38,7 @@ struct Options
     bool showVersion = false; /// -v / --version: print version, exit 0
     bool noColor = false;     /// --no-color: plain output for pipes, logs, CI
     bool demo = false;        /// --demo (v3.4.0): narrated guided walkthrough
+    std::string lang;         /// --lang (v3.6.0): "fa" | "en"; empty = auto
     std::string error;        /// non-empty -> usage error, names the argument
 };
 
@@ -52,6 +56,18 @@ inline Options parse(int argc, char *argv[])
             opts.noColor = true;
         else if (arg == "--demo")
             opts.demo = true;
+        else if (arg == "--lang" || arg.rfind("--lang=", 0) == 0)
+        {
+            if (arg.size() > 7) // --lang=fa form
+                opts.lang = arg.substr(7);
+            else if (i + 1 < argc)
+                opts.lang = argv[++i];
+            else
+            {
+                opts.error = "--lang needs a value (fa|en)";
+                return opts;
+            }
+        }
         else
         {
             opts.error = "unknown option '" + arg + "'";

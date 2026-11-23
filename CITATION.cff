@@ -14,8 +14,8 @@ authors:
   - given-names: Abolfazl
     alias: Abolfazlrwm
     website: https://github.com/Abolfazlrwm
-version: 3.5.0
-date-released: "2026-11-22"
+version: 3.6.0
+date-released: "2026-11-23"
 license: MIT
 repository-code: "https://github.com/Abolfazlrwm/Car-Rental-System"
 url: "https://abolfazlrwm.github.io/Car-Rental-System/"

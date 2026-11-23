@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(CarRentalSystem
-        VERSION 3.5.0
+        VERSION 3.6.0
         DESCRIPTION "Car Rental Management System — modern C++17 with hand-built data structures"
         LANGUAGES CXX)
 
@@ -10,7 +10,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Warnings: keep the codebase honest.
 if(MSVC)
-    add_compile_options(/W4)
+    add_compile_options(/W4 /utf-8)  # Persian UI literals are UTF-8
 else()
     add_compile_options(-Wall -Wextra)
 endif()
@@ -23,6 +23,7 @@ add_executable(car_rental
     manager_system/Car.cpp
     manager_system/Reservation.cpp
     manager_system/Date.cpp
+    manager_system/I18n.cpp
     manager_system/RentalManager.cpp
     manager_system/JsonExport.cpp
     manager_system/Analytics.cpp
@@ -41,6 +42,7 @@ add_executable(unit_tests
     manager_system/Car.cpp
     manager_system/Reservation.cpp
     manager_system/Date.cpp
+    manager_system/I18n.cpp
     manager_system/RentalManager.cpp
     manager_system/JsonExport.cpp
     manager_system/Analytics.cpp

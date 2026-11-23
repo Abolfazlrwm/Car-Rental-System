@@ -4,6 +4,41 @@ All notable changes to the Car Rental System are documented in this file.
 The detailed v1.0 → v2.0 story lives in
 [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md).
 
+## [3.6.0] — 2026-11-23
+
+### Added
+
+- **Persian interface (`--lang fa`)** — the whole interactive layer
+  (menus, prompts, tables, reports) speaks Persian through a new
+  `manager_system/I18n` string table (~260 English-keyed entries) with
+  a graceful English fallback for every string the suite pins. The
+  choice persists in `data/lang.txt`; `--lang en` switches back. The
+  default stays English and `--help` / `--version` / the guided demo
+  always speak English, so the CI contract greps stay byte-stable.
+- **Docker + GitHub Packages** — a two-stage Dockerfile ships the app
+  as `ghcr.io/abolfazlrwm/car-rental-system` (multi-arch amd64 + arm64,
+  `latest` + per-release tags), published by a new `docker.yml`
+  workflow with a version smoke test:
+  `docker run -it ghcr.io/abolfazlrwm/car-rental-system`.
+- **24 new suite checks** — `--lang` parsing (both flag forms + usage
+  error) and the I18n table (fallback, translation, unknown languages,
+  persistence round-trip) are pinned; the suite grows 5,476 to
+  **5,500 checks**, still 0 failures.
+
+### Changed
+
+- README: Persian UI + Docker sections; suite badge 5,500 checks; the
+  repo description and topics follow the same story.
+- Windows console builds set the UTF-8 output code page and MSVC
+  compiles with `/utf-8`, so Persian screens print correctly there.
+
+### Notes
+
+- Domain strings the core returns (booking conflicts, waitlist
+  failures, discount notes) stay English by design: the unit tests
+  pin their exact bytes; the interaction layer around them is fully
+  translated.
+
 ## [3.5.0] — 2026-11-22
 
 ### Added

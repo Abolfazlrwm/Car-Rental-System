@@ -48,6 +48,7 @@
 #include "../manager_system/Car.h"
 #include "../manager_system/Cli.h"
 #include "../manager_system/Date.h"
+#include "../manager_system/I18n.h"
 #include "../manager_system/JsonExport.h"
 #include "../manager_system/Loyalty.h"
 #include "../manager_system/Permissions.h"
@@ -3632,6 +3633,77 @@ static void testCli()
         char *argv[] = {(char *)"car_rental", (char *)"readme.md"};
         CHECK(cli::parse(2, argv).error.find("readme.md") != std::string::npos);
     }
+    // --lang (v3.6.0): value as the next argument or joined by '='.
+    {
+        char *argv[] = {(char *)"car_rental", (char *)"--lang", (char *)"fa"};
+        const cli::Options o = cli::parse(3, argv);
+        CHECK(o.lang == "fa");
+        CHECK(o.error.empty());
+    }
+    {
+        char *argv[] = {(char *)"car_rental", (char *)"--lang=fa"};
+        CHECK(cli::parse(2, argv).lang == "fa");
+    }
+    {
+        char *argv[] = {(char *)"car_rental", (char *)"--lang", (char *)"en", (char *)"--demo"};
+        const cli::Options o = cli::parse(4, argv);
+        CHECK(o.lang == "en" && o.demo);
+        CHECK(o.error.empty());
+    }
+    // --lang without a value is a usage error naming the flag.
+    {
+        char *argv[] = {(char *)"car_rental", (char *)"--lang"};
+        const cli::Options o = cli::parse(2, argv);
+        CHECK(o.error.find("--lang") != std::string::npos);
+    }
+}
+
+/* ============================================================
+ *  I18n (v3.6.0): the two-language string table
+ * ============================================================ */
+static void testI18n()
+{
+    // English is the default: keys come back verbatim, unknown keys
+    // degrade to themselves — the exact bytes the CI contract greps.
+    i18n::setLang(i18n::Lang::En);
+    CHECK(i18n::lang() == i18n::Lang::En);
+    CHECK(strcmp(i18n::langCode(), "en") == 0);
+    CHECK(strcmp(i18n::tr("  Logged out.\n"), "  Logged out.\n") == 0);
+    CHECK(strcmp(i18n::tr("no such key"), "no such key") == 0);
+
+    // Persian mode: known keys translate, unknown keys fall back.
+    CHECK(i18n::setLangByName("FA"));
+    CHECK(i18n::lang() == i18n::Lang::Fa);
+    CHECK(strcmp(i18n::langCode(), "fa") == 0);
+    CHECK(strcmp(i18n::tr("  Logged out.\n"), "  Logged out.\n") != 0);
+    CHECK(strcmp(i18n::tr("no such key"), "no such key") == 0);
+    CHECK(strcmp(i18n::tr("Customer"), "\u0645\u0634\u062a\u0631\u06cc") == 0);
+    CHECK(strcmp(i18n::tr("Gold"), "\u0637\u0644\u0627\u06cc\u06cc") == 0);
+    CHECK(strcmp(i18n::tr("\n  Rank: "), "\n  \u0631\u062a\u0628\u0647: ") == 0);
+
+    // Unknown language names are rejected; the current one survives.
+    CHECK(!i18n::setLangByName("de"));
+    CHECK(i18n::lang() == i18n::Lang::Fa);
+
+    // Persistence round-trip through ./data/lang.txt.
+    std::filesystem::create_directories("data");
+    {
+        std::ofstream out("data/lang.txt");
+        out << "fa\n";
+    }
+    i18n::setLang(i18n::Lang::En);
+    i18n::loadPersisted();
+    CHECK(i18n::lang() == i18n::Lang::Fa);
+    i18n::setLang(i18n::Lang::En);
+    CHECK(i18n::persist());
+    {
+        std::ifstream in("data/lang.txt");
+        std::string value;
+        CHECK(static_cast<bool>(in >> value) && value == "en");
+    }
+    i18n::loadPersisted();
+    CHECK(i18n::lang() == i18n::Lang::En);
+    std::filesystem::remove("data/lang.txt");
 }
 
 int main()
@@ -3686,6 +3758,7 @@ int main()
     runSuite("Monthly report: builder maths", testMonthlyReportBuilder);
     runSuite("RentalManager: monthly report flow", testRentalManagerMonthly);
     runSuite("Cli: argument parsing", testCli);
+    runSuite("I18n: string table & language", testI18n);
 
     std::cout << "\n" << g_checks << " checks, " << g_failures << " failure(s)\n";
     if (g_failures == 0)

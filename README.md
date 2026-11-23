@@ -321,6 +321,22 @@ ctest --test-dir build --output-on-failure
 g++ -std=c++17 -O2 mainApp.cpp manager_system/*.cpp -o car_rental && ./car_rental
 ```
 
+### Option 4 — Docker (nothing to install but Docker itself)
+
+```bash
+docker run -it ghcr.io/abolfazlrwm/car-rental-system
+```
+
+Keep your fleet between runs by mounting a volume for `data/`:
+
+```bash
+docker run -it -v "$PWD/data:/workspace/data" ghcr.io/abolfazlrwm/car-rental-system
+```
+
+Images are multi-arch (`amd64` + `arm64`), tagged `latest` and per
+release, and pushed to GHCR by CI on every push and tag
+([`.github/workflows/docker.yml`](.github/workflows/docker.yml)).
+
 On first start the app seeds the demo fleet and accounts; all state is
 saved to `data/` on exit and reloaded on the next run.
 
@@ -328,6 +344,17 @@ Non-interactive queries never touch `data/`: `./car_rental --version`
 prints the version banner and `--help` lists the flags. Plain output
 is available everywhere — `--no-color` for pipes, logs and CI, or a
 `NO_COLOR` environment variable ([no-color.org](https://no-color.org)).
+
+**Persian UI (v3.6.0):** `./car_rental --lang fa` switches the whole
+interactive layer — menus, prompts, tables, reports — to Persian; the
+choice is saved to `data/lang.txt` and reused on the next run
+(`--lang en` switches back). The default stays English, and
+`--help` / `--version` / the guided demo always speak English so the
+CI contract greps stay byte-stable. Use a bidi-capable terminal
+(Windows Terminal, GNOME/KDE terminals, iTerm2, Termux) for correct
+RTL rendering. By design the domain strings returned by the core
+(booking-conflict errors, discount notes, the audit table) stay
+English — the unit suite pins their exact bytes.
 
 **Guided demo:** `./car_rental --demo` plays one narrated, self-running
 shift — book → change a booking → deliver → late return with penalty →
@@ -444,7 +471,7 @@ The suite needs no external framework and runs in milliseconds:
   [ ok ] Monthly report: builder maths
   [ ok ] RentalManager: monthly report flow
 
-5476 checks, 0 failure(s)
+5500 checks, 0 failure(s)
 ALL TESTS PASSED
 ```
 

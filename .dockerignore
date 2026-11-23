@@ -1,0 +1,13 @@
+# The image only needs the sources the compiler touches.
+.git
+.github
+build*/
+data/
+reports/
+docs/
+docs-site/
+assets/
+tests/
+scripts/
+*.md
+!README.md
