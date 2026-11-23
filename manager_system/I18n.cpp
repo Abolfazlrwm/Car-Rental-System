@@ -63,9 +63,9 @@ const Pair kTable[] = {
     {"\n  You are not waiting for any car.\n", "\n  در صف انتظار خودرویی نیستید.\n"},
     {"\n  YOUR WAITLIST\n", "\n  صف انتظار من\n"},
     {"  wish #", "  درخواست #"},
-    {"  We auto-book you the moment a wished range frees up.\n",
-     "  به‌محض آزادشدن بازهٔ موردنظر، خودکار برایتان رزرو "
-     "می‌کنیم.\n"},
+    {"  We auto-book you the moment a wished range frees up.\n", "  به‌محض آزادشدن بازهٔ موردنظر، "
+                                                                 "خودکار برایتان رزرو "
+                                                                 "می‌کنیم.\n"},
     {"\n--- Customer Registration ---\n", "\n--- ثبت‌نام مشتری ---\n"},
     {"  Username: ", "  نام کاربری: "},
     {"  Password (min 4 chars): ", "  رمز عبور (حداقل 4 نویسه): "},
@@ -104,13 +104,15 @@ const Pair kTable[] = {
     {"\n  Earning rate      : x", "  نرخ کسب امتیاز    : x"},
     {" - 1 point per 10.00 spent, credited on return\n  Redemption        : 10 points = 1.00 off "
      "your bill (min 50, steps of 10)\n",
-     "- به‌ازای هر 10.00 هزینه، 1 امتیاز؛ در زمان بازگشت اعمال می‌شود\n  بازخرید            : "
+     "- به‌ازای هر 10.00 هزینه، 1 امتیاز؛ در زمان بازگشت اعمال می‌شود\n  بازخرید            "
+     ": "
      "10 امتیاز = 1.00 تخفیف قبض (حداقل 50، گام‌های 10)\n"},
     {"  1. View fleet\n  2. Search car by name\n  3. My reservations\n  4. Make a reservation\n  "
      "5. Find cars free for a date range\n  6. Join a waitlist\n  7. My waitlist (leave)\n  8. "
      "Renew a rental\n  9. Pay my bill\n 10. My loyalty card\n 11. Redeem points on my bill\n 12. "
      "Logout\n 13. Change a booking (move dates)\n",
-     "  1. مشاهدهٔ ناوگان\n  2. جست‌وجوی خودرو با نام\n  3. رزروهای من\n  4. ثبت رزرو\n  5. "
+     "  1. مشاهدهٔ ناوگان\n  2. جست‌وجوی خودرو با نام\n  3. رزروهای من\n  4. ثبت رزرو\n  "
+     "5. "
      "خودروهای آزاد در یک بازه\n  6. عضویت در صف انتظار\n  7. صف انتظار من (خروج)\n  8. تمدید "
      "اجاره\n  9. پرداخت قبض\n 10. کارت وفاداری\n 11. بازخرید امتیاز از قبض\n 12. خروج از حساب\n "
      "13. تغییر یک رزرو (جابه‌جایی تاریخ)\n"},
@@ -129,7 +131,8 @@ const Pair kTable[] = {
     {"  Reservation failed: ", "  خطای رزرو: "},
     {"  Tip: join the waitlist (option 6) and we book you\n       automatically when the range "
      "frees up.\n",
-     "  راهنما: به صف انتظار بپیوندید (گزینهٔ 6) تا به‌محض آزادشدن\n       بازه، خودکار رزرو "
+     "  راهنما: به صف انتظار بپیوندید (گزینهٔ 6) تا به‌محض آزادشدن\n       بازه، خودکار "
+     "رزرو "
      "شوید.\n"},
     {"  Choice must be between 0 and 3.\n", "  انتخاب باید بین 0 و 3 باشد.\n"},
     {"  Book it how many times (2-8): ", "  چند بار رزرو شود (2-8): "},
@@ -147,7 +150,8 @@ const Pair kTable[] = {
      " (جریمهٔ دیرکرد هرگز تخفیف نمی‌گیرد).\n"},
     {"  The whole series is cancelled at once from\n       My reservations (option 3) — just give "
      "its #id.\n",
-     "  کل سری یک‌جا از رزروهای من (گزینهٔ 3) لغو می‌شود —\n       فقط شناسهٔ # آن را "
+     "  کل سری یک‌جا از رزروهای من (گزینهٔ 3) لغو می‌شود —\n       فقط شناسهٔ # آن "
+     "را "
      "بدهید.\n"},
     {"  Series booking failed: ", "  خطای رزرو سری: "},
     {"  Desired start (YYYY-MM-DD): ", "  شروع موردنظر (YYYY-MM-DD): "},
@@ -167,7 +171,8 @@ const Pair kTable[] = {
     {"  |  bill due: ", "  |  بدهی قبض: "},
     {"  Your bill is clear - points are redeemed against a bill,\n       so come back after your "
      "next rental.\n",
-     "  قبض شما تسویه است — امتیاز فقط به قبض تعلق می‌گیرد؛\n       بعد از اجارهٔ بعدی "
+     "  قبض شما تسویه است — امتیاز فقط به قبض تعلق می‌گیرد؛\n       بعد از اجارهٔ "
+     "بعدی "
      "برگردید.\n"},
     {"  Points to redeem (min 50, steps of 10): ",
      "  امتیاز برای بازخرید (حداقل 50، گام‌های 10): "},
@@ -190,14 +195,16 @@ const Pair kTable[] = {
     {"  New date for the next pickup (YYYY-MM-DD): ", "  تاریخ جدید دریافت بعدی (YYYY-MM-DD): "},
     {"  Series #", "  سری #"},
     {" upcoming booking(s) moved - reminders follow the new dates.\n",
-     " رزرو پیش‌رو جابه‌جا شد — یادآورها از تاریخ جدید پیروی "
+     " رزرو پیش‌رو جابه‌جا شد — یادآورها از تاریخ جدید "
+     "پیروی "
      "می‌کنند.\n"},
     {"  Choose 1 (single booking) or 2 (series).\n", "  1 (تک رزرو) یا 2 (سری) را انتخاب کنید.\n"},
     {"\n===== STAFF MENU | ", "\n===== منوی کارمند | "},
     {"  1. View fleet\n  2. Search car by name\n  3. Deliver car to customer\n  4. Process car "
      "return (with penalty)\n  5. Send car to maintenance\n  6. Finish maintenance\n  7. Show "
      "maintenance history\n  8. Serve waitlist now\n  9. Logout\n",
-     "  1. مشاهدهٔ ناوگان\n  2. جست‌وجوی خودرو با نام\n  3. تحویل خودرو به مشتری\n  4. ثبت بازگشت "
+     "  1. مشاهدهٔ ناوگان\n  2. جست‌وجوی خودرو با نام\n  3. تحویل خودرو به مشتری\n  4. ثبت "
+     "بازگشت "
      "خودرو (با جریمه)\n  5. ارسال به تعمیرات\n  6. پایان تعمیرات\n  7. نمایش سابقهٔ تعمیرات\n  8. "
      "سرویس صف انتظار\n  9. خروج از حساب\n"},
     {"  Car handed over. Drive safe!\n", "  خودرو تحویل شد. رانندگی ایمن!\n"},
@@ -287,10 +294,13 @@ const Pair kTable[] = {
      "staff account\n 14. Save data to disk\n 15. Save & logout\n 16. Exit program\n 17. Monthly "
      "report (revenue & bookings)\n",
      "  1. افزودن خودرو\n  2. مشاهدهٔ ناوگان (ترتیب افزودن)\n  3. مشاهدهٔ ناوگان (مرتب بر اساس نام - "
-     "شاخص AVL)\n  4. جست‌وجوی ناوگان با کلیدواژه\n  5. آمار ناوگان\n  6. داشبورد تحلیلی "
-     "ناوگان\n  7. لاگ حسابرسی (چه‌کسی چه‌کاری)\n  8. نمای برنامهٔ وفاداری\n  9. گزارش درآمد\n "
+     "شاخص AVL)\n  4. جست‌وجوی ناوگان با کلیدواژه\n  5. آمار ناوگان\n  6. داشبورد "
+     "تحلیلی "
+     "ناوگان\n  7. لاگ حسابرسی (چه‌کسی چه‌کاری)\n  8. نمای برنامهٔ وفاداری\n  9. گزارش "
+     "درآمد\n "
      "10. خروجی CSV و JSON\n 11. مسدودکردن کاربر\n 12. رفع مسدودی کاربر\n 13. ساخت حساب کارمند\n "
-     "14. ذخیرهٔ داده‌ها روی دیسک\n 15. ذخیره و خروج از حساب\n 16. خروج از برنامه\n 17. گزارش "
+     "14. ذخیرهٔ داده‌ها روی دیسک\n 15. ذخیره و خروج از حساب\n 16. خروج از برنامه\n 17. "
+     "گزارش "
      "ماهانه (درآمد و رزروها)\n"},
     {"  Brand: ", "  برند: "},
     {"  Price per day: ", "  قیمت روزانه: "},
