@@ -25,6 +25,7 @@ add_executable(car_rental
     manager_system/Date.cpp
     manager_system/I18n.cpp
     manager_system/Png.cpp
+    manager_system/Pdf.cpp
     manager_system/RestServer.cpp
     manager_system/RentalManager.cpp
     manager_system/JsonExport.cpp
@@ -51,6 +52,7 @@ add_executable(unit_tests
     manager_system/Date.cpp
     manager_system/I18n.cpp
     manager_system/Png.cpp
+    manager_system/Pdf.cpp
     manager_system/RestServer.cpp
     manager_system/RentalManager.cpp
     manager_system/JsonExport.cpp
