@@ -3938,8 +3938,13 @@ static void testPdf()
     CHECK(!pdf::writeAllReportsPdf(m, 2026, 13, o, dash, pdfPath + ".bad", err));
     CHECK(err == "invalid year/month");
 
-    std::ifstream f(pdfPath, std::ios::binary);
-    std::string bytes((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    // (Windows-safe) close each reader before the removes below: MSVC
+    // refuses to unlink an open file and std::filesystem::remove throws.
+    std::string bytes;
+    {
+        std::ifstream f(pdfPath, std::ios::binary);
+        bytes.assign((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    }
     CHECK(bytes.size() > 800000); // three uncompressed full-page rasters
     CHECK(bytes.compare(0, 8, "%PDF-1.4") == 0);
     CHECK(bytes.substr(bytes.size() - 6) == "%%EOF\n");
@@ -3952,8 +3957,11 @@ static void testPdf()
     CHECK(bytes.find("/ColorSpace /DeviceRGB /BitsPerComponent 8") != std::string::npos);
 
     CHECK(pdf::writeAllReportsPdf(m, 2026, 11, o, dash, pdfPath + ".2", err));
-    std::ifstream f2(pdfPath + ".2", std::ios::binary);
-    std::string bytes2((std::istreambuf_iterator<char>(f2)), std::istreambuf_iterator<char>());
+    std::string bytes2;
+    {
+        std::ifstream f2(pdfPath + ".2", std::ios::binary);
+        bytes2.assign((std::istreambuf_iterator<char>(f2)), std::istreambuf_iterator<char>());
+    }
     CHECK(bytes == bytes2); // deterministic bytes: no timestamps anywhere
     std::filesystem::remove(pdfPath);
     std::filesystem::remove(pdfPath + ".2");
