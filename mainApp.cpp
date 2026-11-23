@@ -26,6 +26,7 @@
 
 #ifdef _WIN32
 #include <io.h>
+#define NOMINMAX // windows.h min/max macros break std::max/std::min below
 #include <windows.h>
 #define IS_TTY _isatty(_fileno(stdout))
 #else
