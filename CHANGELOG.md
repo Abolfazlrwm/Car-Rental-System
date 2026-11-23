@@ -4,6 +4,24 @@ All notable changes to the Car Rental System are documented in this file.
 The detailed v1.0 → v2.0 story lives in
 [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md).
 
+## [3.10.0] — 2026-11-23
+
+### Added
+
+- **Report downloads in the live WebAssembly demo** — the browser
+  build now hands every report the program saves (manager options
+  18-21) to the demo page: the file appears under the terminal as a
+  one-click download chip (name + size) with a toast, and downloads
+  as a real `image/png` / `application/pdf` Blob. The hand-off is a
+  tiny `EM_JS` bridge that copies the bytes out of the WASM heap —
+  the C++ paths (renderers, writers, the consolidated PDF) are the
+  exact ones the desktop binary uses, so nothing is re-implemented
+  in JavaScript.
+- **WASM smoke test extended** — the Node session now logs in as the
+  manager, saves the consolidated PDF (option 21) and asserts the
+  hand-off: exactly one offer, the right file name, `%`-1.4 header
+  byte, size > 800 KB.
+
 ## [3.9.0] — 2026-11-23
 
 ### Added

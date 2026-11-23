@@ -48,7 +48,9 @@ against an in-memory fleet that seeds itself on load. Log in as
 backend of `readLine`; everything else is the exact same code. New in
 v3.4.0 — the **▶ Auto-play demo** button plays a narrated full shift by
 itself, no typing: it starts the program with the same `--demo` flag
-the desktop binary takes.
+the desktop binary takes. And new in v3.10.0 — manager options 18-21
+save PNG/PDF reports straight out of the demo: the saved file appears
+under the terminal as a one-click download chip.
 
 <p align="center"><img src="assets/demo.gif" alt="A live recorded session of the WebAssembly demo: the customer checks pickup reminders, books a Benz C200, moves the booking to new dates with a re-quoted price, the staff hands the car over and processes a late return with penalty, and the manager reads the income and monthly reports" width="100%"></p>
 <p align="center"><sub>▲ One full shift, recorded live in the browser demo — book → change → deliver → late return → manager reports</sub></p>

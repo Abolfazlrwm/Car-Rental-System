@@ -77,6 +77,30 @@
     padding: 1px 7px; border-radius: 6px; color: var(--text);
     font-family: ui-monospace, Consolas, monospace; font-size: .85rem;
   }
+  .dl-bar { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+  .dl-chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--panel2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 7px 12px; font-size: .9rem;
+  }
+  .dl-chip b { color: var(--accent); font-family: ui-monospace, Consolas, monospace; font-size: .86rem; }
+  .dl-chip span { color: var(--muted); font-size: .82rem; }
+  .dl-chip button {
+    background: var(--accent); border: 0; border-radius: 8px;
+    color: #08101d; font-weight: 700; padding: 4px 12px; cursor: pointer;
+    font-size: .86rem;
+  }
+  .dl-chip button:hover { filter: brightness(1.08); }
+  #toast {
+    position: fixed; right: 16px; bottom: 16px; z-index: 50;
+    background: var(--panel); border: 1px solid var(--accent);
+    border-radius: 12px; padding: 12px 16px; max-width: min(420px, calc(100vw - 32px));
+    box-shadow: 0 14px 40px rgba(0,0,0,.45); font-size: .92rem;
+    opacity: 0; transform: translateY(8px); transition: opacity .25s, transform .25s;
+    pointer-events: none;
+  }
+  #toast.show { opacity: 1; transform: none; pointer-events: auto; }
+  #toast button { margin-left: 10px; }
   .cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); margin-top: 26px; }
   .card {
     background: var(--panel); border: 1px solid var(--line);
@@ -121,12 +145,17 @@
     <div id="terminal"></div>
   </div>
 
+  <div class="dl-bar" id="dlBar" hidden></div>
+  <div id="toast" role="status"></div>
+
   <p class="hint">
     Demo accounts, seeded on load: manager <span class="kbd">admin / manager123</span> ·
     staff <span class="kbd">sara / staff123</span> ·
     customer <span class="kbd">ali / customer123</span> — type the number at
     <code>Choice:</code> and press Enter — or press <b>▶ Auto-play demo</b>
     and watch a narrated full shift run by itself. On a phone, wide tables scroll sideways.
+  Manager options 18-21 save PNG/PDF reports — in this demo the saved file
+  appears under the terminal as a one-click download chip.
   </p>
 
   <div class="cards">
@@ -174,7 +203,69 @@
   var autoplayRequested = sessionStorage.getItem('crsAutoPlay') === '1';
   if (autoplayRequested) sessionStorage.removeItem('crsAutoPlay');
 
+  /* Report downloads (v3.10.0): the browser build hands every report
+   * the program saves (options 18-21) to the page; each arrives as a
+   * one-click chip under the terminal plus a toast. */
+  function humanSize(n)
+  {
+    return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB'
+                        : Math.max(1, Math.round(n / 1024)) + ' KB';
+  }
+  function triggerDownload(name, bytes)
+  {
+    var type = /\.pdf$/i.test(name) ? 'application/pdf' : 'image/png';
+    var url = URL.createObjectURL(new Blob([bytes], { type: type }));
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+  }
+  function addDownloadChip(name, bytes)
+  {
+    var bar = document.getElementById('dlBar');
+    bar.hidden = false;
+    var chip = document.createElement('span');
+    chip.className = 'dl-chip';
+    var b = document.createElement('b');
+    b.textContent = name;
+    var s = document.createElement('span');
+    s.textContent = humanSize(bytes.length);
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = '\u2b07 Download';
+    btn.addEventListener('click', function () { triggerDownload(name, bytes); });
+    chip.appendChild(b);
+    chip.appendChild(s);
+    chip.appendChild(btn);
+    bar.appendChild(chip);
+  }
+  function toastDownload(name, bytes)
+  {
+    var t = document.getElementById('toast');
+    t.textContent = name + ' (' + humanSize(bytes.length) + ') is ready.';
+    var btn = document.createElement('button');
+    btn.className = 'btn';
+    btn.type = 'button';
+    btn.textContent = '\u2b07 Download now';
+    btn.addEventListener('click', function () { triggerDownload(name, bytes); });
+    t.appendChild(btn);
+    t.classList.add('show');
+    clearTimeout(toastDownload.__t);
+    toastDownload.__t = setTimeout(function ()
+    {
+      t.classList.remove('show');
+      t.textContent = '';
+    }, 6000);
+  }
+
   var Module = {
+    crsFileOffered: function (name, bytes) {
+      addDownloadChip(name, bytes);
+      toastDownload(name, bytes);
+    },
     termByte: function (b) {
       if (b === 10) { term.write('\r\n'); return; }
       term.write(__dec.decode(new Uint8Array([b]), { stream: true }));

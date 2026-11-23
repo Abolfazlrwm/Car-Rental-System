@@ -18,6 +18,7 @@
 
 #include <cstdio>
 #include <cstdlib> // NO_COLOR environment variable
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -49,7 +50,7 @@
 #include "manager_system/RestServer.h"
 
 /* Program version, reported by --version / --help. */
-static const char *APP_VERSION = "3.9.0";
+static const char *APP_VERSION = "3.10.0";
 
 /* ============================================================
  *  Terminal colors (no-ops when stdout is piped)
@@ -259,6 +260,30 @@ static void demoBuildScript()
 EM_JS(int, web_line_pending, (), { return __crsLineReady() ? 1 : 0; });
 
 EM_JS(int, web_line_take, (int buf, int maxlen), { return __crsTakeLine(buf, maxlen); });
+
+/// (v3.10.0) Hand a saved report to the demo page: the page copies
+/// the bytes out of the WASM heap and shows a one-click download.
+EM_JS(void, crs_offer_file, (const char *name, const unsigned char *bytes, int len), {
+    if (Module.crsFileOffered)
+        Module.crsFileOffered(UTF8ToString(name),
+                              new Uint8Array(Module.HEAPU8.subarray(bytes, bytes + len)));
+});
+
+/// Read a just-written report back from the in-memory file system and
+/// offer it to the demo page under its own file name.
+static void offerReportDownload(const std::string &path)
+{
+    std::ifstream f(path, std::ios::binary);
+    if (!f)
+        return;
+    std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(f)),
+                                     std::istreambuf_iterator<char>());
+    if (bytes.empty())
+        return;
+    const std::size_t slash = path.find_last_of("/\\");
+    crs_offer_file(path.substr(slash == std::string::npos ? 0 : slash + 1).c_str(), bytes.data(),
+                   static_cast<int>(bytes.size()));
+}
 
 static bool readLine(const std::string &prompt, std::string &out)
 {
@@ -1578,8 +1603,10 @@ static void managerMenu(RentalManager &system, bool &running)
         std::string error;
         if (png::writeMonthlyReportPng(r, year, month, path, error))
             std::cout << green(L("  Saved to ") + path + "\n");
-        else
-            std::cout << red(L("  Could not write ") + path + ": " + error + "\n");
+#ifdef __EMSCRIPTEN__
+        offerReportDownload(path); // browser demo: one-click download
+#endif
+        else std::cout << red(L("  Could not write ") + path + ": " + error + "\n");
         break;
     }
     case 19:
@@ -1590,8 +1617,10 @@ static void managerMenu(RentalManager &system, bool &running)
         std::string error;
         if (png::writeLoyaltyOverviewPng(o, path, error))
             std::cout << green(L("  Saved to ") + path + "\n");
-        else
-            std::cout << red(L("  Could not write ") + path + ": " + error + "\n");
+#ifdef __EMSCRIPTEN__
+        offerReportDownload(path); // browser demo: one-click download
+#endif
+        else std::cout << red(L("  Could not write ") + path + ": " + error + "\n");
         break;
     }
     case 20:
@@ -1603,8 +1632,10 @@ static void managerMenu(RentalManager &system, bool &running)
         std::string error;
         if (png::writeDashboardPng(report, path, error))
             std::cout << green(L("  Saved to ") + path + "\n");
-        else
-            std::cout << red(L("  Could not write ") + path + ": " + error + "\n");
+#ifdef __EMSCRIPTEN__
+        offerReportDownload(path); // browser demo: one-click download
+#endif
+        else std::cout << red(L("  Could not write ") + path + ": " + error + "\n");
         break;
     }
     case 21:
@@ -1620,8 +1651,10 @@ static void managerMenu(RentalManager &system, bool &running)
         if (pdf::writeAllReportsPdf(r, year, month, system.loyaltyOverview(),
                                     buildAnalytics(system, Date::todaySerial()), path, error))
             std::cout << green(L("  Saved to ") + path + "\n");
-        else
-            std::cout << red(L("  Could not write ") + path + ": " + error + "\n");
+#ifdef __EMSCRIPTEN__
+        offerReportDownload(path); // browser demo: one-click download
+#endif
+        else std::cout << red(L("  Could not write ") + path + ": " + error + "\n");
         break;
     }
     default:

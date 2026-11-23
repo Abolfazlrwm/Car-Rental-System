@@ -35,12 +35,20 @@ function __crsTakeLine(buf, maxlen)
 
 var __out = [];
 Module['print'] = function (t) { __out.push(t); };
+
+// (v3.10.0) The scripted session saves the consolidated PDF (manager
+// option 21); every file the program hands over lands here.
+var __offers = [];
+Module['crsFileOffered'] = function (name, bytes)
+{
+    __offers.push({ name: name, size: bytes.length, head: bytes.length ? bytes[0] : -1 });
+};
 Module['printErr'] = function (t) { __out.push('[err] ' + t); };
 
-// login -> My reservations (blank answers the series prompt) ->
-// logout -> exit. Queued up front, newline per line exactly as a
-// keyboard would deliver them.
-['2', 'ali', 'customer123', '3', '\n', '12', '3'].forEach(
+// login as manager -> save all three reports as one PDF (option 21,
+// November 2026) -> save & logout -> exit. Queued up front, newline
+// per line exactly as a keyboard would deliver them.
+['2', 'admin', 'manager123', '21', '2026', '11', '15', '3'].forEach(
     function (line) { Module['pushInput'](line + '\n'); });
 
 Module['onRuntimeInitialized'] = function ()
@@ -61,8 +69,12 @@ Module['onRuntimeInitialized'] = function ()
         var checks = [
             ['banner', text.indexOf('Console edition') !== -1],
             ['seeded fleet', text.indexOf('First run: demo fleet') !== -1],
-            ['login', text.indexOf('Welcome, ali (Customer)!') !== -1],
-            ['reservations', text.indexOf('no reservations yet') !== -1],
+            ['login', text.indexOf('Welcome, admin (Manager)!') !== -1],
+            ['pdf saved', text.indexOf('Saved to reports/all_reports_2026-11.pdf') !== -1],
+            ['pdf offered once', __offers.length === 1],
+            ['pdf bytes',
+             __offers.length === 1 && __offers[0].name === 'all_reports_2026-11.pdf' &&
+                 __offers[0].head === 37 && __offers[0].size > 800000],
             ['clean exit', text.indexOf('Goodbye!') !== -1],
             ['no stderr noise', !text.includes('[err]')],
         ];
