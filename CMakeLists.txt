@@ -38,7 +38,6 @@ target_include_directories(car_rental PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 # The REST server uses Winsock on Windows.
 if(WIN32)
     target_link_libraries(car_rental PRIVATE ws2_32)
-    target_link_libraries(unit_tests PRIVATE ws2_32)
 endif()
 
 # ---------------------------------------------------------------- tests
@@ -61,6 +60,10 @@ add_executable(unit_tests
     manager_system/RentalHistory.cpp
     manager_system/MonthlyReport.cpp)
 target_include_directories(unit_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+if(WIN32)
+    target_link_libraries(unit_tests PRIVATE ws2_32)
+endif()
 add_test(NAME unit_tests COMMAND unit_tests)
 
 # ---------------------------------------------------------------- benchmarks
