@@ -21,12 +21,15 @@
  *    - --lang     : (v3.6.0) UI language for the interactive layer,
  *                   "fa" or "en", either "--lang fa" or "--lang=fa";
  *                   the value is validated (and persisted) by main()
+ *    - --serve    : (v3.7.0) run the read-only REST API instead of
+ *                   the menu loop; optional port, default 8080
  *    - unknown    : error carries the offending argument; the
  *                   caller prints a hint and exits 1
  * ============================================================
  */
 #pragma once
 
+#include <cstdlib>
 #include <string>
 
 namespace cli
@@ -39,6 +42,7 @@ struct Options
     bool noColor = false;     /// --no-color: plain output for pipes, logs, CI
     bool demo = false;        /// --demo (v3.4.0): narrated guided walkthrough
     std::string lang;         /// --lang (v3.6.0): "fa" | "en"; empty = auto
+    int servePort = 0;        /// --serve (v3.7.0): REST port; 0 = off
     std::string error;        /// non-empty -> usage error, names the argument
 };
 
@@ -65,6 +69,35 @@ inline Options parse(int argc, char *argv[])
             else
             {
                 opts.error = "--lang needs a value (fa|en)";
+                return opts;
+            }
+        }
+        else if (arg == "--serve" || arg.rfind("--serve=", 0) == 0)
+        {
+            // "--serve" alone means the default 8080; a following
+            // all-digit argument is the port, "--serve=PORT" too.
+            std::string value;
+            bool hasValue = false;
+            if (arg.size() > 8)
+            {
+                value = arg.substr(8);
+                hasValue = true;
+            }
+            else if (i + 1 < argc)
+            {
+                const std::string next = argv[i + 1];
+                if (!next.empty() &&
+                    next.find_first_not_of("0123456789") == std::string::npos)
+                {
+                    value = next;
+                    ++i;
+                    hasValue = true;
+                }
+            }
+            opts.servePort = hasValue ? std::atoi(value.c_str()) : 8080;
+            if (opts.servePort < 1 || opts.servePort > 65535)
+            {
+                opts.error = "--serve needs a port between 1 and 65535";
                 return opts;
             }
         }

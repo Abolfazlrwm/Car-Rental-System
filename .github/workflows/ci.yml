@@ -66,6 +66,16 @@ jobs:
           grep -q "MONTHLY REPORT" /tmp/demo.log
           grep -q "Goodbye" /tmp/demo.log
 
+      # v3.7.0: the read-only REST layer answers real sockets.
+      - name: REST smoke (--serve answers /health, /cars, /monthly)
+        run: |
+          ./build/car_rental --serve 8199 >/tmp/rest.log 2>&1 &
+          sleep 1
+          curl -fsS http://127.0.0.1:8199/health | grep -q '"ok"'
+          curl -fsS http://127.0.0.1:8199/cars | grep -q '"count"'
+          curl -fsS "http://127.0.0.1:8199/monthly?year=2026&month=11" | grep -q '"month"'
+          kill %1
+
   # The README promises Linux | macOS | Windows — prove all three.
   cross-platform:
     name: ${{ matrix.os }} / CMake + ctest

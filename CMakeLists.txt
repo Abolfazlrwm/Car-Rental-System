@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(CarRentalSystem
-        VERSION 3.6.0
+        VERSION 3.7.0
         DESCRIPTION "Car Rental Management System — modern C++17 with hand-built data structures"
         LANGUAGES CXX)
 
@@ -24,6 +24,8 @@ add_executable(car_rental
     manager_system/Reservation.cpp
     manager_system/Date.cpp
     manager_system/I18n.cpp
+    manager_system/Png.cpp
+    manager_system/RestServer.cpp
     manager_system/RentalManager.cpp
     manager_system/JsonExport.cpp
     manager_system/Analytics.cpp
@@ -32,6 +34,12 @@ add_executable(car_rental
     manager_system/RentalHistory.cpp
     manager_system/MonthlyReport.cpp)
 target_include_directories(car_rental PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+# The REST server uses Winsock on Windows.
+if(WIN32)
+    target_link_libraries(car_rental PRIVATE ws2_32)
+    target_link_libraries(unit_tests PRIVATE ws2_32)
+endif()
 
 # ---------------------------------------------------------------- tests
 enable_testing()
@@ -43,6 +51,8 @@ add_executable(unit_tests
     manager_system/Reservation.cpp
     manager_system/Date.cpp
     manager_system/I18n.cpp
+    manager_system/Png.cpp
+    manager_system/RestServer.cpp
     manager_system/RentalManager.cpp
     manager_system/JsonExport.cpp
     manager_system/Analytics.cpp

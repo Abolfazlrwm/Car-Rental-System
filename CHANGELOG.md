@@ -4,6 +4,40 @@ All notable changes to the Car Rental System are documented in this file.
 The detailed v1.0 → v2.0 story lives in
 [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md).
 
+## [3.7.0] — 2026-11-23
+
+### Added
+
+- **Monthly report as PNG (manager option 18)** — a dependency-free
+  PNG encoder (hand-rolled CRC32, Adler32 and STORED-deflate zlib
+  framing; glyphs rasterised from DejaVu at build time into
+  `PngFont.h`) renders the same numbers as the screen — figures plus
+  per-car and per-day bars — into `reports/monthly_YYYY-MM.png`.
+- **Read-only REST API (`--serve [port]`)** — a hand-rolled HTTP
+  server bound to 127.0.0.1 (POSIX sockets / Winsock, still zero
+  dependencies) exposing `/health`, `/version`, `/cars`,
+  `/cars/{name}`, `/cars/{name}/reservations`, `/stats`, `/loyalty`,
+  `/audit?limit=N`, `/pickups?days=N` and `/monthly?year&month` as
+  JSON. GET-only by design: mutations stay in the TUI; the pure
+  router is unit-tested without sockets; the wasm build compiles the
+  router but reports `serve()` unavailable.
+- **48 new suite checks** (5,500 → **5,548**): CRC/Adler known
+  vectors, PNG byte-level validity (signature, IHDR geometry, chunk
+  CRC, IEND), deterministic report bytes, request-line and query
+  parsing, every endpoint's status and body, wire serialisation, and
+  a regression net pinning the FA translation of the three big menus.
+- **CI**: a REST smoke job curls `/health`, `/cars` and `/monthly`
+  against a live `--serve` process on every push.
+
+### Fixed
+
+- **v3.6.0 regression:** the i18n byte-splitter could swallow a
+  space at a chunk boundary, corrupting some table keys so the FA
+  menus silently fell back to English. The table is rebuilt from a
+  canonical list with a space-preserving splitter, and the suite now
+  pins the three menu translations so this class of bug cannot ship
+  again.
+
 ## [3.6.0] — 2026-11-23
 
 ### Added

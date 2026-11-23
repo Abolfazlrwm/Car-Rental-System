@@ -52,8 +52,10 @@
 #include "../manager_system/JsonExport.h"
 #include "../manager_system/Loyalty.h"
 #include "../manager_system/Permissions.h"
+#include "../manager_system/Png.h"
 #include "../manager_system/RentalManager.h"
 #include "../manager_system/Reservation.h"
+#include "../manager_system/RestServer.h"
 #include "../manager_system/SHA256.h"
 #include "../manager_system/User.h"
 
@@ -3685,6 +3687,74 @@ static void testI18n()
     CHECK(!i18n::setLangByName("de"));
     CHECK(i18n::lang() == i18n::Lang::Fa);
 
+    // (v3.7.0 regression net) the v3.6.0 byte-splitter could swallow a
+    // space at a chunk boundary, corrupting long table keys so the big
+    // menus silently fell back to English — pin their FA lookups.
+    CHECK(strcmp(i18n::tr("  1. View fleet\n"
+                          "  2. Search car by name\n"
+                          "  3. My reservations\n"
+                          "  4. Make a reservation\n"
+                          "  5. Find cars free for a date range\n"
+                          "  6. Join a waitlist\n"
+                          "  7. My waitlist (leave)\n"
+                          "  8. Renew a rental\n"
+                          "  9. Pay my bill\n"
+                          " 10. My loyalty card\n"
+                          " 11. Redeem points on my bill\n"
+                          " 12. Logout\n"
+                          " 13. Change a booking (move dates)\n"),
+                 "  1. View fleet\n"
+                 "  2. Search car by name\n"
+                 "  3. My reservations\n"
+                 "  4. Make a reservation\n"
+                 "  5. Find cars free for a date range\n"
+                 "  6. Join a waitlist\n"
+                 "  7. My waitlist (leave)\n"
+                 "  8. Renew a rental\n"
+                 "  9. Pay my bill\n"
+                 " 10. My loyalty card\n"
+                 " 11. Redeem points on my bill\n"
+                 " 12. Logout\n"
+                 " 13. Change a booking (move dates)\n") != 0);
+    CHECK(strcmp(i18n::tr("  1. View fleet\n  2. Search car by name\n"
+                          "  3. Deliver car to customer\n"
+                          "  4. Process car return (with penalty)\n"
+                          "  5. Send car to maintenance\n"
+                          "  6. Finish maintenance\n"
+                          "  7. Show maintenance history\n"
+                          "  8. Serve waitlist now\n  9. Logout\n"),
+                 "  1. View fleet\n  2. Search car by name\n"
+                 "  3. Deliver car to customer\n"
+                 "  4. Process car return (with penalty)\n"
+                 "  5. Send car to maintenance\n"
+                 "  6. Finish maintenance\n"
+                 "  7. Show maintenance history\n"
+                 "  8. Serve waitlist now\n  9. Logout\n") != 0);
+    CHECK(strcmp(i18n::tr("  1. Add car\n  2. View fleet (insertion order)\n"
+                          "  3. View fleet (sorted by name - AVL index)\n"
+                          "  4. Search fleet by keyword\n  5. Fleet statistics\n"
+                          "  6. Fleet analytics dashboard\n"
+                          "  7. Audit log (who did what)\n"
+                          "  8. Loyalty program overview\n  9. Income report\n"
+                          " 10. Export CSV & JSON reports\n 11. Block user\n"
+                          " 12. Unblock user\n 13. Create staff account\n"
+                          " 14. Save data to disk\n 15. Save & logout\n"
+                          " 16. Exit program\n"
+                          " 17. Monthly report (revenue & bookings)\n"
+                          " 18. Save monthly report as PNG\n"),
+                 "  1. Add car\n  2. View fleet (insertion order)\n"
+                 "  3. View fleet (sorted by name - AVL index)\n"
+                 "  4. Search fleet by keyword\n  5. Fleet statistics\n"
+                 "  6. Fleet analytics dashboard\n"
+                 "  7. Audit log (who did what)\n"
+                 "  8. Loyalty program overview\n  9. Income report\n"
+                 " 10. Export CSV & JSON reports\n 11. Block user\n"
+                 " 12. Unblock user\n 13. Create staff account\n"
+                 " 14. Save data to disk\n 15. Save & logout\n"
+                 " 16. Exit program\n"
+                 " 17. Monthly report (revenue & bookings)\n"
+                 " 18. Save monthly report as PNG\n") != 0);
+
     // Persistence round-trip through ./data/lang.txt.
     std::filesystem::create_directories("data");
     {
@@ -3704,6 +3774,145 @@ static void testI18n()
     i18n::loadPersisted();
     CHECK(i18n::lang() == i18n::Lang::En);
     std::filesystem::remove("data/lang.txt");
+}
+
+/* ============================================================
+ *  Png (v3.7.0): the dependency-free encoder + report raster
+ * ============================================================ */
+static void testPng()
+{
+    // Known vectors pin both checksums.
+    CHECK(png::crc32(reinterpret_cast<const unsigned char *>("123456789"), 9) == 0xCBF43926UL);
+    CHECK(png::adler32(reinterpret_cast<const unsigned char *>("Wikipedia"), 9) == 0x11E60398UL);
+
+    // Canvas: rect fill lands, out-of-bounds writes are no-ops.
+    png::Canvas cv(40, 20);
+    cv.fill(250, 250, 250);
+    cv.fillRect(2, 2, 5, 5, 10, 20, 30);
+    CHECK(cv.pixel((2 * 40 + 2) * 3) == 10);
+    CHECK(cv.pixel((2 * 40 + 6) * 3 + 2) == 30);
+    cv.set(-1, 0, 1, 2, 3);
+    cv.set(0, 999, 1, 2, 3);
+    CHECK(cv.pixel(0) == 250);
+
+    // Text leaves real ink on the canvas.
+    png::Canvas tv(80, 12);
+    tv.fill(255, 255, 255);
+    tv.text(1, 2, "A", 0, 0, 0, 1);
+    int ink = 0;
+    for (int i = 0; i < 80 * 12; ++i)
+        if (tv.pixel(static_cast<std::size_t>(i) * 3) != 255)
+            ++ink;
+    CHECK(ink > 4);
+
+    // The encoder writes a decodable PNG: signature, IHDR geometry,
+    // a CRC that recomputes exactly, and a proper IEND tail.
+    const std::string path = "reports/png_unit.png";
+    CHECK(png::writePng(path, tv));
+    {
+        std::ifstream in(path, std::ios::binary);
+        std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(in)),
+                                         std::istreambuf_iterator<char>());
+        CHECK(bytes.size() > 60);
+        CHECK(bytes[0] == 0x89 && bytes[1] == 'P' && bytes[2] == 'N' && bytes[3] == 'G');
+        const unsigned long w = (static_cast<unsigned long>(bytes[16]) << 24) |
+                                (static_cast<unsigned long>(bytes[17]) << 16) |
+                                (static_cast<unsigned long>(bytes[18]) << 8) | bytes[19];
+        const unsigned long hh = (static_cast<unsigned long>(bytes[20]) << 24) |
+                                 (static_cast<unsigned long>(bytes[21]) << 16) |
+                                 (static_cast<unsigned long>(bytes[22]) << 8) | bytes[23];
+        CHECK(w == 80 && hh == 12);
+        const unsigned long stored = (static_cast<unsigned long>(bytes[29]) << 24) |
+                                     (static_cast<unsigned long>(bytes[30]) << 16) |
+                                     (static_cast<unsigned long>(bytes[31]) << 8) | bytes[32];
+        CHECK(png::crc32(&bytes[12], 17) == stored);
+        CHECK(bytes[bytes.size() - 8] == 'I' && bytes[bytes.size() - 7] == 'E' &&
+              bytes[bytes.size() - 6] == 'N' && bytes[bytes.size() - 5] == 'D');
+    }
+
+    // The monthly raster is deterministic and rejects a bad month.
+    MonthlyReport r;
+    r.month = "2026-11";
+    r.rentalsCompleted = 3;
+    r.revenue = 640.0;
+    r.discountGiven = 12.0;
+    r.lateFees = 5.0;
+    r.distinctCustomers = 2;
+    r.perCar.push_back({"Alpha", 2, 420.0});
+    r.perCar.push_back({"Beta", 1, 220.0});
+    r.perDay.push_back({"07", 2});
+    r.perDay.push_back({"21", 1});
+    r.topDay = 7;
+    r.topDayRentals = 2;
+    std::string err;
+    const std::string p1 = "reports/monthly_unit.png";
+    CHECK(png::writeMonthlyReportPng(r, 2026, 11, p1, err));
+    CHECK(err.empty());
+    CHECK(png::writeMonthlyReportPng(r, 2026, 11, p1 + ".2", err));
+    {
+        std::ifstream a(p1, std::ios::binary), b(p1 + ".2", std::ios::binary);
+        std::string sa((std::istreambuf_iterator<char>(a)), std::istreambuf_iterator<char>());
+        std::string sb((std::istreambuf_iterator<char>(b)), std::istreambuf_iterator<char>());
+        CHECK(sa == sb && sa.size() > 1000);
+    }
+    CHECK(!png::writeMonthlyReportPng(r, 2026, 13, "reports/bad.png", err));
+    std::filesystem::remove(p1);
+    std::filesystem::remove(p1 + ".2");
+}
+
+/* ============================================================
+ *  Rest (v3.7.0): the read-only router over the facade
+ * ============================================================ */
+static void testRest()
+{
+    RentalManager m;
+    m.seedDemoData(); // in-memory fleet + accounts, no disk side effects
+
+    // Request-line parsing: target split, percent decoding, garbage.
+    {
+        const rest::Request r = rest::parseRequestLine("GET /cars?limit=2 HTTP/1.1");
+        CHECK(r.method == "GET" && r.path == "/cars" && r.query == "limit=2");
+    }
+    CHECK(rest::parseRequestLine("garbage").method.empty());
+    {
+        const rest::Request r = rest::parseRequestLine("GET /a%20b+c HTTP/1.1");
+        CHECK(r.path == "/a b c");
+    }
+    CHECK(rest::urlDecode("a%2Fb") == "a/b");
+    CHECK(rest::queryParam("a=1&b=x%20y", "b") == "x y");
+    CHECK(rest::queryParam("a=1", "c").empty());
+
+    // Endpoints over the seeded demo fleet.
+    const rest::Response health = rest::routeGet(m, "/health", "");
+    CHECK(health.status == 200 && health.body.find("\"ok\":true") != std::string::npos);
+    CHECK(rest::routeGet(m, "/version", "").body.find("\"dependencies\":0") != std::string::npos);
+    const rest::Response cars = rest::routeGet(m, "/cars", "");
+    CHECK(cars.status == 200 && cars.body.find("\"count\":") != std::string::npos);
+    CHECK(cars.body.find("Peugeot") != std::string::npos);
+    CHECK(rest::routeGet(m, "/cars/Peugeot 206", "").status == 200);
+    CHECK(rest::routeGet(m, "/cars/NoSuchCar", "").status == 404);
+    CHECK(rest::routeGet(m, "/cars/Peugeot 206/reservations", "").body.find("\"reservations\"") !=
+          std::string::npos);
+    const rest::Response stats = rest::routeGet(m, "/stats", "");
+    CHECK(stats.body.find("\"totalCars\":8") != std::string::npos);
+    CHECK(stats.body.find("\"utilization\"") != std::string::npos);
+    CHECK(rest::routeGet(m, "/loyalty", "").body.find("\"membersByTier\"") != std::string::npos);
+    CHECK(rest::routeGet(m, "/audit", "limit=2").body.find("\"entries\"") != std::string::npos);
+    CHECK(rest::routeGet(m, "/audit", "limit=0").status == 400);
+    CHECK(rest::routeGet(m, "/audit", "limit=x").status == 400);
+    CHECK(rest::routeGet(m, "/pickups", "days=5").status == 200);
+    CHECK(rest::routeGet(m, "/pickups", "days=99").status == 400);
+    const rest::Response monthly = rest::routeGet(m, "/monthly", "year=2026&month=11");
+    CHECK(monthly.status == 200 && monthly.body.find("\"month\":\"2026-11\"") != std::string::npos);
+    CHECK(rest::routeGet(m, "/monthly", "month=11").status == 400);
+    CHECK(rest::routeGet(m, "/monthly", "year=2026&month=13").status == 400);
+    CHECK(rest::routeGet(m, "/nope", "").status == 404);
+
+    // Serialisation: status line, exact Content-Length, close semantics.
+    const std::string wire = rest::httpResponse(health);
+    CHECK(wire.rfind("HTTP/1.1 200 OK\r\n", 0) == 0);
+    CHECK(wire.find("Content-Length: " + std::to_string(health.body.size())) != std::string::npos);
+    CHECK(wire.find("Connection: close") != std::string::npos);
 }
 
 int main()
@@ -3759,6 +3968,8 @@ int main()
     runSuite("RentalManager: monthly report flow", testRentalManagerMonthly);
     runSuite("Cli: argument parsing", testCli);
     runSuite("I18n: string table & language", testI18n);
+    runSuite("Png: encoder & report raster", testPng);
+    runSuite("Rest: router & serialisation", testRest);
 
     std::cout << "\n" << g_checks << " checks, " << g_failures << " failure(s)\n";
     if (g_failures == 0)

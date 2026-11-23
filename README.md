@@ -356,6 +356,13 @@ RTL rendering. By design the domain strings returned by the core
 (booking-conflict errors, discount notes, the audit table) stay
 English — the unit suite pins their exact bytes.
 
+**PNG reports (v3.7.0):** manager option 18 saves the monthly report
+as `reports/monthly_YYYY-MM.png` — the same figures as the screen plus
+per-car and per-day bars, drawn and encoded by a dependency-free PNG
+writer (hand-rolled CRC32/Adler32, stored-deflate zlib framing, an
+8x8 glyph table rasterised from DejaVu at build time). No image
+library anywhere.
+
 **Guided demo:** `./car_rental --demo` plays one narrated, self-running
 shift — book → change a booking → deliver → late return with penalty →
 manager reports — with dates derived from today's clock, on a fresh
@@ -370,6 +377,42 @@ page — `windows-x64.zip`, `linux-x64.tar.gz`, `linux-arm64.tar.gz`
 `android-arm64.tar.gz`** that runs directly on Android/Termux (no
 install step), plus `wasm-demo.zip` for offline browser use. No
 compiler needed anywhere.
+
+---
+
+## 🌐 REST API (read-only, v3.7.0)
+
+`./car_rental --serve [port]` starts a tiny HTTP server (default
+8080, bound to 127.0.0.1 only, hand-rolled on POSIX sockets /
+Winsock — still zero dependencies) that exposes the manager's
+numbers as JSON:
+
+| Endpoint | Returns |
+| --- | --- |
+| `GET /health` | liveness + service name |
+| `GET /version` | version metadata |
+| `GET /cars` | the fleet, name-sorted |
+| `GET /cars/{name}` | one car (404 when absent) |
+| `GET /cars/{name}/reservations` | live bookings on one car |
+| `GET /stats` | FleetStats + waitlist depth |
+| `GET /loyalty` | the program snapshot |
+| `GET /audit?limit=N` | newest audit entries (1..500) |
+| `GET /pickups?days=N` | upcoming pickups (1..30) |
+| `GET /monthly?year=Y&month=M` | the monthly report |
+
+```bash
+./car_rental --serve 8080 &
+curl -s http://127.0.0.1:8080/cars | python3 -m json.tool
+curl -s "http://127.0.0.1:8080/monthly?year=2026&month=11"
+```
+
+Read-only by design — mutations stay in the TUI where every change
+is validated, priced and audited interactively; the router is pure
+(unit-tested without sockets), JSON is escaped with the same escaper
+the report writer uses, and the WebAssembly build compiles the
+router but reports `serve()` unavailable. In Docker, publish the
+port to reach it: `docker run -p 8080:8080
+ghcr.io/abolfazlrwm/car-rental-system --serve`.
 
 ---
 
@@ -471,7 +514,7 @@ The suite needs no external framework and runs in milliseconds:
   [ ok ] Monthly report: builder maths
   [ ok ] RentalManager: monthly report flow
 
-5500 checks, 0 failure(s)
+5548 checks, 0 failure(s)
 ALL TESTS PASSED
 ```
 

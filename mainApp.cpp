@@ -41,12 +41,14 @@
 #include "manager_system/JsonExport.h"
 #include "manager_system/Loyalty.h"
 #include "manager_system/MonthlyReport.h"
+#include "manager_system/Png.h"
 #include "manager_system/Pricing.h"
 #include "manager_system/Recurring.h"
 #include "manager_system/RentalManager.h"
+#include "manager_system/RestServer.h"
 
 /* Program version, reported by --version / --help. */
-static const char *APP_VERSION = "3.6.0";
+static const char *APP_VERSION = "3.7.0";
 
 /* ============================================================
  *  Terminal colors (no-ops when stdout is piped)
@@ -1402,11 +1404,11 @@ static void managerMenu(RentalManager &system, bool &running)
         "dashboard\n  7. Audit log (who did what)\n  8. Loyalty program overview\n  9. Income "
         "report\n 10. Export CSV & JSON reports\n 11. Block user\n 12. Unblock user\n 13. Create "
         "staff account\n 14. Save data to disk\n 15. Save & logout\n 16. Exit program\n 17. "
-        "Monthly report (revenue & bookings)\n")
+        "Monthly report (revenue & bookings)\n 18. Save monthly report as PNG\n")
 
         ;
 
-    switch (readMenuChoice(L("  Choice: "), 1, 17))
+    switch (readMenuChoice(L("  Choice: "), 1, 18))
     {
     case 1:
     {
@@ -1560,6 +1562,23 @@ static void managerMenu(RentalManager &system, bool &running)
         }
         break;
     }
+    case 18:
+    {
+        // (v3.7.0) The same month as a dependency-free PNG image:
+        // hand-rolled encoder, no image library anywhere.
+        int year;
+        if (!readInt(L("  Year (e.g. 2026): "), year))
+            return;
+        const int month = readMenuChoice(L("  Month (1-12): "), 1, 12);
+        const MonthlyReport r = system.monthlyReport(year, month);
+        const std::string path = "reports/monthly_" + r.month + ".png";
+        std::string error;
+        if (png::writeMonthlyReportPng(r, year, month, path, error))
+            std::cout << green(L("  Saved to ") + path + "\n");
+        else
+            std::cout << red(L("  Could not write ") + path + ": " + error + "\n");
+        break;
+    }
     default:
         break;
     }
@@ -1642,6 +1661,8 @@ int main(int argc, char *argv[])
                      "  --no-color     plain output (pipes, logs, CI)\n"
                      "  --demo         guided walkthrough: one full shift,\n"
                      "                 narrated, no typing (fresh in-memory fleet)\n"
+                     "  --serve [port] read-only REST API over the loaded data\n"
+                     "                 (default port 8080, binds 127.0.0.1)\n"
                      "\n"
                      "Plain output also follows the NO_COLOR environment\n"
                      "variable (no-color.org).\n"
@@ -1679,6 +1700,21 @@ int main(int argc, char *argv[])
                        "customer -> ali  / customer123\n");
         if (i18n::lang() == i18n::Lang::En)
             std::cout << yellow("  Tip: run with --lang fa for the Persian interface.\n");
+    }
+
+    // (v3.7.0) Read-only REST API: --serve replaces the menu loop.
+    if (opts.servePort > 0)
+    {
+        if (g_demoOn)
+        {
+            std::cout << red(L("  --serve and --demo cannot be combined.\n"));
+            return 1;
+        }
+        std::string serveError;
+        const int serveExit = rest::serve(system, opts.servePort, serveError);
+        if (serveExit != 0)
+            std::cerr << "car_rental: " << serveError << "\n";
+        return serveExit == 0 ? 0 : 1;
     }
 
     while (running)
