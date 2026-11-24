@@ -47,7 +47,7 @@ jobs:
         run: Compress-Archive -Path build/Release/car_rental.exe -DestinationPath "${{ matrix.asset }}"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset }}
           path: ${{ matrix.asset }}
@@ -111,7 +111,7 @@ jobs:
           tar czf car_rental-macos-x64.tar.gz car_rental
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cross-assets
           path: |
@@ -140,7 +140,7 @@ jobs:
           zip -r ../car_rental-wasm-demo.zip demo.html demo/car_rental.js demo/car_rental.wasm demo/pre.js demo/vendor
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: car_rental-wasm-demo.zip
           path: car_rental-wasm-demo.zip
